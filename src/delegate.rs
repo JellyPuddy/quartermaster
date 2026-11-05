@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::Command;
@@ -11,7 +12,7 @@ pub fn launcher() -> PathBuf {
 }
 
 /// Replaces this process with the Ruby qm, arguments and stdin untouched.
-pub fn exec_ruby(args: &[String]) -> ! {
+pub fn exec_ruby<S: AsRef<OsStr>>(args: &[S]) -> ! {
     let err = Command::new(launcher()).args(args).exec();
     eprintln!("qm: cannot run the Ruby launcher {}: {err}", launcher().display());
     std::process::exit(127);

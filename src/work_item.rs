@@ -4,13 +4,17 @@ use std::path::PathBuf;
 
 use serde_yaml::{Mapping, Value};
 
+use crate::clock;
 use crate::data_root;
-use crate::error::{QmError, Res};
+use crate::error::{QmError, Res, UNEMITTABLE};
 use crate::front_edit;
-use crate::note::Note;
+use crate::note::{Note, NOTE_KINDS};
+use crate::psych;
+use crate::sections;
 use crate::ruby_text::strip;
 use crate::yaml_scalar::{array, get, text};
 
+pub const STATES: [&str; 3] = ["in_progress", "fridge", "resolved"];
 pub const INJECTED_NOTES: usize = 5;
 pub const INJECTED_OPEN_NOTES: usize = 3;
 
@@ -157,7 +161,7 @@ impl WorkItem {
         pieces.iter().filter(|p| !strip(p).is_empty()).count()
     }
 
-    // ---- the three writes the capture hooks make
+    // ---- writes
 
     /// Runs `f` under the global work-item flock, as the Ruby `WorkItem.with_lock`.
     fn with_lock<T>(f: impl FnOnce() -> Res<T>) -> Res<T> {
@@ -168,42 +172,92 @@ impl WorkItem {
         f()
     }
 
-    /// Re-reads the file under the lock, applies `edit` to the front lines, validates and saves.
-    fn edit_front(&mut self, edit: impl FnOnce(&WorkItem, &mut Vec<String>) -> Res<bool>) -> Res<bool> {
+    fn write_file(slug: &str, contents: &str) -> Res<()> {
+        let path = Self::path_for(slug);
+        let temp = path.with_file_name(format!(".{slug}.md.tmp-{}", std::process::id()));
+        fs::write(&temp, contents)?;
+        fs::rename(&temp, &path)?;
+        Ok(())
+    }
+
+    /// Re-reads the file under the lock, lets `edit` change the front lines and body (returning
+    /// whether to save), validates the result parses, and writes it.
+    fn edit(&mut self, edit: impl FnOnce(&WorkItem, &mut Vec<String>, &mut String) -> Res<bool>) -> Res<bool> {
         Self::with_lock(|| {
             let fresh = Self::find(&self.slug)?;
             let mut lines: Vec<String> = fresh.front_text.lines().map(String::from).collect();
-            if !edit(&fresh, &mut lines)? {
+            let mut body = fresh.body.clone();
+            if !edit(&fresh, &mut lines, &mut body)? {
                 *self = fresh;
                 return Ok(false);
             }
             let front_text = lines.join("\n");
             let front = parse_front(&front_text)
                 .map_err(|e| QmError::new("RuntimeError", format!("refusing to write unparsable front matter: {e}")))?;
-            let contents = format!("---\n{front_text}\n---\n{}", fresh.body);
-            let path = Self::path_for(&self.slug);
-            let temp = path.with_file_name(format!(".{}.md.tmp-{}", self.slug, std::process::id()));
-            fs::write(&temp, contents)?;
-            fs::rename(&temp, &path)?;
-            *self = WorkItem { slug: fresh.slug, front, body: fresh.body, front_text };
+            Self::write_file(&self.slug, &format!("---\n{front_text}\n---\n{body}"))?;
+            *self = WorkItem { slug: fresh.slug, front, body, front_text };
             Ok(true)
+        })
+    }
+
+    pub fn slugify(title: &str) -> String {
+        let mut slug = String::new();
+        let mut dash = false;
+        for c in title.to_lowercase().chars() {
+            if c.is_ascii_lowercase() || c.is_ascii_digit() {
+                if dash && !slug.is_empty() {
+                    slug.push('-');
+                }
+                dash = false;
+                slug.push(c);
+            } else {
+                dash = true;
+            }
+        }
+        slug
+    }
+
+    /// A new item; `Unemittable` when its front matter is something only Ruby writes faithfully.
+    pub fn create(title: &str, project: &str, branch: Option<&str>, description: Option<&str>) -> Res<WorkItem> {
+        let slug = Self::slugify(title);
+        let unemittable = |what: &str| QmError::new(UNEMITTABLE, format!("cannot write {what} like Ruby"));
+        if slug.is_empty() {
+            return Err(unemittable("an empty slug"));
+        }
+        let mut lines = vec!["v: 1".to_string()];
+        lines.extend(psych::pair("title", title).ok_or_else(|| unemittable("the title"))?);
+        lines.extend(psych::pair("state", "in_progress").unwrap());
+        lines.extend(psych::pair("project", project).ok_or_else(|| unemittable("the project"))?);
+        lines.extend(psych::pair("created", &clock::today()).unwrap());
+        if let Some(b) = branch {
+            lines.extend(psych::list("branches", &[b.to_string()]).ok_or_else(|| unemittable("the branch"))?);
+        }
+        let body = format!("\n## Description\n\n{}\n\n## Notes\n\n## Snapshots\n", description.unwrap_or("_TODO_"));
+        Self::with_lock(|| {
+            if Self::path_for(&slug).exists() {
+                return Err(QmError::argument(format!("work item '{slug}' already exists")));
+            }
+            let front_text = lines.join("\n");
+            Self::write_file(&slug, &format!("---\n{front_text}\n---\n{body}"))?;
+            Self::find(&slug)
         })
     }
 
     pub fn attach_session(&mut self, session_id: &str) -> Res<bool> {
         let id = session_id.to_string();
-        self.edit_front(move |fresh, lines| {
+        self.edit(move |fresh, lines, _| {
             if fresh.session_ids().contains(&id) {
                 return Ok(false);
             }
-            front_edit::push_item(lines, "sessions", vec![format!("- id: {}", front_edit::scalar(&id))])?;
+            let text = psych::scalar(6, &id).ok_or_else(|| QmError::new(UNEMITTABLE, "session id"))?;
+            front_edit::push_item(lines, "sessions", vec![format!("- id: {text}")])?;
             Ok(true)
         })
     }
 
     pub fn detach_session(&mut self, session_id: &str) -> Res<bool> {
         let id = session_id.to_string();
-        self.edit_front(move |fresh, lines| {
+        self.edit(move |fresh, lines, _| {
             if !fresh.session_ids().contains(&id) {
                 return Ok(false);
             }
@@ -228,15 +282,169 @@ impl WorkItem {
         })
     }
 
+    fn set_list(lines: &mut Vec<String>, key: &str, items: &[String]) -> Res<()> {
+        let emitted = psych::list(key, items).ok_or_else(|| QmError::new(UNEMITTABLE, format!("the {key} list")))?;
+        front_edit::set(lines, key, emitted);
+        Ok(())
+    }
+
+    fn set_pair(lines: &mut Vec<String>, key: &str, value: &str) -> Res<()> {
+        let emitted = psych::pair(key, value).ok_or_else(|| QmError::new(UNEMITTABLE, format!("the {key} value")))?;
+        front_edit::set(lines, key, emitted);
+        Ok(())
+    }
+
+    /// Records a scratch branch (a `claude --worktree` session's); a branch linked for real stays only that.
     pub fn add_temp_branch(&mut self, branch: &str) -> Res<bool> {
         let branch = branch.to_string();
-        self.edit_front(move |fresh, lines| {
+        self.edit(move |fresh, lines, _| {
             if fresh.branches().contains(&branch) || fresh.temp_branches().contains(&branch) {
                 return Ok(false);
             }
-            front_edit::push_item(lines, "temp_branches", vec![format!("- {}", front_edit::scalar(&branch))])?;
+            let mut all = fresh.temp_branches();
+            all.push(branch.clone());
+            Self::set_list(lines, "temp_branches", &all)?;
             Ok(true)
         })
+    }
+
+    pub fn update_state(&mut self, state: &str) -> Res<()> {
+        if !STATES.contains(&state) {
+            return Err(QmError::argument(format!("state must be one of: {}", STATES.join(", "))));
+        }
+        self.edit(|_, lines, _| Self::set_pair(lines, "state", state).map(|_| true)).map(|_| ())
+    }
+
+    pub fn move_to(&mut self, project: &str) -> Res<()> {
+        self.edit(|_, lines, _| Self::set_pair(lines, "project", project).map(|_| true)).map(|_| ())
+    }
+
+    pub fn retitle(&mut self, title: &str) -> Res<()> {
+        self.edit(|_, lines, _| Self::set_pair(lines, "title", title).map(|_| true)).map(|_| ())
+    }
+
+    fn store_branches(lines: &mut Vec<String>, list: &[String]) -> Res<()> {
+        front_edit::delete(lines, "branch");
+        Self::set_list(lines, "branches", list)
+    }
+
+    /// Links a branch for real: a temp branch of that name is promoted.
+    pub fn link_branch(&mut self, branch: &str) -> Res<()> {
+        let branch = branch.to_string();
+        self.edit(move |fresh, lines, _| {
+            let temps: Vec<String> = fresh.temp_branches().into_iter().filter(|b| *b != branch).collect();
+            if temps.is_empty() {
+                front_edit::delete(lines, "temp_branches");
+            } else {
+                Self::set_list(lines, "temp_branches", &temps)?;
+            }
+            let mut branches = fresh.branches();
+            if !branches.contains(&branch) {
+                branches.push(branch.clone());
+            }
+            Self::store_branches(lines, &branches)?;
+            Ok(true)
+        })
+        .map(|_| ())
+    }
+
+    pub fn unlink_branch(&mut self, branch: &str) -> Res<()> {
+        let branch = branch.to_string();
+        self.edit(move |fresh, lines, _| {
+            let rest: Vec<String> = fresh.branches().into_iter().filter(|b| *b != branch).collect();
+            Self::store_branches(lines, &rest)?;
+            Ok(true)
+        })
+        .map(|_| ())
+    }
+
+    pub fn board_answers_dir(&self) -> Option<String> {
+        self.field("board_answers_dir")
+    }
+
+    /// One status board per item; a different board drops the old answers directory.
+    pub fn link_board(&mut self, url: &str, answers_dir: Option<&str>) -> Res<()> {
+        let url = url.to_string();
+        let dir = answers_dir.map(|d| data_root::expand_path(d).to_string_lossy().into_owned());
+        self.edit(move |fresh, lines, _| {
+            if fresh.board().as_deref() != Some(url.as_str()) {
+                front_edit::delete(lines, "board_answers_dir");
+            }
+            Self::set_pair(lines, "board", &url)?;
+            if let Some(d) = &dir {
+                Self::set_pair(lines, "board_answers_dir", d)?;
+            }
+            Ok(true)
+        })
+        .map(|_| ())
+    }
+
+    pub fn unlink_board(&mut self) -> Res<()> {
+        self.edit(|_, lines, _| {
+            front_edit::delete(lines, "board");
+            front_edit::delete(lines, "board_answers_dir");
+            Ok(true)
+        })
+        .map(|_| ())
+    }
+
+    fn validate_kind(kind: &str) -> Res<()> {
+        if NOTE_KINDS.contains(&kind) {
+            Ok(())
+        } else {
+            Err(QmError::argument(format!("unknown note kind '{kind}' ({})", NOTE_KINDS.join(" | "))))
+        }
+    }
+
+    pub fn add_note(&mut self, text: &str, kind: &str) -> Res<()> {
+        Self::validate_kind(kind)?;
+        let note = Note { stamp: clock::today(), kind: kind.to_string(), text: strip_leading_stamp(text), position: 0 };
+        self.edit(move |_, _, body| {
+            *body = sections::append_to_section(body, "## Notes", &format!("{}\n", note.to_line()));
+            Ok(true)
+        })
+        .map(|_| ())
+    }
+
+    /// Retags the note at 1-based `position`; every stored note line is rewritten in its normal form.
+    pub fn update_note_kind(&mut self, position: usize, kind: &str) -> Res<Note> {
+        Self::validate_kind(kind)?;
+        let mut retagged = None;
+        self.edit(|fresh, _, body| {
+            let stored = fresh.notes();
+            let note = stored
+                .iter()
+                .find(|n| n.position == position)
+                .ok_or_else(|| QmError::argument(format!("note #{position} does not exist ({} note(s))", stored.len())))?;
+            let new = note.with_kind(kind);
+            *body = sections::rewrite_notes(body, |n| if n.position == position { new.clone() } else { n });
+            retagged = Some(new);
+            Ok(true)
+        })?;
+        Ok(retagged.expect("set above"))
+    }
+
+    pub fn describe(&mut self, text: &str) -> Res<()> {
+        let content = format!("\n{}\n\n", strip(text));
+        self.edit(move |_, _, body| {
+            *body = sections::replace_section(body, "## Description", &content);
+            Ok(true)
+        })
+        .map(|_| ())
+    }
+}
+
+/// Claude tends to open note text with the date the writer adds itself; drop its copy.
+fn strip_leading_stamp(text: &str) -> String {
+    let t = strip(text);
+    let b = t.as_bytes();
+    let stamped = b.len() >= 11
+        && b[..10].iter().enumerate().all(|(i, c)| if i == 4 || i == 7 { *c == b'-' } else { c.is_ascii_digit() })
+        && b[10] == b':';
+    if stamped {
+        t[11..].trim_start_matches(|c: char| c.is_ascii_whitespace()).to_string()
+    } else {
+        t.to_string()
     }
 }
 

@@ -7,6 +7,9 @@ pub struct QmError {
     pub message: String,
 }
 
+/// The class of the error a write raises, before touching anything, when only Ruby can write the value faithfully.
+pub const UNEMITTABLE: &str = "Unemittable";
+
 pub type Res<T> = Result<T, QmError>;
 
 impl QmError {

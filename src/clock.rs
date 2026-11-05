@@ -10,6 +10,10 @@ pub fn now_utc_iso() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
+pub fn today() -> String {
+    Local::now().format("%Y-%m-%d").to_string()
+}
+
 pub fn parse(ts: &str) -> Option<DateTime<FixedOffset>> {
     DateTime::parse_from_rfc3339(ts).ok()
 }

@@ -106,3 +106,88 @@ fn a_rust_hook_refuses_to_corrupt_a_flow_style_session_list() {
     let log = std::fs::read_to_string(root.path().join("qm.log")).unwrap();
     assert!(log.contains("[hook-session-start]") && log.contains("not a block list"), "{log}");
 }
+
+fn spawn(bin: &Path, root: &Path, args: &[&str]) -> std::process::Child {
+    Command::new(bin)
+        .args(args)
+        .env("QM_ROOT", root)
+        .env("LANG", "C.UTF-8")
+        .env("LC_ALL", "C.UTF-8")
+        .env_remove("QM_SKIP")
+        .current_dir(root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap()
+}
+
+fn write_notes_concurrently(root: &Path, writers: &[std::path::PathBuf]) -> Vec<(String, bool, String)> {
+    let texts: Vec<String> = (0..writers.len()).map(|i| format!("note {i}")).collect();
+    let children: Vec<_> = writers.iter().zip(&texts).map(|(bin, text)| spawn(bin, root, &["note", "shared", text])).collect();
+    texts
+        .into_iter()
+        .zip(children)
+        .map(|(text, c)| {
+            let o = c.wait_with_output().unwrap();
+            (text, o.status.success(), String::from_utf8_lossy(&o.stderr).into_owned())
+        })
+        .collect()
+}
+
+#[test]
+fn concurrent_rust_writers_lose_nothing_and_fail_nothing() {
+    for _ in 0..5 {
+        let root = tempfile::tempdir().unwrap();
+        run(rust(), root.path(), &["new", "Shared"], "", &[]);
+        let results = write_notes_concurrently(root.path(), &vec![rust().to_path_buf(); 12]);
+        let item = std::fs::read_to_string(root.path().join("work-items/shared.md")).unwrap();
+        for (text, ok, stderr) in &results {
+            assert!(ok, "{text} failed: {stderr}");
+            assert!(item.contains(&format!(": {text}\n")), "lost {text:?}\n{item}");
+        }
+        assert_eq!(item.matches("\n- 20").count(), 12, "{item}");
+    }
+}
+
+/// Ruby reads an item before taking the lock and saves with a plain `File.write`, so one of its
+/// writers can catch a half-written file ("malformed work item file", exit 1) even against other
+/// Ruby writers. What the Rust side guarantees: no write that reported success is ever lost, and
+/// no Rust writer fails.
+#[test]
+fn in_a_mixed_run_every_successful_note_survives() {
+    for _ in 0..5 {
+        let root = tempfile::tempdir().unwrap();
+        run(rust(), root.path(), &["new", "Shared"], "", &[]);
+        let writers: Vec<std::path::PathBuf> = (0..12).map(|i| if i % 2 == 0 { rust().to_path_buf() } else { ruby() }).collect();
+        let results = write_notes_concurrently(root.path(), &writers);
+        let item = std::fs::read_to_string(root.path().join("work-items/shared.md")).unwrap();
+        for (i, (text, ok, stderr)) in results.iter().enumerate() {
+            if *ok {
+                assert!(item.contains(&format!(": {text}\n")), "lost the successful {text:?}\n{item}");
+            } else {
+                assert!(i % 2 == 1, "a Rust writer failed: {stderr}");
+                assert!(stderr.contains("malformed work item file"), "unexpected failure: {stderr}");
+            }
+        }
+    }
+}
+
+#[test]
+fn ruby_reads_and_edits_what_rust_wrote_and_the_other_way_round() {
+    let root = tempfile::tempdir().unwrap();
+    run(rust(), root.path(), &["new", "Cross: [check]", "--project", "/srv/x", "--branch", "feat/a", "--description", "made by rust"], "", &[]);
+    run(&ruby(), root.path(), &["note", "cross-check", "--kind", "open", "from ruby"], "", &[]);
+    run(rust(), root.path(), &["link-branch", "cross-check", "feat/b"], "", &[]);
+    run(&ruby(), root.path(), &["board", "cross-check", "https://example.test/b"], "", &[]);
+    run(rust(), root.path(), &["retag", "cross-check", "1", "history"], "", &[]);
+    let (_, ruby_list, _) = run(&ruby(), root.path(), &["list"], "", &[]);
+    let (_, rust_list, _) = run(rust(), root.path(), &["list"], "", &[]);
+    assert_eq!(ruby_list, rust_list);
+    assert_eq!(rust_list, "in_progress  /srv/x  cross-check  0  feat/a feat/b\n");
+    let (code, shown, _) = run(&ruby(), root.path(), &["show", "cross-check"], "", &[]);
+    assert_eq!(code, 0);
+    assert!(shown.contains("made by rust") && shown.contains("from ruby"), "{shown}");
+    let (_, board, _) = run(rust(), root.path(), &["board", "cross-check"], "", &[]);
+    assert_eq!(board, "https://example.test/b\n");
+}

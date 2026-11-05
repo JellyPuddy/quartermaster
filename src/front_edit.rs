@@ -3,21 +3,6 @@
 
 use crate::error::{QmError, Res};
 
-/// A scalar as Psych would write it: plain when safe, single-quoted otherwise.
-pub fn scalar(s: &str) -> String {
-    let plain_chars = s.chars().all(|c| c.is_ascii_alphanumeric() || "_./-".contains(c));
-    let starts_ok = s.chars().next().is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
-    let lower = s.to_ascii_lowercase();
-    let reserved = ["true", "false", "yes", "no", "on", "off", "null", "y", "n"].contains(&lower.as_str());
-    let numeric = s.parse::<f64>().is_ok() || s.starts_with("0x") || s.starts_with("0o");
-    let date = s.len() >= 10 && s.as_bytes()[4] == b'-' && s[..4].bytes().all(|c| c.is_ascii_digit());
-    if plain_chars && starts_ok && !reserved && !numeric && !date {
-        s.to_string()
-    } else {
-        format!("'{}'", s.replace('\'', "''"))
-    }
-}
-
 /// The lines of `key`'s block: (index of the key line, index just past its last line).
 pub fn block(lines: &[String], key: &str) -> Option<(usize, usize)> {
     let at = lines.iter().position(|l| l == &format!("{key}:") || l.starts_with(&format!("{key}: ")))?;
@@ -26,6 +11,23 @@ pub fn block(lines: &[String], key: &str) -> Option<(usize, usize)> {
         end += 1;
     }
     Some((at, end))
+}
+
+/// Replaces `key`'s lines with `new_lines`, or adds them at the end when the key is absent.
+pub fn set(lines: &mut Vec<String>, key: &str, new_lines: Vec<String>) {
+    match block(lines, key) {
+        Some((at, end)) => {
+            lines.splice(at..end, new_lines);
+        }
+        None => lines.extend(new_lines),
+    }
+}
+
+/// Removes `key` and its block, if present.
+pub fn delete(lines: &mut Vec<String>, key: &str) {
+    if let Some((at, end)) = block(lines, key) {
+        lines.drain(at..end);
+    }
 }
 
 /// Adds `entry_lines` as one more item of the block-sequence `key`, creating the key at the end.
@@ -78,15 +80,6 @@ mod tests {
     }
 
     #[test]
-    fn scalars_are_plain_unless_yaml_would_read_them_as_something_else() {
-        assert_eq!(scalar("feat/x-1.2"), "feat/x-1.2");
-        for risky in ["true", "No", "null", "123", "1e3", "2026-01-02", "a: b", "- x", "", "it's"] {
-            assert!(scalar(risky).starts_with('\''), "{risky}");
-        }
-        assert_eq!(scalar("it's"), "'it''s'");
-    }
-
-    #[test]
     fn push_item_creates_replaces_and_extends() {
         let mut l = lines("v: 1\ntitle: T");
         push_item(&mut l, "sessions", vec!["- id: a".into()]).unwrap();
@@ -112,5 +105,30 @@ mod tests {
         let l = lines("sessions:\n- id: a\n  extra: 1\n- id: b");
         let (at, end) = block(&l, "sessions").unwrap();
         assert_eq!(items(&l, at, end), vec![(1, 3), (3, 4)]);
+    }
+}
+
+#[cfg(test)]
+mod set_tests {
+    use super::*;
+
+    fn lines(text: &str) -> Vec<String> {
+        text.lines().map(String::from).collect()
+    }
+
+    #[test]
+    fn set_replaces_in_place_or_appends_and_delete_removes_the_block() {
+        let mut l = lines("title: Old
+  folded on
+state: x");
+        set(&mut l, "title", vec!["title: New".into()]);
+        assert_eq!(l.join("\n"), "title: New\nstate: x");
+        set(&mut l, "board", vec!["board: b".into()]);
+        assert_eq!(l.join("\n"), "title: New\nstate: x\nboard: b");
+        let mut with_list = lines("branches:\n- a\n- b\nstate: x");
+        delete(&mut with_list, "branches");
+        assert_eq!(with_list.join("\n"), "state: x");
+        delete(&mut with_list, "absent");
+        assert_eq!(with_list.len(), 1);
     }
 }

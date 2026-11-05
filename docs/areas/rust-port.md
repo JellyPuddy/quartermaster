@@ -1,7 +1,7 @@
 # Rust port
 
-**Code:** `Cargo.toml`, `src/cli.rs`, `src/clock.rs`, `src/data_root.rs`, `src/delegate.rs`, `src/error.rs`, `src/feature_use.rs`, `src/front_edit.rs`, `src/git.rs`, `src/hook.rs`, `src/main.rs`, `src/note.rs`, `src/project_config.rs`, `src/project_map.rs`, `src/ruby_text.rs`, `src/session_log.rs`, `src/session_rows.rs`, `src/work_item.rs`, `src/yaml_scalar.rs`, `src/config_seed.yml`
-**Tests:** `tests/characterization.rs`, `tests/interop.rs`, `tests/fixtures/golden/linked_context.txt`, and the unit tests inside the `src` files
+**Code:** `Cargo.toml`, `src/cli.rs`, `src/clock.rs`, `src/data_root.rs`, `src/delegate.rs`, `src/error.rs`, `src/feature_use.rs`, `src/front_edit.rs`, `src/git.rs`, `src/hook.rs`, `src/lib.rs`, `src/main.rs`, `src/note.rs`, `src/project_config.rs`, `src/project_map.rs`, `src/psych.rs`, `src/ruby_text.rs`, `src/sections.rs`, `src/session_log.rs`, `src/session_rows.rs`, `src/work_item.rs`, `src/work_item_commands.rs`, `src/yaml_scalar.rs`, `src/config_seed.yml`
+**Tests:** `tests/characterization.rs`, `tests/interop.rs`, `tests/psych_scalars.rs`, `tests/work_items.rs`, `tests/common/mod.rs`, the golden files in `tests/fixtures/golden/`, and the unit tests inside the `src` files
 **Depends on:** [capture](capture.md), [work-items](work-items.md), [cli](cli.md)
 
 ## What it does
@@ -13,12 +13,29 @@ from either binary while the port is partial. `QM_RUBY_LAUNCHER` overrides where
 looks; the default is the checkout the binary was built from.
 
 Ported so far: the SessionStart and SessionEnd hooks (the same events, the same injected
-context, byte for byte), `sessions`, `inbox` and `dismiss`, feature-use recording for those, the
-session log, config.yml's project side, the project map, and a read-only work-item reader
-(sections, notes, the injected digest). The hooks make exactly three work-item writes — attach
-a session, detach it from an item when its transcript never existed, record a temp branch — and
-`WorkItem` makes each as a targeted edit of that key's front-matter lines, under the same
-`work-items/.lock` flock the Ruby side takes. Every other key and the body stay byte for byte.
+context, byte for byte), `sessions`, `inbox`, `dismiss`, feature-use recording for them, the
+session log, config.yml's project side, the project map, and the work-item commands `new`,
+`note`, `retag`, `state`, `link-branch`, `unlink-branch`, `board`, `move`, `retitle`,
+`describe`, `detach` and `list` (bare `qm` without a terminal lists too).
+
+Still Ruby, even for these words: `show` (it needs stacks, PR state and usage tallies),
+`attach` and `new --session` (they rename the chat's tmux pane), `new --pf-mode`, `state
+… resolved` (it offers cleanup and clears the viewed marks), and every argument shape the
+port does not parse exactly as Ruby's `OptionParser` does — abbreviated or `=`-joined flags,
+`--`, a dash-leading title or note, `retag` positions Ruby's `Integer()` would read as octal or
+hex, `~user` paths, arguments that are not UTF-8. Such a command is handed to Ruby before
+anything is written, so the choice is invisible except in speed.
+
+**Writing work items.** A new item's front matter is written key by key in Psych's style:
+`psych.rs` picks the style Psych picks (plain, single-quoted when the string would read back as
+a number, boolean, null or date, double-quoted when it starts with a non-word character or needs
+escapes), applies libyaml's rule for whether that style is allowed, and folds long values at
+column 80 with a two-space indent. An existing item is edited by replacing or adding only the
+lines of the key being changed, under the `work-items/.lock` flock the Ruby side takes, and
+saved through a temp file and rename; every other key and the body stay byte for byte. A value
+the emitter cannot reproduce with certainty (line breaks, `<<`, timestamp-like strings, a first
+character Rust and Onigmo classify differently) makes the write fail before anything is
+written, and the command goes to Ruby.
 
 `./quartermaster`, the `~/bin` symlinks and the hook registrations still point at Ruby. Switching
 a hook to the Rust binary is the user's edit of `~/.claude/settings.json`; `qm install-hooks`
@@ -32,8 +49,9 @@ files written. The same file passes against Ruby and against Rust:
 `QM_BIN=$PWD/target/debug/qm cargo test --test characterization`. The hook contexts and the
 seeded `config.yml` are golden files in `tests/fixtures/golden/`, generated from Ruby with
 `QM_UPDATE_GOLDEN=1` — regenerate only against the Ruby launcher. `tests/interop.rs` mixes the
-two binaries on one data root. A command is ported only after the characterization suite
-covers it and passes on both.
+two binaries on one data root. `tests/work_items.rs` records command transcripts (exit code, streams, the item file after
+every step); `tests/psych_scalars.rs` dumps about 3,400 generated strings with the real Psych and
+compares. A command is ported only after the characterization suite covers it and passes on both.
 
 ## Rules
 
@@ -47,5 +65,8 @@ covers it and passes on both.
   with `v` first; readers skip unparsable lines and tolerate unknown fields.
 - **Tests never touch live state**: `QM_ROOT`, throwaway git repos with signing off.
 - **Stdlib-light**: crates are `serde_json` (order preserved), `serde_yaml`, `chrono`, `libc`.
-- **Not ported yet** (still Ruby): every other command, the viewer, `qm gui`, chats, worktrees,
+- **Known Ruby race, not fixed here**: Ruby reads an item before taking the lock and saves with a
+  plain `File.write`, so concurrent Ruby writers often fail with "malformed work item file". Rust
+  writers cannot produce that state; the mixed-writer test allows only that failure, from Ruby.
+- **Not ported yet** (still Ruby): `show`, `attach`, the viewer and every other command, `qm gui`, chats, worktrees,
   PRs, diffs, rotation, benchmarks and `statusline/statusline.rb`.

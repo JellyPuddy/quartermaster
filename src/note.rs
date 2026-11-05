@@ -11,6 +11,16 @@ pub struct Note {
 }
 
 impl Note {
+    /// The stored form; the default kind is left unmarked.
+    pub fn to_line(&self) -> String {
+        let marker = if self.kind == DEFAULT_NOTE_KIND { String::new() } else { format!(" [{}]", self.kind) };
+        format!("- {}{}: {}", self.stamp, marker, self.text)
+    }
+
+    pub fn with_kind(&self, kind: &str) -> Note {
+        Note { kind: kind.to_string(), ..self.clone() }
+    }
+
     pub fn is_open(&self) -> bool {
         self.kind == "open"
     }

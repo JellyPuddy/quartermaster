@@ -1,4 +1,5 @@
-use std::io::{Read, Write};
+use std::ffi::OsString;
+use std::io::{IsTerminal, Read, Write};
 
 use crate::data_root;
 use crate::delegate;
@@ -7,6 +8,7 @@ use crate::feature_use;
 use crate::hook;
 use crate::session_log::SessionLog;
 use crate::session_rows;
+use crate::work_item_commands::{self, Outcome};
 
 fn out(text: &str) {
     let _ = std::io::stdout().write_all(text.as_bytes());
@@ -50,9 +52,25 @@ fn abort(message: &str) -> i32 {
     1
 }
 
-pub fn run(args: Vec<String>) -> i32 {
+pub fn run(raw: Vec<OsString>) -> i32 {
+    let Some(args) = raw.iter().map(|a| a.to_str().map(String::from)).collect::<Option<Vec<String>>>() else {
+        delegate::exec_ruby(&raw) // arguments that are not UTF-8 are Ruby's to read
+    };
     let command = args.first().map(String::as_str);
     let rest = args.get(1..).unwrap_or(&[]);
+    if let Some(word) = command {
+        if let Some(outcome) = work_item_commands::run(word, rest) {
+            return match outcome {
+                Outcome::Delegate => delegate::exec_ruby(&raw),
+                Outcome::Done { code, stdout, stderr } => {
+                    feature_use::command(command);
+                    out(&stdout);
+                    let _ = std::io::stderr().write_all(stderr.as_bytes());
+                    code
+                }
+            };
+        }
+    }
     match command {
         Some("hook-session-start") => {
             guard_hook("hook-session-start", || hook::session_started(&read_input()?));
@@ -94,6 +112,15 @@ pub fn run(args: Vec<String>) -> i32 {
                 },
             }
         }
-        _ => delegate::exec_ruby(&args),
+        // bare `qm` lists when there is no terminal; with one it opens the fzf viewer
+        None if !std::io::stdout().is_terminal() => match work_item_commands::run("list", &[]) {
+            Some(Outcome::Done { code, stdout, stderr }) => {
+                out(&stdout);
+                let _ = std::io::stderr().write_all(stderr.as_bytes());
+                code
+            }
+            _ => delegate::exec_ruby(&raw),
+        },
+        _ => delegate::exec_ruby(&raw),
     }
 }
