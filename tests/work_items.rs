@@ -248,3 +248,27 @@ fn bare_qm_without_a_terminal_lists_the_items() {
     qm.ok(&["new", "One"]);
     assert_eq!(qm.ok(&[]), qm.ok(&["list"]));
 }
+
+#[test]
+fn new_pf_mode_is_checked_against_the_project_s_dev_server() {
+    let qm = Qm::new();
+    qm.ok(&["list"]); // seeds the root
+    std::fs::write(
+        qm.root.path().join("config.yml"),
+        "projects:\n  web:\n    root: /tmp/web\n    dev_server:\n      command: devsrv\n      modes: [dev, tunnel]\n      default_mode: dev\n  plain: /tmp/plain\n  one: {root: /tmp/one, dev_server: solo}\n",
+    )
+    .unwrap();
+    let steps: Vec<Step> = vec![
+        (&["new", "Tunnel work", "--project", "web", "--pf-mode", "tunnel"], ""),
+        (&["new", "Bad mode", "--project", "web", "--pf-mode", "prod"], ""),
+        (&["new", "Tunnel work", "--project", "web", "--pf-mode", "prod"], ""),
+        (&["new", "No server", "--project", "plain", "--pf-mode", "dev"], ""),
+        (&["new", "Unknown project", "--project", "ghost", "--pf-mode", "dev"], ""),
+        (&["new", "Solo", "--project", "one", "--pf-mode", "default"], ""),
+        (&["new", "Yes mode", "--branch", "b", "--session", "s1", "--project", "web", "--pf-mode", "dev", "--description", "d"], ""),
+        (&["new", "Trailing", "--pf-mode"], ""),
+        (&["new", "--pf-mode=dev", "Joined", "--project", "web"], ""),
+        (&["show", "tunnel-work"], ""),
+    ];
+    golden("work_items_pf_mode.txt", &transcript(&qm, "tunnel-work", &steps));
+}

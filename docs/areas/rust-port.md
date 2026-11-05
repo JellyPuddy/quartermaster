@@ -14,7 +14,7 @@ looks; the default is the checkout the binary was built from.
 
 Ported so far: the SessionStart and SessionEnd hooks (the same events, the same injected
 context, byte for byte), `sessions`, `inbox`, `dismiss`, feature-use recording for them, the
-session log, config.yml's project side, the project map, and the work-item commands `new`,
+session log, config.yml's project side, the project map, and the work-item commands `new` (with `--pf-mode`, checked against the project's dev-server modes under the lock),
 `note`, `retag`, `state`, `link-branch`, `unlink-branch`, `board`, `move`, `retitle`,
 `describe`, `detach` and `list` (bare `qm` without a terminal lists too), and `show-session`,
 `session-item`, `help`, `install-hooks`, `ack`, `snooze`, `show`, `attach`, `new --session`, `cleanup SLUG`, `state … resolved`, `issues-dir` and `draft list`. `attach` and `new --session` move the session between items under the work-item lock (reentrant per thread, as Ruby's, so a
@@ -61,7 +61,7 @@ is the step that writes snapshots, and repeating it changes nothing. `qm draft l
 drafts file's entries (`--json` in the json 2.7 gem's layout, where an empty array is `[` blank line
 `]`); `qm draft add` stays Ruby (it resolves a PR through `gh` and writes the drafts file).
 
-Still Ruby, even for these words: `new --pf-mode`, `draft add`, `state … resolved` and `cleanup SLUG`
+Still Ruby, even for these words: `draft add`, `state … resolved` and `cleanup SLUG`
 for an item whose issue drafts `load` declines, and every argument shape the
 port does not parse exactly as Ruby's `OptionParser` does — abbreviated or `=`-joined flags,
 `--`, a dash-leading title or note, `retag` positions Ruby's `Integer()` would read as octal or

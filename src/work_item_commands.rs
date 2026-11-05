@@ -57,17 +57,18 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
 }
 
 fn new(a: &[String]) -> Outcome {
-    let (mut project, mut branch, mut description, mut session) = ("No project".to_string(), None, None, None);
+    let (mut project, mut branch, mut description, mut session, mut pf_mode) = ("No project".to_string(), None, None, None, None);
     let mut parts: Vec<&str> = vec![];
     let mut i = 0;
     while i < a.len() {
         match a[i].as_str() {
-            flag @ ("--project" | "--branch" | "--description" | "--session") => {
+            flag @ ("--project" | "--branch" | "--description" | "--session" | "--pf-mode") => {
                 let Some(value) = a.get(i + 1) else { return Outcome::Delegate };
                 match flag {
                     "--project" => project = value.clone(),
                     "--branch" => branch = Some(value.clone()),
                     "--session" => session = Some(value.clone()),
+                    "--pf-mode" => pf_mode = Some(value.clone()),
                     _ => description = Some(value.clone()),
                 }
                 i += 2;
@@ -83,7 +84,7 @@ fn new(a: &[String]) -> Outcome {
     if title.is_empty() {
         return abort("usage: qm new TITLE [--project P] [--branch B] [--session ID] [--description TEXT] [--pf-mode MODE]");
     }
-    let mut item = tri!(WorkItem::create(&title, &project, branch.as_deref(), session.as_deref(), description.as_deref()));
+    let mut item = tri!(WorkItem::create(&title, &project, branch.as_deref(), session.as_deref(), description.as_deref(), pf_mode.as_deref()));
     let (mut stdout, mut stderr) = (String::new(), String::new());
     if let Some(id) = &session {
         let vacated = tri!(item.claim_session(id));

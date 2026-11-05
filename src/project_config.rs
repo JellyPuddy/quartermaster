@@ -10,6 +10,7 @@ pub struct Ide {
 
 pub struct DevServer {
     pub command: String,
+    pub modes: Vec<String>,
     pub default_mode: String,
     pub status_url: Option<String>,
     pub state_file: Option<String>,
@@ -65,7 +66,7 @@ fn parse_dev_server(value: Option<&Value>) -> Option<DevServer> {
         Some(d) if modes.contains(d) => d.clone(),
         _ => modes[0].clone(),
     };
-    Some(DevServer { command, default_mode, status_url, state_file })
+    Some(DevServer { command, modes, default_mode, status_url, state_file })
 }
 
 fn parse_project(name: String, value: &Value) -> Option<ProjectSettings> {

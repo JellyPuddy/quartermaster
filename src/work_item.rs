@@ -324,7 +324,7 @@ impl WorkItem {
     }
 
     /// A new item; `Unemittable` when its front matter is something only Ruby writes faithfully.
-    pub fn create(title: &str, project: &str, branch: Option<&str>, session_id: Option<&str>, description: Option<&str>) -> Res<WorkItem> {
+    pub fn create(title: &str, project: &str, branch: Option<&str>, session_id: Option<&str>, description: Option<&str>, pf_mode: Option<&str>) -> Res<WorkItem> {
         let slug = Self::slugify(title);
         let unemittable = |what: &str| QmError::new(UNEMITTABLE, format!("cannot write {what} like Ruby"));
         if slug.is_empty() {
@@ -343,15 +343,34 @@ impl WorkItem {
             lines.push("sessions:".to_string());
             lines.push(format!("- id: {text}"));
         }
+        if let Some(mode) = pf_mode {
+            lines.extend(psych::pair("pf_mode", mode).ok_or_else(|| unemittable("the dev-server mode"))?);
+        }
         let body = format!("\n## Description\n\n{}\n\n## Notes\n\n## Snapshots\n", description.unwrap_or("_TODO_"));
         Self::with_lock(|| {
             if Self::path_for(&slug).exists() {
                 return Err(QmError::argument(format!("work item '{slug}' already exists")));
             }
+            if let Some(mode) = pf_mode {
+                Self::validate_pf_mode(project, mode)?;
+            }
             let front_text = lines.join("\n");
             Self::write_file(&slug, &format!("---\n{front_text}\n---\n{body}"))?;
             Self::find(&slug)
         })
+    }
+
+    /// The project's dev server serves one checkout in one of its modes; the item remembers which.
+    fn validate_pf_mode(project: &str, mode: &str) -> Res<()> {
+        let config = crate::project_config::ProjectConfig::current();
+        let Some(server) = config.settings(Some(project)).and_then(|s| s.dev_server.as_ref()) else {
+            return Err(QmError::argument(format!("{project} has no dev server: set projects.{project}.dev_server in config.yml")));
+        };
+        if server.modes.iter().any(|m| m == mode) {
+            Ok(())
+        } else {
+            Err(QmError::argument(format!("{} mode must be one of: {}", server.command, server.modes.join(", "))))
+        }
     }
 
     /// Attaching is a move: claim the session for this item and vacate it everywhere else. Returns
