@@ -1,0 +1,8 @@
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+  .brand .cursor { animation: none; }
+}
+@media (max-width: 720px) {
+  .inbox { display: none; }
+  .column { min-width: 260px; }
+}

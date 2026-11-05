@@ -1,0 +1,1051 @@
+<title>qm — GUI mockup</title>
+<style>
+  /* ---- Tokens: light baseline ---- */
+  :root {
+    --bg: #EBEEF3;
+    --surface: #FFFFFF;
+    --surface-2: #F3F5F9;
+    --border: #DCE1EA;
+    --border-strong: #C5CCDA;
+    --ink: #191C24;
+    --muted: #5D6577;
+    --faint: #8992A3;
+    --accent: #4C63D6;
+    --accent-ink: #ffffff;
+    --accent-soft: rgba(76,99,214,.12);
+    --accent-line: rgba(76,99,214,.35);
+    --warn: #9A6410;      --warn-bg: rgba(184,122,26,.14);
+    --crit: #BB4238;      --crit-bg: rgba(187,66,56,.12);
+    --good: #2C7A54;      --good-bg: rgba(44,122,84,.13);
+    --kbd-bg: #EDEFF4;    --kbd-border: #C9D0DC;  --kbd-ink: #4A5261;
+    --shadow-card: 0 1px 2px rgba(20,25,40,.05), 0 1px 3px rgba(20,25,40,.06);
+    --shadow-pop: 0 8px 28px rgba(20,25,40,.16), 0 2px 6px rgba(20,25,40,.08);
+    --radius: 11px;
+    --radius-sm: 7px;
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0F1218;
+      --surface: #171B23;
+      --surface-2: #1D2330;
+      --border: #262D3A;
+      --border-strong: #333D4D;
+      --ink: #E7EAF1;
+      --muted: #9AA3B4;
+      --faint: #697488;
+      --accent: #8AA0FF;
+      --accent-ink: #0F1218;
+      --accent-soft: rgba(138,160,255,.15);
+      --accent-line: rgba(138,160,255,.4);
+      --warn: #E8B44A;   --warn-bg: rgba(232,180,74,.14);
+      --crit: #F0776B;   --crit-bg: rgba(240,119,107,.13);
+      --good: #74C69D;   --good-bg: rgba(116,198,157,.13);
+      --kbd-bg: #232A36;  --kbd-border: #384354; --kbd-ink: #AEB7C7;
+      --shadow-card: 0 1px 2px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.25);
+      --shadow-pop: 0 12px 34px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.35);
+    }
+  }
+  /* explicit toggle wins in both directions */
+  :root[data-theme="light"] {
+    --bg: #EBEEF3; --surface: #FFFFFF; --surface-2: #F3F5F9; --border: #DCE1EA;
+    --border-strong: #C5CCDA; --ink: #191C24; --muted: #5D6577; --faint: #8992A3;
+    --accent: #4C63D6; --accent-ink: #ffffff; --accent-soft: rgba(76,99,214,.12);
+    --accent-line: rgba(76,99,214,.35);
+    --warn: #9A6410; --warn-bg: rgba(184,122,26,.14);
+    --crit: #BB4238; --crit-bg: rgba(187,66,56,.12);
+    --good: #2C7A54; --good-bg: rgba(44,122,84,.13);
+    --kbd-bg: #EDEFF4; --kbd-border: #C9D0DC; --kbd-ink: #4A5261;
+    --shadow-card: 0 1px 2px rgba(20,25,40,.05), 0 1px 3px rgba(20,25,40,.06);
+    --shadow-pop: 0 8px 28px rgba(20,25,40,.16), 0 2px 6px rgba(20,25,40,.08);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0F1218; --surface: #171B23; --surface-2: #1D2330; --border: #262D3A;
+    --border-strong: #333D4D; --ink: #E7EAF1; --muted: #9AA3B4; --faint: #697488;
+    --accent: #8AA0FF; --accent-ink: #0F1218; --accent-soft: rgba(138,160,255,.15);
+    --accent-line: rgba(138,160,255,.4);
+    --warn: #E8B44A; --warn-bg: rgba(232,180,74,.14);
+    --crit: #F0776B; --crit-bg: rgba(240,119,107,.13);
+    --good: #74C69D; --good-bg: rgba(116,198,157,.13);
+    --kbd-bg: #232A36; --kbd-border: #384354; --kbd-ink: #AEB7C7;
+    --shadow-card: 0 1px 2px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.25);
+    --shadow-pop: 0 12px 34px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* ---------- Toolbar ---------- */
+  .toolbar {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    position: sticky; top: 0; z-index: 20;
+  }
+  .brand {
+    display: flex; align-items: baseline; gap: 8px;
+    font-family: var(--mono); font-weight: 600; font-size: 16px; letter-spacing: -.01em;
+  }
+  .brand .cursor {
+    display: inline-block; width: 8px; height: 15px; margin-left: -3px;
+    background: var(--accent); transform: translateY(1px);
+    animation: blink 1.15s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .brand small { font-family: var(--sans); font-weight: 400; color: var(--faint); font-size: 12px; }
+
+  .search {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 6px 10px;
+    min-width: 210px; flex: 0 1 300px;
+  }
+  .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .search svg { width: 14px; height: 14px; color: var(--faint); flex: none; }
+  .search input {
+    border: none; background: none; outline: none; color: var(--ink);
+    font-family: var(--sans); font-size: 13px; width: 100%;
+  }
+  .search input::placeholder { color: var(--faint); }
+  .search kbd { margin-left: auto; }
+
+  .segmented {
+    display: inline-flex; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px;
+  }
+  .segmented button {
+    border: none; background: none; color: var(--muted);
+    font-family: var(--sans); font-size: 12.5px; font-weight: 500;
+    padding: 5px 11px; border-radius: 5px; cursor: pointer;
+    white-space: nowrap; transition: color .12s, background .12s;
+  }
+  .segmented button:hover { color: var(--ink); }
+  .segmented button[aria-pressed="true"] {
+    background: var(--surface); color: var(--ink);
+    box-shadow: var(--shadow-card); border: 1px solid var(--border);
+    padding: 4px 10px;
+  }
+  .spacer { flex: 1 1 auto; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--sans); font-size: 13px; font-weight: 500;
+    border-radius: var(--radius-sm); padding: 7px 12px; cursor: pointer;
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink);
+    transition: border-color .12s, background .12s, transform .05s;
+  }
+  .btn:hover { border-color: var(--accent-line); background: var(--surface-2); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .btn.primary:hover { filter: brightness(1.06); background: var(--accent); }
+  .btn.icon { padding: 7px 9px; }
+  .btn svg { width: 15px; height: 15px; }
+
+  /* ---------- keyboard chip ---------- */
+  kbd {
+    font-family: var(--mono); font-size: 10.5px; line-height: 1;
+    background: var(--kbd-bg); color: var(--kbd-ink);
+    border: 1px solid var(--kbd-border); border-bottom-width: 2px;
+    border-radius: 5px; padding: 3px 5px; min-width: 16px; text-align: center;
+    display: inline-block;
+  }
+
+  /* ---------- Board ---------- */
+  .board-wrap { flex: 1 1 auto; overflow: hidden; display: flex; }
+  .columns {
+    flex: 1 1 auto; display: flex; gap: 16px; padding: 18px 20px;
+    overflow-x: auto; overflow-y: hidden;
+  }
+  .column {
+    flex: 1 1 0; min-width: 300px; max-width: 460px;
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  .col-head {
+    display: flex; align-items: center; gap: 9px;
+    padding: 2px 4px 12px; flex: none;
+  }
+  .col-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .col-title {
+    font-family: var(--sans); font-size: 12px; font-weight: 700;
+    letter-spacing: .07em; text-transform: uppercase; color: var(--muted);
+  }
+  .col-count {
+    font-family: var(--mono); font-size: 11px; color: var(--faint);
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 1px 8px; margin-left: 2px;
+  }
+  .col-body {
+    display: flex; flex-direction: column; gap: 11px;
+    overflow-y: auto; padding: 3px 4px 40px; min-height: 0;
+  }
+  .col-empty {
+    font-family: var(--mono); font-size: 12px; color: var(--faint);
+    border: 1px dashed var(--border-strong); border-radius: var(--radius);
+    padding: 18px; text-align: center;
+  }
+
+  .dot-in_progress { background: var(--accent); }
+  .dot-fridge { background: var(--warn); }
+  .dot-resolved { background: var(--good); }
+
+  /* ---------- Card ---------- */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 13px 14px 11px;
+    box-shadow: var(--shadow-card); cursor: default;
+    transition: border-color .12s, box-shadow .12s, transform .08s;
+    position: relative; outline: none;
+  }
+  .card::before {
+    content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px;
+    border-radius: 3px; background: var(--dotcolor, transparent); opacity: .0;
+    transition: opacity .12s;
+  }
+  .card:hover { border-color: var(--border-strong); transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(20,25,40,.1), 0 1px 3px rgba(20,25,40,.08); }
+  .card.focused, .card:focus-visible {
+    border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .card.focused::before { opacity: 1; }
+  .card-top { display: flex; align-items: center; gap: 8px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .slug {
+    font-family: var(--mono); font-size: 13.5px; font-weight: 600;
+    color: var(--accent); letter-spacing: -.01em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sess {
+    margin-left: auto; flex: none;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 2px 8px;
+  }
+  .title-line {
+    font-size: 13px; color: var(--ink); margin: 7px 0 0; font-weight: 500;
+    text-wrap: balance;
+  }
+  .meta {
+    font-family: var(--mono); font-size: 11px; color: var(--faint);
+    margin-top: 3px; display: flex; gap: 6px; align-items: center;
+  }
+  .meta .sep { opacity: .5; }
+
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+    border-radius: 6px; padding: 3px 7px; letter-spacing: .01em;
+  }
+  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
+  .badge.stale { color: var(--warn); background: var(--warn-bg); }
+  .badge.stale::before { background: var(--warn); }
+  .badge.degrading { color: var(--crit); background: var(--crit-bg); }
+  .badge.degrading::before { background: var(--crit); }
+  .badge.merged { color: var(--good); background: var(--good-bg); }
+  .badge.merged::before { background: var(--good); }
+
+  .note {
+    margin-top: 10px; padding: 9px 10px; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-family: var(--mono); font-size: 11.5px; line-height: 1.5; color: var(--muted);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .note .stamp { color: var(--faint); }
+
+  .actions { display: flex; flex-wrap: nowrap; gap: 6px; margin-top: 11px; }
+  .actions .act.grow { flex: 1 1 auto; justify-content: center; min-width: 0; }
+  .act {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--sans); font-size: 12px; font-weight: 500;
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+    border-radius: 6px; padding: 5px 8px; cursor: pointer; white-space: nowrap; flex: none;
+    transition: border-color .12s, background .12s, color .12s;
+  }
+  .act:hover { border-color: var(--accent-line); background: var(--accent-soft); }
+  .act.strong { color: var(--accent); }
+  .act kbd { font-size: 9.5px; padding: 2px 4px; border-bottom-width: 1px; }
+  .act svg { width: 13px; height: 13px; }
+
+  /* ---------- Inbox rail ---------- */
+  .inbox {
+    flex: none; width: 288px; border-left: 1px solid var(--border);
+    background: var(--surface); display: flex; flex-direction: column; min-height: 0;
+  }
+  .inbox-head {
+    display: flex; align-items: center; gap: 8px; padding: 16px 16px 12px; flex: none;
+  }
+  .inbox-head .col-title { color: var(--ink); }
+  .inbox-body { overflow-y: auto; padding: 0 14px 24px; display: flex; flex-direction: column; gap: 10px; }
+  .inbox-item {
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 10px 11px; background: var(--surface-2);
+  }
+  .inbox-prompt { font-size: 12.5px; color: var(--ink); line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .inbox-meta { font-family: var(--mono); font-size: 10.5px; color: var(--faint); margin-top: 5px; }
+  .inbox-acts { display: flex; gap: 6px; margin-top: 9px; }
+  .inbox-acts .act { flex: 1; justify-content: center; }
+
+  /* ---------- Popover / menu ---------- */
+  .pop {
+    position: absolute; z-index: 60; min-width: 172px;
+    background: var(--surface); border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm); box-shadow: var(--shadow-pop); padding: 5px;
+    animation: pop .1s ease-out;
+  }
+  @keyframes pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
+  .pop-label { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--faint); padding: 6px 9px 4px; }
+  .pop button {
+    display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+    border: none; background: none; color: var(--ink);
+    font-family: var(--sans); font-size: 13px; padding: 7px 9px;
+    border-radius: 5px; cursor: pointer;
+  }
+  .pop button:hover { background: var(--accent-soft); }
+  .pop button .tick { margin-left: auto; color: var(--accent); font-family: var(--mono); }
+  .pop button .pdot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .pop .sep { height: 1px; background: var(--border); margin: 5px 4px; }
+
+  /* ---------- Modal ---------- */
+  .scrim {
+    position: fixed; inset: 0; background: rgba(10,13,20,.5);
+    backdrop-filter: blur(2px); z-index: 100; display: grid; place-items: center;
+    animation: fade .12s; padding: 20px;
+  }
+  @keyframes fade { from { opacity: 0; } }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border-strong);
+    border-radius: 14px; box-shadow: var(--shadow-pop);
+    width: min(480px, 100%); padding: 20px 20px 18px;
+    animation: rise .16s cubic-bezier(.2,.7,.3,1);
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px) scale(.98); } }
+  .modal h2 { margin: 0 0 3px; font-size: 15px; font-weight: 700; }
+  .modal .sub { color: var(--faint); font-size: 12px; margin: 0 0 16px;
+    font-family: var(--mono); }
+  .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 13px; }
+  .field label { font-size: 11.5px; font-weight: 600; letter-spacing: .03em;
+    text-transform: uppercase; color: var(--muted); }
+  .field input, .field textarea, .field select {
+    font-family: var(--sans); font-size: 13.5px; color: var(--ink);
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 9px 11px; outline: none; resize: vertical;
+  }
+  .field textarea { font-family: var(--mono); font-size: 12.5px; line-height: 1.5; min-height: 84px; }
+  .field input:focus, .field textarea:focus, .field select:focus {
+    border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+
+  /* ---------- Detail slide-over ---------- */
+  .sheet-scrim {
+    position: fixed; inset: 0; background: rgba(10,13,20,.42);
+    z-index: 90; animation: fade .12s; display: flex; justify-content: flex-end;
+  }
+  .sheet {
+    width: min(460px, 100%); height: 100%; background: var(--surface);
+    border-left: 1px solid var(--border-strong); box-shadow: var(--shadow-pop);
+    display: flex; flex-direction: column; animation: slide-in .2s cubic-bezier(.2,.7,.3,1);
+    overflow: hidden;
+  }
+  @keyframes slide-in { from { transform: translateX(28px); opacity: .4; } }
+  .sheet-head { padding: 16px 18px 14px; border-bottom: 1px solid var(--border); flex: none; }
+  .sheet-head .row1 { display: flex; align-items: center; gap: 9px; }
+  .sheet-head .slug { font-size: 14px; }
+  .sheet-head h2 { margin: 9px 0 0; font-size: 17px; font-weight: 700; text-wrap: balance; }
+  .sheet-close {
+    margin-left: auto; flex: none; border: 1px solid var(--border); background: var(--surface);
+    color: var(--muted); border-radius: 6px; width: 28px; height: 28px; cursor: pointer;
+    font-size: 15px; display: grid; place-items: center;
+  }
+  .sheet-close:hover { border-color: var(--accent-line); color: var(--ink); }
+  .sheet-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 13px 18px; border-bottom: 1px solid var(--border); flex: none; }
+  .sheet-body { overflow-y: auto; padding: 6px 18px 40px; }
+  .sheet-sec { padding: 15px 0; border-bottom: 1px solid var(--border); }
+  .sheet-sec:last-child { border-bottom: none; }
+  .sheet-sec h3 {
+    margin: 0 0 10px; font-size: 11px; font-weight: 700; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--muted);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .sheet-sec h3 .n {
+    font-family: var(--mono); font-weight: 500; color: var(--faint);
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px; padding: 0 7px;
+  }
+  .desc-text { font-size: 13px; line-height: 1.55; color: var(--ink); }
+  .kv { display: flex; gap: 8px; font-family: var(--mono); font-size: 12px; margin-top: 4px; }
+  .kv .k { color: var(--faint); min-width: 74px; }
+  .kv .v { color: var(--ink); }
+  .branch-chip {
+    display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 11.5px;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; color: var(--muted);
+  }
+  .timeline { display: flex; flex-direction: column; gap: 0; }
+  .tl-note { display: flex; gap: 11px; padding-bottom: 14px; position: relative; }
+  .tl-note::before { content: ""; position: absolute; left: 4px; top: 12px; bottom: -2px; width: 1px; background: var(--border); }
+  .tl-note:last-child::before { display: none; }
+  .tl-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex: none; margin-top: 4px; z-index: 1; }
+  .tl-note:not(:first-child) .tl-dot { background: var(--border-strong); }
+  .tl-body { font-size: 12.5px; line-height: 1.5; color: var(--ink); }
+  .tl-body .stamp { font-family: var(--mono); font-size: 11px; color: var(--faint); display: block; margin-bottom: 2px; }
+  .sess-row {
+    display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); background: var(--surface-2); margin-bottom: 8px;
+  }
+  .sess-tier { font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: .04em;
+    text-transform: uppercase; padding: 2px 6px; border-radius: 5px; flex: none; }
+  .tier-live { color: var(--good); background: var(--good-bg); }
+  .tier-distilled { color: var(--accent); background: var(--accent-soft); }
+  .tier-expired { color: var(--faint); background: var(--surface); border: 1px solid var(--border); }
+  .sess-main { min-width: 0; flex: 1; }
+  .sess-id { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+  .sess-prompt { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sess-when { font-family: var(--mono); font-size: 10.5px; color: var(--faint); flex: none; }
+
+  /* ---------- Footer legend ---------- */
+  .legend {
+    flex: none; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 8px 20px; background: var(--surface); border-top: 1px solid var(--border);
+    font-size: 11.5px; color: var(--muted); overflow-x: auto;
+  }
+  .legend .grp { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .legend .grp span { color: var(--faint); }
+  .legend .tag {
+    margin-right: auto; font-family: var(--mono); font-size: 11px; color: var(--faint);
+  }
+
+  /* ---------- Toast ---------- */
+  .toasts { position: fixed; bottom: 54px; left: 50%; transform: translateX(-50%);
+    z-index: 200; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+  .toast {
+    background: var(--ink); color: var(--bg);
+    font-family: var(--mono); font-size: 12px; padding: 9px 14px; border-radius: 8px;
+    box-shadow: var(--shadow-pop); animation: toast-in .18s ease-out;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .toast .ok { color: var(--good); }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+
+  .note-banner {
+    font-family: var(--mono); font-size: 11px; color: var(--faint);
+    text-align: center; padding: 6px; background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+    .brand .cursor { animation: none; }
+  }
+  @media (max-width: 720px) {
+    .inbox { display: none; }
+    .column { min-width: 260px; }
+  }
+</style>
+
+<div class="note-banner">Static prototype · fake data · buttons update the board locally but nothing is wired to <span style="font-family:inherit">qm</span> yet</div>
+
+<div class="app">
+  <header class="toolbar">
+    <div class="brand">qm<span class="cursor"></span><small>work items</small></div>
+
+    <label class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="search" type="text" placeholder="Filter by slug or title…" autocomplete="off">
+      <kbd>/</kbd>
+    </label>
+
+    <div class="segmented" id="filters" role="group" aria-label="State filter">
+      <button data-filter="all" aria-pressed="false">All</button>
+      <button data-filter="open" aria-pressed="true">Open</button>
+      <button data-filter="in_progress" aria-pressed="false">In progress</button>
+      <button data-filter="fridge" aria-pressed="false">Fridge</button>
+      <button data-filter="resolved" aria-pressed="false">Resolved</button>
+    </div>
+
+    <div class="spacer"></div>
+
+    <button class="btn primary" id="new-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      New item <kbd style="background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.28);color:inherit">c</kbd>
+    </button>
+    <button class="btn icon" id="theme" title="Toggle theme" aria-label="Toggle theme">
+      <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    </button>
+  </header>
+
+  <div class="board-wrap">
+    <main class="columns" id="columns"></main>
+    <aside class="inbox">
+      <div class="inbox-head">
+        <span class="col-title">Inbox</span>
+        <span class="col-count" id="inbox-count">0</span>
+        <span style="margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--faint)">unlinked sessions</span>
+      </div>
+      <div class="inbox-body" id="inbox-body"></div>
+    </aside>
+  </div>
+
+  <footer class="legend">
+    <span class="tag">keyboard-first · mouse optional</span>
+    <span class="grp"><kbd>j</kbd><kbd>k</kbd><span>move</span></span>
+    <span class="grp"><kbd>⏎</kbd><span>open</span></span>
+    <span class="grp"><kbd>r</kbd><span>resume</span></span>
+    <span class="grp"><kbd>n</kbd><span>new session</span></span>
+    <span class="grp"><kbd>s</kbd><span>state</span></span>
+    <span class="grp"><kbd>a</kbd><span>note</span></span>
+    <span class="grp"><kbd>.</kbd><span>more</span></span>
+    <span class="grp"><kbd>/</kbd><span>search</span></span>
+    <span class="grp"><kbd>c</kbd><span>new item</span></span>
+    <span class="grp"><kbd>esc</kbd><span>close</span></span>
+  </footer>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+"use strict";
+
+/* ------- fake data, shaped like real qm work items ------- */
+const STATES = [
+  { key: "in_progress", label: "In progress" },
+  { key: "fridge",      label: "Fridge" },
+  { key: "resolved",    label: "Resolved" },
+];
+const PROJECTS = ["No project", "MyApp"];
+
+let items = [
+  { slug: "qm-session-tracker", title: "Claude session tracker (qm)", state: "in_progress",
+    project: "No project", sessions: 3, updated: "2026-08-03",
+    desc: "Global tool tracking all Claude Code sessions as curated work items with states, notes, and an fzf viewer. Single-file stdlib Ruby, symlinked ~/bin/quartermaster.",
+    branches: ["main"],
+    note: { stamp: "2026-07-31", text: "Phase 4 (attention layer) done: degradation warnings, staleness nudges, PR-merged signal, qm distill." },
+    notes: [
+      { stamp: "2026-07-31", text: "Phase 4 (attention layer) done: degradation warnings, staleness nudges, PR-merged signal, qm distill." },
+      { stamp: "2026-07-31", text: "Phase 3 (viewer) done: bare qm = fzf UI with state filters and preview; resume/start open Warp tabs." },
+      { stamp: "2026-07-31", text: "Phase 2 (linking) done: QM_ITEM env var + branch auto-match + unlinked shortlist injection via SessionStart hook." },
+      { stamp: "2026-07-31", text: "Phase 1 (capture layer) built: hooks registered globally, JSONL session log, qm CLI." },
+    ],
+    sessionList: [
+      { id: "e4a8b3a6", prompt: "explore options for a gui for this tool instead of the textual interface", when: "now", tier: "live" },
+      { id: "b8f4c150", prompt: "which work item is this linked to?", when: "3d ago", tier: "distilled" },
+      { id: "85b43756", prompt: "let's build the session tracker, phase 1", when: "3d ago", tier: "distilled" },
+    ],
+    badges: [] },
+  { slug: "my-app-checkout-flow", title: "One-page checkout", state: "in_progress",
+    project: "MyApp", sessions: 2, updated: "2026-08-02",
+    desc: "Fold the three checkout steps into one page so customers can pay without leaving the cart.",
+    branches: ["issue/123-one-page-checkout"],
+    note: { stamp: "2026-08-02", text: "Extracted a CheckoutForm component; request specs green. Next: wire the payment step." },
+    badges: [] },
+  { slug: "my-app-payment-retry", title: "Payment webhook intermittent 422", state: "in_progress",
+    project: "MyApp", sessions: 1, updated: "2026-08-01",
+    desc: "The payment provider intermittently returns 422 on capture POSTs under load. Add idempotency + retry so orders aren't silently dropped.",
+    branches: ["issue/124-payment-retry"],
+    note: { stamp: "2026-08-01", text: "Reproduced the intermittent 422 under load; added an idempotency key to the capture POST." },
+    badges: [{ type: "degrading", label: "transcript degrading" }] },
+  { slug: "tunnel-flake", title: "ngrok tunnel drops", state: "fridge",
+    project: "MyApp", sessions: 1, updated: "2026-07-28",
+    note: { stamp: "2026-07-28", text: "Tunnel drops after ~20 min on the free plan; parked until we decide on a paid tunnel." },
+    badges: [{ type: "stale", label: "stale 6d" }] },
+  { slug: "qm-fzf-viewer-polish", title: "fzf viewer polish", state: "fridge",
+    project: "No project", sessions: 2, updated: "2026-07-30",
+    note: { stamp: "2026-07-30", text: "Ideas: clickable header, richer overview. Superseded by the GUI exploration — keep for reference." },
+    badges: [] },
+  { slug: "my-app-webhook-signature", title: "Inbound webhook HMAC verification", state: "resolved",
+    project: "MyApp", sessions: 4, updated: "2026-07-25",
+    note: { stamp: "2026-07-25", text: "Shipped HMAC verification on inbound webhooks; rejects unsigned payloads. PR #42 merged." },
+    badges: [{ type: "merged", label: "PR #42 merged" }] },
+  { slug: "my-app-ci-ruby-4-bump", title: "Bump CI to Ruby 4.0.6", state: "resolved",
+    project: "MyApp", sessions: 2, updated: "2026-07-22",
+    note: { stamp: "2026-07-22", text: "Bumped CI to Ruby 4.0.6; all suites green. PR #41 merged." },
+    badges: [{ type: "merged", label: "PR #41 merged" }] },
+];
+
+let inbox = [
+  { id: "a1f9", prompt: "fix the flaky test in spec/models/order_spec.rb", when: "2h ago" },
+  { id: "b7c2", prompt: "why does the checkout page render a blank iframe?", when: "yesterday" },
+  { id: "c3e8", prompt: "draft release notes for the August deploy", when: "yesterday" },
+];
+
+let filter = "open";
+let query = "";
+let focusIdx = -1;   // index into the current flat visible list
+let visibleSlugs = [];
+
+/* ------- helpers ------- */
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const stateLabel = k => (STATES.find(s => s.key === k) || {}).label || k;
+
+function toast(msg, ok = true) {
+  const box = $("#toasts");
+  const t = el("div", "toast", (ok ? '<span class="ok">✓</span> ' : "") + esc(msg));
+  box.appendChild(t);
+  setTimeout(() => { t.style.transition = "opacity .3s, transform .3s"; t.style.opacity = "0"; t.style.transform = "translateY(6px)"; }, 2100);
+  setTimeout(() => t.remove(), 2450);
+}
+
+function statesShown() {
+  if (filter === "all") return STATES.map(s => s.key);
+  if (filter === "open") return ["in_progress", "fridge"];
+  return [filter];
+}
+function matches(it) {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  return it.slug.toLowerCase().includes(q) || it.title.toLowerCase().includes(q);
+}
+
+/* ------- rendering ------- */
+function render() {
+  const cols = $("#columns");
+  cols.innerHTML = "";
+  const shown = statesShown();
+  visibleSlugs = [];
+
+  shown.forEach(st => {
+    const list = items.filter(it => it.state === st && matches(it));
+    list.forEach(it => visibleSlugs.push(it.slug));
+
+    const col = el("div", "column");
+    const head = el("div", "col-head");
+    head.appendChild(el("span", "col-dot dot-" + st));
+    head.appendChild(el("span", "col-title", stateLabel(st)));
+    head.appendChild(el("span", "col-count", String(list.length)));
+    col.appendChild(head);
+
+    const body = el("div", "col-body");
+    if (!list.length) {
+      body.appendChild(el("div", "col-empty", query ? "no matches" : "empty"));
+    } else {
+      list.forEach(it => body.appendChild(card(it)));
+    }
+    col.appendChild(body);
+    cols.appendChild(col);
+  });
+
+  renderInbox();
+  applyFocus();
+}
+
+function card(it) {
+  const c = el("div", "card");
+  c.dataset.slug = it.slug;
+  c.tabIndex = 0;
+  c.style.setProperty("--dotcolor", `var(--${it.state === "in_progress" ? "accent" : it.state === "fridge" ? "warn" : "good"})`);
+
+  const top = el("div", "card-top");
+  top.appendChild(el("span", "status-dot dot-" + it.state));
+  top.appendChild(el("span", "slug", esc(it.slug)));
+  top.appendChild(el("span", "sess", it.sessions + (it.sessions === 1 ? " sess" : " sess")));
+  c.appendChild(top);
+
+  c.appendChild(el("div", "title-line", esc(it.title)));
+
+  const meta = el("div", "meta");
+  meta.innerHTML = `${esc(it.project)} <span class="sep">·</span> updated ${esc(it.updated)}`;
+  c.appendChild(meta);
+
+  if (it.badges.length) {
+    const b = el("div", "badges");
+    it.badges.forEach(bd => b.appendChild(el("span", "badge " + bd.type, esc(bd.label))));
+    c.appendChild(b);
+  }
+
+  if (it.note) {
+    c.appendChild(el("div", "note", `<span class="stamp">▸ ${esc(it.note.stamp)}</span> ${esc(it.note.text)}`));
+  }
+
+  const acts = el("div", "actions");
+  acts.appendChild(action("resume", "strong grow", '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3v18M9 5l10 7-10 7z" fill="currentColor" stroke="none"/></svg>Resume', "r"));
+  acts.appendChild(action("start", "grow", "Start", "n"));
+  acts.appendChild(action("state", "grow", "State ▾", "s"));
+  acts.appendChild(action("more", "", "⋯", "."));
+  c.appendChild(acts);
+  return c;
+}
+function action(act, extra, label, key) {
+  const b = el("button", "act " + extra, label + (key ? ` <kbd>${key}</kbd>` : ""));
+  b.dataset.act = act;
+  return b;
+}
+
+function renderInbox() {
+  $("#inbox-count").textContent = inbox.length;
+  const body = $("#inbox-body");
+  body.innerHTML = "";
+  if (!inbox.length) { body.appendChild(el("div", "col-empty", "inbox clear")); return; }
+  inbox.forEach(s => {
+    const it = el("div", "inbox-item");
+    it.dataset.id = s.id;
+    it.appendChild(el("div", "inbox-prompt", '“' + esc(s.prompt) + '”'));
+    it.appendChild(el("div", "inbox-meta", "session " + esc(s.id) + " · " + esc(s.when)));
+    const acts = el("div", "inbox-acts");
+    acts.appendChild(action("attach", "strong", "Attach", ""));
+    acts.appendChild(action("mk-item", "", "New item", ""));
+    acts.appendChild(action("dismiss", "", "Dismiss", ""));
+    it.appendChild(acts);
+    body.appendChild(it);
+  });
+}
+
+/* ------- focus (keyboard nav) ------- */
+function applyFocus() {
+  document.querySelectorAll(".card.focused").forEach(c => c.classList.remove("focused"));
+  if (focusIdx < 0 || focusIdx >= visibleSlugs.length) return;
+  const slug = visibleSlugs[focusIdx];
+  const c = document.querySelector(`.card[data-slug="${slug}"]`);
+  if (c) { c.classList.add("focused"); c.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+}
+function moveFocus(d) {
+  if (!visibleSlugs.length) return;
+  focusIdx = focusIdx < 0 ? 0 : Math.min(visibleSlugs.length - 1, Math.max(0, focusIdx + d));
+  applyFocus();
+}
+function focusedItem() {
+  if (focusIdx < 0) return null;
+  return items.find(it => it.slug === visibleSlugs[focusIdx]);
+}
+
+/* ------- popovers ------- */
+let openPop = null;
+function closePop() { if (openPop) { openPop.remove(); openPop = null; } }
+function popAt(anchor, build) {
+  closePop();
+  const p = el("div", "pop");
+  build(p);
+  document.body.appendChild(p);
+  const r = anchor.getBoundingClientRect();
+  let top = r.bottom + 6, left = r.left;
+  const pw = p.offsetWidth, ph = p.offsetHeight;
+  if (left + pw > window.innerWidth - 10) left = window.innerWidth - pw - 10;
+  if (top + ph > window.innerHeight - 10) top = r.top - ph - 6;
+  p.style.top = top + "px"; p.style.left = left + "px";
+  openPop = p;
+}
+
+function stateMenu(anchor, it) {
+  popAt(anchor, p => {
+    p.appendChild(el("div", "pop-label", "Set state"));
+    STATES.forEach(s => {
+      const b = el("button", "", "");
+      b.appendChild(el("span", "pdot dot-" + s.key));
+      b.appendChild(el("span", "", s.label));
+      if (s.key === it.state) b.appendChild(el("span", "tick", "●"));
+      b.onclick = () => { it.state = s.key; closePop(); render(); toast(`${it.slug} → ${s.label}`); };
+      p.appendChild(b);
+    });
+  });
+}
+function moreMenu(anchor, it) {
+  popAt(anchor, p => {
+    p.appendChild(el("div", "pop-label", it.slug));
+    const add = (label, fn) => { const b = el("button", "", esc(label)); b.onclick = () => { closePop(); fn(); }; p.appendChild(b); };
+    add("Open detail", () => openDetail(it));
+    add("Add note…", () => noteModal(it));
+    add("Open PR", () => runAction("pr", it));
+    p.appendChild(el("div", "sep"));
+    add("Change project…", () => projectMenu(anchor, it));
+    add("Distill transcript", () => toast(`Distilling latest transcript…`));
+    add("Snooze staleness…", () => toast(`Snoozed ${it.slug} for 7d`));
+    add("Ack degradation", () => toast(`Acked — will stop nagging ${it.slug}`));
+  });
+}
+function projectMenu(anchor, it) {
+  popAt(anchor, p => {
+    p.appendChild(el("div", "pop-label", "Move to project"));
+    PROJECTS.forEach(pr => {
+      const b = el("button", "", esc(pr));
+      if (pr === it.project) b.appendChild(el("span", "tick", "●"));
+      b.onclick = () => { it.project = pr; closePop(); render(); toast(`${it.slug} → ${pr}`); };
+      p.appendChild(b);
+    });
+  });
+}
+function attachMenu(anchor, sess) {
+  popAt(anchor, p => {
+    p.appendChild(el("div", "pop-label", "Attach to work item"));
+    items.filter(i => i.state !== "resolved").forEach(it => {
+      const b = el("button", "", "");
+      b.appendChild(el("span", "pdot dot-" + it.state));
+      b.appendChild(el("span", "", it.slug));
+      b.onclick = () => {
+        it.sessions += 1; inbox = inbox.filter(s => s.id !== sess.id);
+        closePop(); render(); toast(`session ${sess.id} → ${it.slug}`);
+      };
+      p.appendChild(b);
+    });
+  });
+}
+
+/* ------- detail slide-over ------- */
+let openSheet = null;
+function closeDetail() { if (openSheet) { openSheet.remove(); openSheet = null; } }
+function sessionsFor(it) {
+  if (it.sessionList) return it.sessionList;
+  return Array.from({ length: it.sessions }, (_, i) => ({
+    id: (it.slug.replace(/[^a-z0-9]/g, "").slice(0, 6) + i),
+    prompt: i === 0 ? (it.note ? it.note.text : "session") : "earlier session",
+    when: i === 0 ? "latest" : "older", tier: i === 0 ? "distilled" : "expired",
+  }));
+}
+function notesFor(it) { return it.notes || (it.note ? [it.note] : []); }
+
+function openDetail(it) {
+  closeDetail();
+  const scrim = el("div", "sheet-scrim");
+  scrim.addEventListener("mousedown", e => { if (e.target === scrim) closeDetail(); });
+  const s = el("div", "sheet");
+
+  const head = el("div", "sheet-head");
+  const r1 = el("div", "row1");
+  r1.appendChild(el("span", "status-dot dot-" + it.state));
+  r1.appendChild(el("span", "slug", esc(it.slug)));
+  const close = el("button", "sheet-close", "✕"); close.onclick = closeDetail;
+  r1.appendChild(close);
+  head.appendChild(r1);
+  head.appendChild(el("h2", "", esc(it.title)));
+  const meta = el("div", "meta");
+  meta.style.marginTop = "7px";
+  meta.innerHTML = `${esc(stateLabel(it.state))} <span class="sep">·</span> ${esc(it.project)} <span class="sep">·</span> ${it.sessions} sessions <span class="sep">·</span> updated ${esc(it.updated)}`;
+  head.appendChild(meta);
+  if (it.badges.length) {
+    const b = el("div", "badges"); b.style.marginTop = "9px";
+    it.badges.forEach(bd => b.appendChild(el("span", "badge " + bd.type, esc(bd.label))));
+    head.appendChild(b);
+  }
+  s.appendChild(head);
+
+  const bar = el("div", "sheet-actions");
+  const mk = (act, extra, label) => { const b = action(act, extra, label, ""); bar.appendChild(b); };
+  mk("resume", "strong", "▸ Resume"); mk("start", "", "Start ⧉"); mk("pr", "", "PR");
+  mk("state", "", "State ▾"); mk("note", "", "Note +"); mk("more", "", "⋯");
+  bar.addEventListener("click", e => {
+    const btn = e.target.closest(".act"); if (!btn) return;
+    runAction(btn.dataset.act, it, btn);
+  });
+  s.appendChild(bar);
+
+  const body = el("div", "sheet-body");
+  const sec = (title, n) => { const d = el("div", "sheet-sec"); const h = el("h3", "", esc(title)); if (n != null) h.appendChild(el("span", "n", String(n))); d.appendChild(h); return d; };
+
+  const dsec = sec("Description");
+  dsec.appendChild(el("div", "desc-text", esc(it.desc || "No description yet.")));
+  if (it.branches && it.branches.length) {
+    const bl = el("div", ""); bl.style.marginTop = "11px"; bl.style.display = "flex"; bl.style.flexWrap = "wrap"; bl.style.gap = "6px";
+    it.branches.forEach(br => bl.appendChild(el("span", "branch-chip", "⑂ " + esc(br))));
+    dsec.appendChild(bl);
+  }
+  body.appendChild(dsec);
+
+  const notes = notesFor(it);
+  const nsec = sec("Notes", notes.length);
+  const tl = el("div", "timeline");
+  notes.forEach(nt => {
+    const row = el("div", "tl-note");
+    row.appendChild(el("div", "tl-dot"));
+    row.appendChild(el("div", "tl-body", `<span class="stamp">${esc(nt.stamp)}</span>${esc(nt.text)}`));
+    tl.appendChild(row);
+  });
+  nsec.appendChild(tl);
+  const addNote = el("button", "act", "+ Add note"); addNote.style.marginTop = "4px";
+  addNote.onclick = () => noteModal(it);
+  nsec.appendChild(addNote);
+  body.appendChild(nsec);
+
+  const sess = sessionsFor(it);
+  const ssec = sec("Sessions", sess.length);
+  sess.forEach(se => {
+    const row = el("div", "sess-row");
+    row.appendChild(el("span", "sess-tier tier-" + se.tier, se.tier));
+    const main = el("div", "sess-main");
+    main.appendChild(el("div", "sess-id", esc(se.id)));
+    main.appendChild(el("div", "sess-prompt", "“" + esc(se.prompt) + "”"));
+    row.appendChild(main);
+    row.appendChild(el("span", "sess-when", esc(se.when)));
+    const rb = el("button", "act", "Resume"); rb.onclick = () => toast(`resuming session ${se.id} → Warp tab ⧉`);
+    row.appendChild(rb);
+    ssec.appendChild(row);
+  });
+  body.appendChild(ssec);
+  s.appendChild(body);
+
+  scrim.appendChild(s);
+  document.body.appendChild(scrim);
+  openSheet = scrim;
+}
+
+/* ------- modals ------- */
+let openModal = null;
+function closeModal() { if (openModal) { openModal.remove(); openModal = null; } }
+function modal(build) {
+  closeModal();
+  const scrim = el("div", "scrim");
+  scrim.addEventListener("mousedown", e => { if (e.target === scrim) closeModal(); });
+  const m = el("div", "modal");
+  build(m);
+  scrim.appendChild(m);
+  document.body.appendChild(scrim);
+  openModal = scrim;
+  const first = m.querySelector("input, textarea");
+  if (first) first.focus();
+}
+
+function noteModal(it) {
+  modal(m => {
+    m.innerHTML = `<h2>Add a note</h2><p class="sub">${esc(it.slug)}</p>`;
+    const f = el("div", "field", `<label>Progress note</label><textarea placeholder="What changed? What's next?"></textarea>`);
+    m.appendChild(f);
+    const ta = f.querySelector("textarea");
+    const bar = el("div", "modal-actions");
+    const cancel = el("button", "btn", "Cancel"); cancel.onclick = closeModal;
+    const save = el("button", "btn primary", "Add note");
+    save.onclick = () => {
+      const t = ta.value.trim(); if (!t) { ta.focus(); return; }
+      it.note = { stamp: "2026-08-03", text: t };
+      it.updated = "2026-08-03";
+      closeModal(); render(); toast(`note added to ${it.slug}`);
+    };
+    bar.append(cancel, save); m.appendChild(bar);
+    ta.addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") save.click(); });
+  });
+}
+
+function newItemModal() {
+  modal(m => {
+    m.innerHTML = `<h2>New work item</h2><p class="sub">prints a slug · links this session via QM_ITEM</p>`;
+    const tf = el("div", "field", `<label>Title</label><input type="text" placeholder="Short, intent-named title">`);
+    const pf = el("div", "field", `<label>Project</label><select>${PROJECTS.map(p => `<option>${esc(p)}</option>`).join("")}</select>`);
+    const df = el("div", "field", `<label>Description <span style="text-transform:none;color:var(--faint)">(optional)</span></label><textarea placeholder="What is this about?"></textarea>`);
+    m.append(tf, pf, df);
+    const bar = el("div", "modal-actions");
+    const cancel = el("button", "btn", "Cancel"); cancel.onclick = closeModal;
+    const create = el("button", "btn primary", "Create item");
+    create.onclick = () => {
+      const title = tf.querySelector("input").value.trim();
+      if (!title) { tf.querySelector("input").focus(); return; }
+      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "untitled";
+      items.unshift({ slug, title, state: "in_progress", project: pf.querySelector("select").value,
+        sessions: 0, updated: "2026-08-03",
+        note: df.querySelector("textarea").value.trim() ? { stamp: "2026-08-03", text: df.querySelector("textarea").value.trim() } : null,
+        badges: [] });
+      if (filter === "resolved") setFilter("open");
+      closeModal(); render(); toast(`created ${slug}`);
+    };
+    bar.append(cancel, create); m.appendChild(bar);
+  });
+}
+
+/* ------- action dispatch ------- */
+function runAction(act, it, anchor) {
+  switch (act) {
+    case "resume": toast(`resuming newest session of ${it.slug} → Warp tab ⧉`); break;
+    case "start":  toast(`new session for ${it.slug} → Warp tab ⧉`); break;
+    case "pr":     it.badges.some(b => b.type === "merged")
+                     ? toast(`opening PR for ${it.slug} in browser`)
+                     : toast(`no PR linked to ${it.slug}`, false); break;
+    case "state":  stateMenu(anchor, it); break;
+    case "note":   noteModal(it); break;
+    case "more":   moreMenu(anchor, it); break;
+  }
+}
+
+/* ------- events ------- */
+$("#columns").addEventListener("click", e => {
+  const actBtn = e.target.closest(".act");
+  const card = e.target.closest(".card");
+  if (!card) return;
+  focusIdx = visibleSlugs.indexOf(card.dataset.slug); applyFocus();
+  const it = items.find(i => i.slug === card.dataset.slug);
+  if (actBtn) { runAction(actBtn.dataset.act, it, actBtn); e.stopPropagation(); return; }
+  openDetail(it);   // click anywhere else on the card opens the full view
+});
+
+$("#inbox-body").addEventListener("click", e => {
+  const btn = e.target.closest(".act");
+  const row = e.target.closest(".inbox-item");
+  if (!btn || !row) return;
+  const sess = inbox.find(s => s.id === row.dataset.id);
+  const act = btn.dataset.act;
+  if (act === "attach") attachMenu(btn, sess);
+  else if (act === "dismiss") { inbox = inbox.filter(s => s.id !== sess.id); renderInbox(); toast(`dismissed session ${sess.id}`); }
+  else if (act === "mk-item") {
+    items.unshift({ slug: "new-from-" + sess.id, title: sess.prompt.slice(0, 42), state: "in_progress",
+      project: "No project", sessions: 1, updated: "2026-08-03",
+      note: { stamp: "2026-08-03", text: "First prompt: " + sess.prompt }, badges: [] });
+    inbox = inbox.filter(s => s.id !== sess.id);
+    if (filter === "resolved") setFilter("open");
+    render(); toast(`created item from session ${sess.id}`);
+  }
+  e.stopPropagation();
+});
+
+$("#filters").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  setFilter(b.dataset.filter);
+});
+function setFilter(f) {
+  filter = f;
+  document.querySelectorAll("#filters button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.filter === f)));
+  focusIdx = -1; render();
+}
+
+$("#search").addEventListener("input", e => { query = e.target.value; focusIdx = -1; render(); });
+$("#new-item").addEventListener("click", newItemModal);
+
+$("#theme").addEventListener("click", () => {
+  const root = document.documentElement;
+  const dark = root.getAttribute("data-theme") === "dark"
+    || (!root.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  root.setAttribute("data-theme", dark ? "light" : "dark");
+});
+
+document.addEventListener("click", e => {
+  if (openPop && !openPop.contains(e.target)) closePop();
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") {
+    if (openModal) return closeModal();
+    if (openPop) return closePop();
+    if (openSheet) return closeDetail();
+  }
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  if (e.key === "/" && !typing) { e.preventDefault(); $("#search").focus(); return; }
+  if (typing || openModal || openSheet) return;
+
+  const it = focusedItem();
+  switch (e.key) {
+    case "j": case "ArrowDown": e.preventDefault(); moveFocus(1); break;
+    case "k": case "ArrowUp":   e.preventDefault(); moveFocus(-1); break;
+    case "c": e.preventDefault(); newItemModal(); break;
+    case "Enter": if (it) openDetail(it); break;
+    case "r": if (it) runAction("resume", it); break;
+    case "n": if (it) runAction("start", it); break;
+    case "o": if (it) runAction("pr", it); break;
+    case "s": if (it) { const c = document.querySelector(`.card[data-slug="${it.slug}"] .act[data-act="state"]`); stateMenu(c, it); } break;
+    case "a": if (it) noteModal(it); break;
+    case ".": if (it) { const c = document.querySelector(`.card[data-slug="${it.slug}"] .act[data-act="more"]`); moreMenu(c, it); } break;
+  }
+});
+
+window.addEventListener("resize", () => { if (openPop) closePop(); });
+
+render();
+</script>

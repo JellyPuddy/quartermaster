@@ -1,0 +1,55 @@
+/* ------- PR scope: review threads under their lines, and folded at a file's top ------- */
+.diff-table tr.d-thread td { background: var(--surface-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.diff-table .d-thread-cell { padding: 6px 8px; font-family: var(--sans); font-size: 12.5px; }
+
+.pr-thread {
+  border: 1px solid var(--border); border-left: 3px solid var(--muted); border-radius: var(--radius-sm);
+  background: var(--surface); padding: 4px 8px; margin: 2px 0; font-family: var(--sans); font-size: 12.5px;
+}
+.pr-thread + .pr-thread { margin-top: 6px; }
+.pr-thread.resolved { border-left-color: var(--good); }
+.pr-thread.pending { border-left-color: var(--warn); border-style: dashed; border-left-style: solid; }
+.pt-head { display: flex; align-items: center; gap: 6px; min-width: 0; font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.pt-head .grow { flex: 1; }
+.pt-peek {
+  flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
+  font-family: var(--sans); font-size: 12px; color: var(--muted);
+}
+.pt-peek:hover { text-decoration: underline; }
+.pt-chip { flex: none; padding: 0 6px; border-radius: 9px; border: 1px solid var(--border-strong); color: var(--muted); }
+.pt-chip.good { color: var(--good); background: var(--good-bg); border-color: var(--good); }
+.pt-chip.warn { color: var(--warn); background: var(--warn-bg); border-color: var(--warn); }
+.pt-chip.pend { color: var(--warn); border-style: dashed; border-color: var(--warn); }
+.pt-btn {
+  flex: none; border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink); font-family: var(--mono);
+  font-size: 10.5px; border-radius: 5px; padding: 1px 8px; cursor: pointer;
+}
+.pt-btn:hover { border-color: var(--accent); color: var(--accent); }
+.pt-btn:disabled { opacity: .5; cursor: progress; }
+.pt-link { flex: none; color: var(--faint); text-decoration: none; padding: 0 3px; }
+.pt-link:hover { color: var(--accent); }
+.pt-comment, .pt-reply { margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--border); }
+.pt-meta { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.pt-meta b { color: var(--muted); font-weight: 600; }
+.pt-body { margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); line-height: 1.45; }
+.pt-comment.pending .pt-body { color: var(--muted); }
+.pt-reply .pt-body { border-left: 3px solid var(--accent); padding-left: 8px; cursor: text; }
+
+.pt-badge {
+  flex: none; margin-left: 8px; padding: 0 6px; border-radius: 9px; font-family: var(--mono); font-size: 10px;
+  color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-line);
+}
+.pt-badge.done { color: var(--faint); background: transparent; border-color: var(--border); }
+.pt-count { color: var(--muted); }
+
+.pt-top { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.pt-off > summary { cursor: pointer; padding: 3px 0; font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+.pt-elsewhere { margin: 0 0 8px; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.pt-quoted { margin: 6px 0; }
+.pt-where { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.pt-quote {
+  margin: 2px 0 3px; padding: 2px 8px; font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+  background: var(--surface-2); border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+.dt-entry.reply { border-left: 3px solid var(--muted); }

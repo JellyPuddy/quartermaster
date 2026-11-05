@@ -1,0 +1,272 @@
+/* ------- chat view: attention list · chat pane · digest ------- */
+.chat-wrap { flex: 1 1 auto; overflow: hidden; display: flex; min-height: 0; }
+body:not([data-mode="board"]) .board-wrap, body:not([data-mode="chat"]) .chat-wrap,
+body:not([data-mode="prs"]) .prs-wrap, body:not([data-mode="issues"]) .il-wrap { display: none; }
+body:not([data-mode="board"]) #filters, body:not([data-mode="board"]) .search { display: none; }
+body:not([data-mode="board"]) .legend .board-only, body:not([data-mode="chat"]) .legend .chat-only,
+body:not([data-mode="prs"]) .legend .prs-only, body:not([data-mode="issues"]) .legend .issues-only { display: none; }
+body[data-mode="prs"] .legend .item-key, body[data-mode="issues"] .legend .item-key { display: none; }
+
+.att-list {
+  flex: none; width: 300px; border-right: 1px solid var(--border); background: var(--surface);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.att-body { overflow-y: auto; padding: 0 10px 24px; display: flex; flex-direction: column; gap: 6px; }
+.att-order { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.att-min {
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--muted); font-family: var(--mono);
+  font-size: 12px; line-height: 1; border-radius: 5px; padding: 2px 6px; cursor: pointer;
+}
+.att-min:hover { border-color: var(--accent-line); color: var(--ink); }
+.att-label { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.att-short { display: none; }
+
+/* Shrunk: a strip of dots with the title's initials under each. */
+body.chats-min .att-list { width: 58px; }
+body.chats-min .inbox-head { flex-direction: column; gap: 6px; padding: 12px 6px 10px; }
+body.chats-min .inbox-head .col-title, body.chats-min .att-order { display: none; }
+body.chats-min .att-body { padding: 0 6px 24px; gap: 4px; }
+body.chats-min .att-row { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 8px 2px; }
+body.chats-min .att-row > :not(.att-dot):not(.att-short) { display: none; }
+body.chats-min .att-short { display: block; font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--muted);
+  max-width: 100%; overflow: hidden; white-space: nowrap; }
+body.chats-min .att-row.selected .att-short { color: var(--ink); }
+body.chats-min .att-group { font-size: 0; padding: 6px 4px 2px; border-top: 1px solid var(--border); }
+.att-group { font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--faint); padding: 12px 6px 2px; }
+.att-row {
+  display: grid; grid-template-columns: 12px 1fr auto; gap: 2px 9px; align-items: center;
+  padding: 9px 10px; border: 1px solid transparent; border-radius: var(--radius-sm);
+  cursor: pointer; outline: none;
+}
+.att-row:hover { background: var(--surface-2); }
+.att-row.selected { background: var(--accent-soft); border-color: var(--accent-line); }
+.att-row:focus-visible { border-color: var(--accent); }
+.att-name { font-size: 13px; font-weight: 600; color: var(--ink); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.att-wait { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.att-meta { grid-column: 2 / 4; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.att-state { font-weight: 600; }
+.att-row.blocked .att-state { color: var(--crit); }
+.att-row.your_turn .att-state { color: var(--turn); }
+.att-row.working .att-state { color: var(--accent); }
+.att-row.waiting .att-state { color: var(--muted); }
+.att-row.snoozed { opacity: .72; }
+.att-row.snoozed .att-state { color: var(--faint); }
+
+/* Attention dots: 🔴 blocked, 🟠 your turn, 🔵 working, ◐ waiting on a sub-agent, ⚪ no live chat. */
+.att-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; box-sizing: border-box; }
+.att-dot.blocked { background: var(--crit); box-shadow: 0 0 0 3px var(--crit-bg); animation: pulse 1.2s ease-in-out infinite; }
+.att-dot.your_turn { background: var(--turn); box-shadow: 0 0 0 3px var(--turn-bg); }
+.att-dot.working { background: var(--accent); }
+.att-dot.waiting { border: 1.5px solid var(--accent); background: linear-gradient(90deg, var(--accent) 50%, transparent 50%); }
+.att-dot.none { border: 1.5px solid var(--faint); }
+.att-dot.snoozed { background: transparent; border: 1.5px solid var(--turn); box-shadow: none; }
+
+/* Context size: amber from 150k, red from 250k — where a rotation starts to pay. */
+.ctx { border-radius: 4px; padding: 0 5px; background: var(--surface-2); border: 1px solid var(--border); color: var(--muted); }
+.ctx.amber { color: var(--warn); background: var(--warn-bg); border-color: transparent; }
+.ctx.red { color: var(--crit); background: var(--crit-bg); border-color: transparent; }
+.snooze-btn {
+  margin-left: auto; border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  font-family: var(--mono); font-size: 10px; border-radius: 5px; padding: 1px 6px; cursor: pointer;
+}
+.snooze-btn:hover { border-color: var(--accent-line); color: var(--ink); }
+
+.chat-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; min-height: 0; position: relative; }
+.chat-head { padding: 14px 20px 12px; border-bottom: 1px solid var(--border); background: var(--surface); flex: none; }
+.chat-head .row1 { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.chat-head h2 { margin: 6px 0 0; font-size: 16px; font-weight: 700; text-wrap: balance; }
+.chat-head .att-now { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.chat-head .sheet-actions { padding: 11px 0 0; border: none; }
+.chat-body { flex: 1 1 auto; overflow-y: auto; padding: 18px 20px 40px; display: flex; flex-direction: column; gap: 18px; }
+.chat-pane {
+  min-height: 200px; flex: 1 0 200px; border: 1px dashed var(--border-strong); border-radius: var(--radius);
+  display: grid; place-items: center; text-align: center; padding: 24px; color: var(--faint);
+  font-family: var(--mono); font-size: 12px; line-height: 1.6; background: var(--surface);
+}
+.chat-pane strong { color: var(--muted); font-weight: 600; }
+.chat-pane .pane-acts { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
+
+/* The live chat: a terminal attached to the item's tmux session. Always dark
+   — it is claude's TUI, not page chrome. */
+#chat-head-slot { flex: none; }
+.term-wrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; background: #16181F; }
+.term-wrap[hidden] { display: none; }
+.term-bar {
+  flex: none; display: flex; align-items: center; gap: 8px; padding: 5px 12px; font-family: var(--mono);
+  font-size: 11px; color: #9AA3B5; border-bottom: 1px solid #2A2E3A;
+}
+.term-bar .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.term-bar button {
+  border: 1px solid #3A3F4D; background: transparent; color: #C9D0DC; font-family: var(--mono);
+  font-size: 10.5px; border-radius: 5px; padding: 2px 7px; cursor: pointer;
+}
+.term-bar button:hover { border-color: #6B7385; color: #fff; }
+/* content-box: the fit addon sizes the terminal from this element's
+   computed height/width, which under border-box would include the padding
+   and clip the last row and column. No viewport scrollbar either — tmux
+   owns scrolling (scrollback 0), and the bar covered the last columns. */
+.term-host { flex: 1 1 auto; min-height: 0; padding: 6px 4px 4px 10px; overflow: hidden; box-sizing: content-box; }
+.term-host .xterm-viewport { overflow-y: hidden; }
+.term-wrap:not([hidden]) + .chat-body { flex: 0 0 auto; max-height: 34%; padding: 10px 20px 12px; }
+/* Maximized (⌘⇧⏎): the live chat's terminal fills the page. Only a class on
+   body — no Fullscreen API — and the aside drawer still overlays it. */
+body[data-mode="chat"].pane-max .toolbar, body[data-mode="chat"].pane-max .legend,
+body[data-mode="chat"].pane-max .att-list, body[data-mode="chat"].pane-max .chat-side,
+body[data-mode="chat"].pane-max #chat-head-slot, body[data-mode="chat"].pane-max .chat-history,
+body[data-mode="chat"].pane-max .chat-body { display: none; }
+.term-bar button.max-btn[aria-pressed="true"] { border-color: #7C8BFF; color: #fff; }
+/* The aside drawer: a second terminal sliding over the lower part of the
+   item's chat, for one-off questions that must not become the chat. Dark
+   like the chat's terminal. */
+.aside-drawer {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 58%; z-index: 20; display: flex;
+  flex-direction: column; background: #16181F; border-top: 2px solid #7C8BFF;
+  box-shadow: 0 -10px 28px rgba(0, 0, 0, .28);
+}
+.aside-drawer[hidden] { display: none; }
+.aside-drawer .term-bar .tag { color: #B9C2FF; font-weight: 700; letter-spacing: .06em; }
+.aside-drawer .term-host[hidden] { display: none; }
+.aside-start {
+  flex: 1 1 auto; display: grid; place-items: center; text-align: center; padding: 20px;
+  font-family: var(--mono); font-size: 12px; line-height: 1.6; color: #9AA3B5;
+}
+.aside-start[hidden] { display: none; }
+.aside-start strong { color: #E7EAF1; }
+.aside-start .row { display: flex; gap: 8px; justify-content: center; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+.aside-start select, .aside-start button {
+  border: 1px solid #3A3F4D; background: #1E212B; color: #E7EAF1; font-family: var(--mono);
+  font-size: 12px; border-radius: 6px; padding: 5px 10px; cursor: pointer;
+}
+.aside-start button.go { background: #E7EAF1; color: #16181F; border-color: #E7EAF1; font-weight: 700; }
+/* Earlier asides under the picker: question, clamped answer, what to do with it. */
+.aside-start.has-earlier { display: block; overflow: auto; }
+.aside-start.has-earlier > div:first-child { margin: 10px 0 20px; }
+.aside-earlier { text-align: left; max-width: 720px; margin: 0 auto; }
+.aside-earlier h4 { margin: 0 0 8px; color: #B9C2FF; font-size: 11px; letter-spacing: .06em; }
+.aside-card { border: 1px dashed #3A3F4D; border-radius: 8px; padding: 9px 11px; margin-bottom: 8px; }
+.aside-card .q { color: #E7EAF1; font-weight: 700; }
+.aside-card .a {
+  margin-top: 3px; white-space: pre-wrap; cursor: pointer; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+}
+.aside-card .a.open { display: block; }
+.aside-card .q::before, .aside-card .a::before { content: "Q  "; color: #7C8BFF; }
+.aside-card .a::before { content: "A  "; }
+.aside-card .meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; font-size: 10.5px; color: #697488; }
+.aside-card .meta .grow { flex: 1; }
+.aside-card .meta .promoted { color: #4CC38A; }
+.aside-start .aside-card button { padding: 2px 8px; font-size: 11px; }
+/* Earlier sessions, read-only above the live chat: dark like the terminal
+   so the two read as one scroll. Lazy loaded upward from the newest end. */
+.chat-history {
+  flex: 0 1 auto; max-height: 44%; min-height: 0; display: flex; flex-direction: column;
+  background: #16181F; color: #C9D0DC; border-bottom: 1px solid #2A2E3A;
+}
+.chat-history[hidden] { display: none; }
+.chat-history.collapsed .hist-scroll { display: none; }
+.chat-head .row2 { display: flex; align-items: center; gap: 10px; margin-top: 7px; }
+.chat-head .job-label { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+.hist-bar { flex: none; border-bottom: 1px solid #2A2E3A; }
+.hist-bar.term-bar .tag { color: #B9C2FF; font-weight: 700; letter-spacing: .06em; }
+.chat-history.collapsed .hist-bar { border-bottom: none; }
+.hist-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 22px 14px; overscroll-behavior: contain; }
+.hist-top { font-family: var(--mono); font-size: 10.5px; color: #697488; text-align: center; padding: 8px 0 2px; }
+.h-session {
+  font-family: var(--mono); font-size: 10.5px; color: #697488; margin: 14px 0 8px; display: flex; gap: 8px;
+  align-items: center;
+}
+.h-session::after { content: ""; flex: 1; border-top: 1px dotted #333A49; }
+.h-entry { margin: 8px 0; font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.h-user {
+  color: #F1F3F8; background: #1F2431; border-radius: 7px; padding: 7px 11px 7px 26px; position: relative;
+  max-width: 92%;
+}
+.h-user::before { content: "›"; position: absolute; left: 11px; top: 6px; color: #8AA0FF; font-weight: 700; }
+.h-assistant { color: #C9D0DC; }
+.h-tool {
+  margin: 2px 0; font-family: var(--mono); font-size: 11px; color: #7C8598; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.h-tool::before { content: "⏺ "; color: #4A8F6C; }
+.h-event { font-family: var(--mono); font-size: 11px; color: #8992A3; font-style: italic; }
+.h-snapshot { border-left: 2px solid #7C8BFF; padding: 2px 0 2px 12px; color: #B8C0D0; }
+.h-snapshot .lbl { display: block; font-family: var(--mono); font-size: 10px; color: #8AA0FF; letter-spacing: .06em;
+  text-transform: uppercase; margin-bottom: 4px; white-space: normal; }
+.rot-div { margin: 16px 0; font-family: var(--mono); font-size: 11px; color: #E8B44A; }
+.rot-div summary { cursor: pointer; list-style: none; text-align: center; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.rot-div summary::-webkit-details-marker { display: none; }
+.rot-div summary:hover { color: #F4CD7A; }
+.rot-div ul { margin: 8px auto 0; padding: 8px 12px; list-style: none; max-width: 640px; border: 1px solid #3B3424;
+  border-radius: 7px; background: rgba(232,180,74,.06); color: #C9D0DC; font-family: var(--sans); font-size: 12px; }
+.rot-div li { margin: 4px 0; line-height: 1.45; }
+.rot-div li .k { font-family: var(--mono); font-size: 10px; color: #E8B44A; margin-right: 6px; }
+.rot-div li .k.open { color: #F0776B; }
+.rot-div li .pos { font-family: var(--mono); font-size: 10px; color: #697488; margin-right: 6px; }
+
+/* The chat's context meter (amber from 150k, red from 250k) and the
+   rotation offer it raises. */
+.ctx-meter { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.ctx-meter .bar { width: 70px; height: 5px; border-radius: 3px; background: var(--surface-2); border: 1px solid var(--border);
+  overflow: hidden; }
+.ctx-meter .bar i { display: block; height: 100%; background: var(--good); }
+.ctx-meter.amber { color: var(--warn); }
+.ctx-meter.amber .bar i { background: var(--warn); }
+.ctx-meter.red { color: var(--crit); }
+.ctx-meter.red .bar i { background: var(--crit); }
+.rotate-btn { margin-left: 0; color: var(--warn); border-color: var(--warn-bg); }
+.rotate-btn.red { color: var(--crit); border-color: var(--crit-bg); }
+.rot-offer {
+  margin-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px;
+  border-radius: var(--radius-sm); background: var(--warn-bg); color: var(--ink); font-size: 12.5px;
+}
+.rot-offer .grow { flex: 1 1 260px; }
+.rot-offer button { font: inherit; font-size: 12px; border-radius: 6px; padding: 3px 10px; cursor: pointer;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink); }
+.rot-offer button.go { background: var(--ink); color: var(--surface); border-color: var(--ink); font-weight: 600; }
+.chat-sessions summary { cursor: pointer; list-style: none; }
+.chat-sessions summary::-webkit-details-marker { display: none; }
+.chat-sessions details[open] summary h3 { margin-bottom: 10px; }
+.chat-sessions details:not([open]) summary h3 { margin: 0; }
+.term-dialog { width: min(1000px, 92vw); }
+.term-dialog .term-wrap { height: 62vh; border-radius: var(--radius-sm); overflow: hidden; }
+.chat-sessions h3 { margin: 0 0 10px; font-size: 11px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.chat-empty { margin: auto; color: var(--faint); font-family: var(--mono); font-size: 12px; text-align: center; }
+
+.chat-side {
+  flex: none; width: 360px; border-left: 1px solid var(--border); background: var(--surface);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.chat-side .sheet-body { flex: 1 1 auto; }
+.chat-side .side-head { display: flex; align-items: center; gap: 8px; padding: 16px 18px 4px; flex: none; }
+.chat-side .side-head .col-title { color: var(--ink); }
+.chat-side .side-head .act { margin-left: auto; }
+/* Tokens and API-equivalent cost, pinned under the panel; the per-session
+   breakdown opens on hover, or on tap (touch has no hover). */
+.usage-foot { position: relative; flex: none; border-top: 1px solid var(--border); }
+.usage-foot > button {
+  all: unset; box-sizing: border-box; width: 100%; cursor: pointer; padding: 9px 18px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--muted); display: flex; gap: 8px;
+}
+.usage-foot > button:hover, .usage-foot.open > button { color: var(--ink); }
+.usage-foot > button .hint { margin-left: auto; color: var(--faint); }
+.usage-break {
+  display: none; position: absolute; left: 10px; right: 10px; bottom: calc(100% + 4px); z-index: 40;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0,0,0,.12); padding: 8px 10px; max-height: 50vh; overflow-y: auto;
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+}
+.usage-foot:hover .usage-break, .usage-foot.open .usage-break { display: block; }
+.usage-break .row { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; padding: 3px 0; }
+.usage-break .row .what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.usage-break .row .num { text-align: right; color: var(--ink); }
+.usage-break .row.missing .num { color: var(--faint); }
+.usage-break .foot { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); color: var(--faint); white-space: normal; }
+
+/* Loose chats (loose.js): the group count and a row's project. */
+.loose-group .loose-count { margin-left: 4px; font-family: var(--mono); color: var(--muted); }
+.loose-project { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }

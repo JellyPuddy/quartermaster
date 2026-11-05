@@ -1,0 +1,8 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Launcher only — the code lives in lib/quartermaster/. Resolved through
+# realpath so the ~/bin/{quartermaster,qm} symlinks keep working.
+require File.join(File.dirname(File.realpath(__FILE__)), "lib", "quartermaster")
+
+Quartermaster::CLI.new.run(ARGV) if $PROGRAM_NAME == __FILE__

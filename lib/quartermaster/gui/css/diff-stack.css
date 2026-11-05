@@ -1,0 +1,81 @@
+/* ------- the diff pane's stack views: the bar's strip, the layered commit list, file circles -------
+   Status colours as the rails' (stacks.css): open/review → accent,
+   approved/merged → good, changes requested → warn, closed → crit. */
+
+/* The strip: wraps within the bar's top row rather than widening the pane. */
+.diff-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 3px 4px; min-width: 0; flex: 0 1 auto; }
+.diff-bar .diff-strip button { padding: 1px 6px; }
+.ds-crumb {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; white-space: nowrap;
+  font-family: var(--mono); font-size: 10.5px; color: var(--muted); border: 1px solid var(--border-strong);
+  border-radius: 5px; background: var(--surface);
+}
+span.ds-crumb { padding: 1px 6px; }
+.ds-crumb.trunk { border-style: dashed; background: none; }
+.ds-crumb.loose.sel { color: var(--ink); }
+.ds-crumb .ds-n { font-weight: 700; }
+.ds-crumb .ds-name { color: var(--ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 22ch; }
+.ds-crumb .ds-pr { color: var(--faint); }
+.ds-crumb .ds-top { font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--accent); }
+.ds-crumb .ds-chat { color: var(--turn); }
+.ds-crumb .ds-behind { color: var(--warn); font-weight: 700; }
+.ds-crumb.open, .ds-crumb.review { color: var(--accent); }
+.ds-crumb.approved { color: var(--good); }
+.ds-crumb.changes { color: var(--warn); }
+.ds-crumb.closed { color: var(--crit); }
+.ds-crumb.merged { color: var(--good); background: var(--good-bg); border-color: transparent; }
+.ds-crumb.merged .ds-name { color: var(--good); font-weight: 500; }
+.diff-bar .diff-strip .ds-crumb.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); cursor: default; }
+.ds-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border-strong); flex: none; }
+.ds-dot.open, .ds-dot.review { background: var(--accent); }
+.ds-dot.approved, .ds-dot.merged { background: var(--good); }
+.ds-dot.changes { background: var(--warn); }
+.ds-dot.closed { background: var(--crit); }
+.ds-step { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+.ds-sep { color: var(--faint); font-family: var(--mono); font-size: 10.5px; }
+.diff-bar .diff-strip .ds-switch { color: var(--muted); white-space: nowrap; }
+.diff-bar .diff-strip .ds-restack {
+  color: var(--warn); background: var(--warn-bg); border-color: transparent; font-weight: 600; white-space: nowrap;
+}
+.diff-bar .diff-strip .ds-restack:hover { border-color: var(--warn); }
+
+/* The layered commit list: a header per layer, top first, its commits beneath. */
+.diff-layer-list { max-height: 40vh; }
+.d-layer-head {
+  display: flex; align-items: center; gap: 8px; padding: 4px 10px; font-family: var(--mono); font-size: 11px;
+  cursor: pointer; user-select: none; color: var(--muted); background: var(--surface-2); border-top: 1px solid var(--border);
+}
+.d-layer-head:first-child { border-top: none; }
+.d-layer-head:hover { background: var(--accent-soft); }
+.d-layer-head.sel { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.d-layer-head.merged:not(.sel) { opacity: .65; }
+.d-layer-n { font-weight: 700; flex: none; }
+.d-layer-head.open .d-layer-n, .d-layer-head.review .d-layer-n { color: var(--accent); }
+.d-layer-head.approved .d-layer-n, .d-layer-head.merged .d-layer-n { color: var(--good); }
+.d-layer-head.changes .d-layer-n { color: var(--warn); }
+.d-layer-head.closed .d-layer-n { color: var(--crit); }
+.d-layer-b { flex: 1; min-width: 0; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d-layer-head .pr-chip { flex: none; }
+.d-layer-count { flex: none; color: var(--faint); }
+.d-layer-behind { flex: none; color: var(--warn); font-weight: 700; }
+.d-layer-commit { padding-left: 28px; }
+.d-layer-commit.other { opacity: .8; }
+.d-layer-commit.stale .d-sha, .d-layer-commit.stale .d-subject, .d-layer-commit.stale .d-commit-stat { opacity: .5; }
+.d-also {
+  flex: none; font-size: 10px; color: var(--faint); border: 1px dashed var(--border-strong); border-radius: 4px; padding: 0 5px;
+}
+.d-layer-more {
+  display: block; border: none; background: none; cursor: pointer; padding: 2px 10px 4px 28px;
+  font-family: var(--mono); font-size: 10.5px; color: var(--accent);
+}
+.d-layer-more:hover { text-decoration: underline; }
+
+/* File circles: the layers whose own diff touches the file. */
+.d-layers { display: inline-flex; gap: 2px; flex: none; }
+.d-layer-circle {
+  font-family: var(--mono); font-size: 11px; line-height: 1; color: var(--muted); border-radius: 50%;
+}
+.d-layer-circle.open, .d-layer-circle.review { color: var(--accent); }
+.d-layer-circle.approved, .d-layer-circle.merged { color: var(--good); }
+.d-layer-circle.changes { color: var(--warn); }
+.d-layer-circle.closed { color: var(--crit); }

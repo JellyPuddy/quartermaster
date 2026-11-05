@@ -1,0 +1,102 @@
+/* ------- an item's chains: the Workspace rails, the chats list's segment bar -------
+   Layer status colours, shared: open/review → accent, approved/merged → good,
+   changes requested → warn, closed → crit, no PR/draft → neutral. */
+.pr-chip {
+  font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .03em; text-decoration: none;
+  border-radius: 4px; padding: 1px 6px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border);
+}
+a.pr-chip:hover { border-color: var(--border-strong); }
+.pr-chip.open, .pr-chip.review { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+.pr-chip.approved, .pr-chip.merged { color: var(--good); background: var(--good-bg); border-color: transparent; }
+.pr-chip.changes { color: var(--warn); background: var(--warn-bg); border-color: transparent; }
+.pr-chip.closed { color: var(--crit); background: var(--crit-bg); border-color: transparent; }
+.wt-chip {
+  display: inline-flex; align-items: center; max-width: 100%; font-family: var(--mono); font-size: 10.5px;
+  color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px;
+}
+.wt-chip .p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.restack-count { font-family: var(--mono); font-size: 10.5px; color: var(--warn); font-weight: 600; white-space: nowrap; }
+
+/* The rails: one per chain, a vertical line through the dots. */
+.rails { display: flex; flex-direction: column; gap: 8px; margin: 2px 0 10px; }
+.rail { position: relative; padding-left: 4px; }
+.rail.stack::before {
+  content: ""; position: absolute; left: 15px; top: 14px; bottom: 12px; width: 2px;
+  background: var(--border-strong); border-radius: 1px;
+}
+.rail + .rail, .rail + .rail-summary, .rail-summary + .rail { border-top: 1px dashed var(--border); padding-top: 8px; }
+.rail.stack + .rail::before, .rail-summary + .rail.stack::before { top: 22px; }
+.rail-fold {
+  position: absolute; right: 0; top: 4px; z-index: 2; border: none; background: none; cursor: pointer;
+  font-family: var(--mono); font-size: 10px; color: var(--faint);
+}
+.rail-fold:hover { color: var(--accent); }
+.rail-node {
+  position: relative; display: grid; grid-template-columns: 24px 1fr; gap: 8px; align-items: start;
+  padding: 7px 6px 7px 0; border-radius: var(--radius-sm); cursor: pointer;
+}
+.rail-node:hover { background: var(--surface-2); }
+.rail-node.selected { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-line); cursor: default; }
+.rail-node.merged:not(.selected) { opacity: .6; }
+.rail-dot {
+  position: relative; z-index: 1; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  font-family: var(--mono); font-size: 11px; font-weight: 700; background: var(--surface);
+  border: 2px solid var(--border-strong); color: var(--muted);
+}
+.rail-dot.open, .rail-dot.review { border-color: var(--accent); color: var(--accent); }
+.rail-dot.approved { border-color: var(--good); color: var(--good); }
+.rail-dot.changes { border-color: var(--warn); color: var(--warn); }
+.rail-dot.merged { border-color: var(--good); background: var(--good-bg); color: var(--good); }
+.rail-dot.closed { border-color: var(--crit); color: var(--crit); }
+.rail-dot.trunk { width: 12px; height: 12px; margin: 5px; background: var(--border-strong); border: none; }
+.rail-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; padding-top: 2px; }
+.rail-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.rail-branch { font-family: var(--mono); font-size: 12px; color: var(--ink); font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.rail-top { font-family: var(--mono); font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--accent); }
+.rail-chat {
+  font-family: var(--mono); font-size: 9.5px; font-weight: 700; color: var(--turn); background: var(--turn-bg);
+  border-radius: 4px; padding: 1px 5px; text-transform: uppercase; letter-spacing: .03em;
+}
+.rail-ahead { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.rail-restack {
+  border: none; background: none; padding: 0; cursor: pointer;
+  font-family: var(--mono); font-size: 10.5px; color: var(--warn); font-weight: 600;
+}
+.rail-restack:hover { text-decoration: underline; }
+.rail-tools { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+.rail-diff {
+  border: none; background: none; color: var(--accent); font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+  cursor: pointer; padding: 0 2px;
+}
+.rail-icon {
+  border: none; background: none; cursor: pointer; padding: 0 3px; font-size: 11px; line-height: 16px;
+  border-radius: 4px;
+}
+.rail-icon:hover { background: var(--surface-2); }
+.rail-diff:hover { text-decoration: underline; }
+.rail-nowt { font-family: var(--mono); font-size: 10.5px; color: var(--faint); font-style: italic; }
+.rail-trunk { cursor: default; }
+.rail-trunk:hover { background: none; }
+.rail-trunk .rail-branch { color: var(--muted); font-weight: 500; padding-top: 3px; }
+.rail-merged .rail-mline { font-family: var(--mono); font-size: 11px; color: var(--good); padding-top: 3px; }
+.rail-merged .rail-dot { width: 18px; height: 18px; margin: 2px; font-size: 10px; }
+.rail-summary {
+  display: flex; align-items: center; gap: 8px; min-width: 0; padding: 5px 6px 5px 4px; cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.rail-summary:hover { background: var(--surface-2); }
+.rail-summary .rail-dot { width: 18px; height: 18px; font-size: 10px; flex: none; margin: 0 3px; }
+.rail-summary .rail-branch { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-summary .rail-ahead { white-space: nowrap; }
+
+/* The chats list's segment bar: under the title, above the meta line; the
+   shrunk strip (chats-min) hides it with every other row part. */
+.seg-bar { grid-column: 2 / 4; display: flex; gap: 4px; height: 4px; margin: 3px 0 1px; min-width: 0; }
+.seg-chain { display: flex; gap: 2px; flex: 1 1 0; min-width: 0; }
+.seg-chain .seg { flex: 1 1 0; border-radius: 2px; background: var(--border-strong); }
+.seg.open, .seg.review { background: var(--accent); }
+.seg.approved, .seg.merged { background: var(--good); }
+.seg.merged { opacity: .45; }
+.seg.changes { background: var(--warn); }
+.seg.closed { background: var(--crit); }
+.seg.restack { background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgba(0,0,0,.25) 3px 5px); }

@@ -1,0 +1,55 @@
+/* The diff pane's branch stats modal (js/branch-stats.js). */
+.modal.branch-stats { width: min(820px, 100%); max-height: calc(100vh - 40px); display: flex; flex-direction: column; }
+.bs-vs { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 6px; }
+.bs-body { overflow-y: auto; min-height: 0; margin: 0 -6px 12px; padding: 0 6px; }
+.bs-body.bs-stale { opacity: .55; }
+.bs-body table { border-collapse: collapse; font-size: 12.5px; margin: .4em 0 .9em; }
+.bs-body th, .bs-body td { border-bottom: 1px solid var(--border); padding: 4px 9px; text-align: left; }
+.bs-body th { color: var(--muted); font-weight: 600; font-size: 11.5px; }
+.bs-wait { color: var(--faint); font-style: italic; padding: 30px 0; text-align: center; }
+.bs-error { white-space: pre-wrap; color: var(--crit); background: var(--crit-bg); border-radius: var(--radius-sm);
+  padding: 10px 12px; font: 12px var(--mono); margin: 0; }
+.bs-callout { background: var(--accent-soft); border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0;
+  padding: 8px 12px; margin: 4px 0 12px; font-size: 13px; line-height: 1.5; }
+.bs-callout p { margin: 0; }
+.bs-callout p + p { margin-top: .5em; }
+.bs-ask-row { margin: 0 0 12px; }
+
+.bs-totals { display: flex; gap: 26px; margin: 2px 0 10px; }
+.bs-totals b { font-size: 24px; font-family: var(--mono); display: block; }
+.bs-totals small { color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.bs-totals .bs-add b { color: var(--good); }
+.bs-totals .bs-del b { color: var(--crit); }
+.bs-share { display: flex; height: 10px; border-radius: 5px; overflow: hidden; gap: 2px; background: var(--surface-2); }
+.bs-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; margin: 8px 0 12px; color: var(--muted); }
+.bs-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; }
+.bs-legend b { color: var(--good); font-weight: 600; }
+.bs-legend em, .bs-n em { color: var(--crit); font-style: normal; }
+
+.bs-c { background: var(--muted); }
+.bs-c-backend { background: var(--accent); }
+.bs-c-frontend { background: var(--turn); }
+.bs-c-tests { background: var(--good); }
+.bs-c-docs { background: var(--warn); }
+.bs-c-generated { background: var(--faint); }
+.bs-c-openapi { background: var(--crit); }
+.bs-c-locales { background: color-mix(in srgb, var(--accent) 50%, var(--crit)); }
+.bs-c-migration { background: color-mix(in srgb, var(--good) 50%, var(--accent)); }
+.bs-c-config { background: var(--border-strong); }
+
+.bs-body h3 { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 14px 0 6px; }
+.bs-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px 140px; gap: 10px; align-items: center;
+  font-size: 12.5px; padding: 3px 0; border-bottom: 1px dashed var(--border); }
+.bs-row.bs-commit { grid-template-columns: 64px minmax(0, 1fr) 110px 140px; }
+.bs-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bs-file .bs-name, .bs-commit code { font-family: var(--mono); font-size: 12px; }
+.bs-commit code { color: var(--muted); }
+.bs-n { font-family: var(--mono); color: var(--good); text-align: right; }
+.bs-bar { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.bs-bar span { display: block; height: 100%; background: var(--good); }
+
+@media (max-width: 600px) {
+  .bs-row { grid-template-columns: minmax(0, 1fr) 96px; }
+  .bs-row.bs-commit { grid-template-columns: 56px minmax(0, 1fr) 96px; }
+  .bs-row .bs-bar { display: none; }
+}

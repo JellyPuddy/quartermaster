@@ -1,0 +1,33 @@
+/* ------- Issues view: every item's issue drafts, grouped by item ------- */
+.il-wrap { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+.il-main { max-width: 1080px; margin: 0 auto; padding: 4px 24px 48px; }
+.il-headbar { display: flex; align-items: center; gap: 8px; padding: 16px 0 6px; }
+.il-headbar .col-title { color: var(--ink); }
+.il-error { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--crit); }
+.il-body { display: flex; flex-direction: column; gap: 14px; }
+.il-group { display: flex; flex-direction: column; gap: 4px; }
+.il-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 2px 2px 4px; }
+.il-state {
+  display: inline-flex; align-items: center; gap: 5px; flex: none; font-size: 10.5px; font-weight: 600;
+  color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px; padding: 1px 8px;
+}
+.il-state .col-dot { width: 7px; height: 7px; }
+.il-title { font-size: 13px; font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.il-head .slug { font-size: 11.5px; font-weight: 500; flex: 0 1 auto; }
+.il-counts { margin-left: auto; flex: none; font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.il-row {
+  display: flex; align-items: center; gap: 10px; min-width: 0; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 7px 12px; outline: none;
+}
+.il-row:hover { border-color: var(--border-strong); }
+.il-row.focused, .il-row:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.il-n { font-family: var(--mono); font-size: 11px; color: var(--faint); min-width: 2ch; flex: none; }
+.il-name { flex: 0 1 auto; min-width: 0; font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.il-row .iss-pill { flex: none; }
+.il-number { flex: none; font-family: var(--mono); font-size: 11px; color: var(--good); text-decoration: none; }
+a.il-number:hover { text-decoration: underline; }
+.il-row.created .il-n, .il-row.created .il-name, .il-row.created .iss-pill { opacity: .55; }
+.il-row.broken .il-name { color: var(--crit); font-family: var(--mono); font-size: 12px; flex: none; }
+.il-row.broken .il-error { margin-left: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+@media (max-width: 860px) { .il-main { padding: 4px 16px 40px; } .il-counts { display: none; } }

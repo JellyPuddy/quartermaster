@@ -1,0 +1,239 @@
+# The showcase screenshots of the demo world's qm gui. Take them with
+# `ruby showcase/shots/capture.rb` (see showcase/README.md); each lands in
+# showcase/out/shots/<id>.png.
+#
+# Shot keys: id; url (default "{gui}/"; {gui} is the demo GUI, {world} the demo world's
+# directory as file://); viewport (WxH, default 1920x1080); scale (device pixels per CSS
+# pixel, default 2); theme (light or dark); mobile (default: viewport narrower than 600);
+# clip (a selector, {selector, pad} or [x, y, w, h] in CSS px) for a close-up; note; and
+# steps, run in order, each one of:
+#   key: a key name or a list (j, D, I, Escape, Enter, ArrowDown, …)
+#   click: CSS selector        hover: CSS selector      eval: JavaScript (awaited)
+#   wait_for: CSS selector     wait: seconds
+# A step may also be a list of steps, so a YAML anchor (&name) on one shot's opening steps
+# can be reused (*name) by the next.
+#
+# Chats are opened with selectChat, never openChat or #chat=: those focus the terminal,
+# and a key pressed then would be typed into the demo chat.
+# A close-up clips to a selector that survives the GUI re-rendering (:has() helps), not an id
+# set in an eval step: the next poll can redraw the element without it.
+
+shots:
+  # Story 1: work items
+  - id: board
+    theme: dark
+    note: the board, every column (All filter)
+    steps:
+      - wait_for: ".card"
+      - click: '#filters [data-filter="all"]'
+      - wait_for: '.card[data-slug="gift-cards"]'
+      - key: [j, j, j, j]
+
+  - id: item-detail
+    theme: dark
+    note: gift-cards' full detail sheet over the board
+    steps:
+      - wait_for: ".card"
+      - eval: 'openDetail(items.find(i => i.slug === "gift-cards"))'
+      - wait_for: ".sheet"
+      - wait: 0.6
+
+  - id: stale-item
+    theme: dark
+    note: close-up of allergen-filter's card with its staleness badges
+    steps:
+      - wait_for: '.card[data-slug="allergen-filter"]'
+    clip: { selector: '.card[data-slug="allergen-filter"]', pad: 12 }
+
+  # Story 2: attention
+  - id: attention
+    theme: dark
+    note: the chats list by whose move, gift-cards (your turn) open
+    steps:
+      - wait_for: ".card"
+      - eval: 'chatSlug = "gift-cards"; setMode("chat"); selectChat("gift-cards")'
+      - wait_for: ".xterm-screen"
+      - wait: 1.5
+
+  - id: inbox
+    theme: dark
+    note: close-up of the inbox of unattached sessions
+    steps:
+      - wait_for: ".inbox-body .inbox-card, .inbox-body > *"
+    clip: [1636, 62, 284, 300]
+
+  # Story 3: context
+  - id: chat
+    theme: dark
+    note: checkout-flow's chat, blocked on a permission prompt, its history above
+    steps:
+      - wait_for: ".card"
+      - eval: 'chatSlug = "checkout-flow"; setMode("chat"); selectChat("checkout-flow")'
+      - wait_for: ".xterm-screen"
+      - wait: 2
+
+  - id: chat-rotation
+    theme: dark
+    note: delivery-slots at 237k context, its earlier rotation opened in the history
+    steps:
+      - wait_for: ".card"
+      - eval: 'chatSlug = "delivery-slots"; setMode("chat"); selectChat("delivery-slots")'
+      - wait_for: ".xterm-screen"
+      - wait_for: "#hist-scroll .hist-top"
+      - eval: >-
+          (async () => { for (let i = 0; i < 40 && !document.querySelector(".rot-div"); i++) {
+          await loadOlder(); await new Promise(r => setTimeout(r, 100)); } })()
+      - wait_for: ".rot-div"
+      - eval: '(() => { const d = document.querySelector(".rot-div"); d.open = true; d.scrollIntoView({ block: "center" }); })()'
+      - eval: 'document.querySelector("#aside-drawer").hidden = true'
+      - wait: 1
+
+  - id: context-meter
+    theme: dark
+    note: close-up of delivery-slots' chat header with the context meter and rotate offer
+    steps:
+      - wait_for: ".card"
+      - eval: 'chatSlug = "delivery-slots"; setMode("chat"); selectChat("delivery-slots")'
+      - wait_for: ".xterm-screen"
+      - wait: 1
+    clip: [300, 62, 660, 130]
+
+  - id: aside
+    theme: dark
+    note: delivery-slots with its live aside drawer
+    steps:
+      - wait_for: ".card"
+      - eval: 'chatSlug = "delivery-slots"; setMode("chat"); selectChat("delivery-slots")'
+      - wait_for: "#aside-host .xterm-screen"
+      - wait: 2
+
+  # Story 4: review
+  - id: diff
+    theme: dark
+    note: gift-cards' branch diff, full page, with viewed marks and inline comments
+    steps:
+      - &gift-cards-diff
+        - wait_for: ".card"
+        - eval: 'chatSlug = "gift-cards"; setMode("chat"); selectChat("gift-cards")'
+        - wait_for: ".xterm-screen"
+        - key: d
+        - wait_for: ".diff-body table"
+        - key: D
+      - wait: 1
+
+  - id: since-prompt
+    theme: dark
+    note: gift-cards' diff scoped to what changed since a prompt
+    steps:
+      - *gift-cards-diff
+      - eval: '[...document.querySelectorAll("#diff-bar button")].find(b => b.textContent.trim() === "Since prompt").click()'
+      - wait: 2.5
+
+  - id: pr-threads
+    theme: dark
+    note: PR #38's scope with open review threads, a draft reply and a review comment
+    steps:
+      - *gift-cards-diff
+      - eval: '[...document.querySelectorAll("#diff-bar button")].find(b => b.textContent.trim() === "PR").click()'
+      - wait: 3
+
+  - id: review-draft
+    theme: dark
+    note: close-up of the drafts tray beside the chat, the GitHub review draft opened
+    steps:
+      - wait_for: ".card"
+      - eval: 'chatSlug = "gift-cards"; setMode("chat"); selectChat("gift-cards")'
+      - wait_for: ".xterm-screen"
+      - key: d
+      - wait_for: ".diff-body table"
+      - wait_for: "#diff-tray details"
+      - eval: 'document.querySelector("#diff-tray details").open = true'
+      - wait: 0.5
+    clip: "#diff-tray"
+
+  - id: prs
+    theme: dark
+    note: the PRs view with CI, review decisions, prerequisites and the checkout stack
+    steps:
+      - wait_for: ".card"
+      - key: p
+      - wait_for: ".prs-body .pr-row"
+      - wait: 1
+
+  - id: stack
+    theme: dark
+    note: close-up of checkout-flow's three-layer stack in the side panel's workspace
+    steps:
+      - wait_for: ".card"
+      - eval: 'chatSlug = "checkout-flow"; setMode("chat"); selectChat("checkout-flow")'
+      - wait_for: "#chat-side .rails"
+      - wait: 1
+    clip: { selector: "#chat-side .sheet-sec:has(.rails)", pad: 4 }
+
+  # Story 5: issues
+  - id: issues
+    theme: dark
+    note: the Issues view, every item's issue drafts
+    steps:
+      - wait_for: ".card"
+      - key: I
+      - wait_for: ".il-row"
+      - wait: 1
+
+  - id: issue-draft
+    theme: dark
+    note: allergen-filter's issues pane beside its chat, a revised draft open
+    steps:
+      - wait_for: ".card"
+      - eval: 'openIssuesFor(items.find(i => i.slug === "allergen-filter"))'
+      - wait_for: "#issues-body .iss-tab, #issues-body > *"
+      - wait: 2
+
+  - id: cleanup
+    theme: dark
+    note: croissant-preorders' worktree cleanup plan offering the merged spike
+    steps:
+      - wait_for: ".card"
+      - eval: 'cleanupModal("croissant-preorders")'
+      - wait_for: ".modal .modal-actions"
+      - wait: 1
+
+  # Story 6: away from the desk
+  - id: phone
+    theme: dark
+    note: the phone page, open notes unfolded
+    url: "{world}/phone/index.html"
+    viewport: 390x844
+    mobile: false
+    scale: 3
+    steps:
+      - wait_for: "details.notes"
+      - eval: 'document.querySelectorAll("details.notes").forEach(d => d.open = true)'
+
+  # Side panel
+  - id: side-panel
+    theme: dark
+    note: gift-cards' side panel scrolled to its status board, build progress checked
+    steps:
+      - wait_for: ".card"
+      - eval: 'chatSlug = "gift-cards"; setMode("chat"); selectChat("gift-cards")'
+      - wait_for: ".progress-box .act"
+      - click: ".progress-box .act"
+      - wait_for: ".progress-line"
+      - eval: '[...document.querySelectorAll("#chat-side h3")].find(h => h.textContent.startsWith("Board")).scrollIntoView()'
+      - wait: 3
+      - eval: 'document.querySelectorAll(".toast").forEach(t => t.remove())'
+
+  - id: batch-board
+    theme: dark
+    viewport: 1920x1600
+    note: close-up of gift-cards' status board with build progress and a blocked row
+    steps:
+      - wait_for: ".card"
+      - eval: 'chatSlug = "gift-cards"; setMode("chat"); selectChat("gift-cards")'
+      - wait_for: ".progress-box .act"
+      - click: ".progress-box .act"
+      - wait_for: ".progress-line"
+      - wait: 3
+      - eval: 'document.querySelectorAll(".toast").forEach(t => t.remove())'
+    clip: { selector: "#chat-side .sheet-sec:has(.progress-box)", pad: 4 }

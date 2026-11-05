@@ -1,0 +1,99 @@
+/* The diff pane's benchmark modal (js/benchmark.js); its body, callout and
+   error reuse branch-stats.css's bs-* look. */
+.modal.benchmark { width: min(960px, 100%); max-height: calc(100vh - 40px); display: flex; flex-direction: column; position: relative; }
+.modal.benchmark .modal-actions { flex-wrap: wrap; align-items: center; }
+.bm-btn-running { animation: pulse 1.6s ease-in-out infinite; }
+.bm-btn-busy { opacity: .55; }
+.bm-btn-done { position: relative; }
+.bm-btn-done::after { content: ""; position: absolute; right: 1px; bottom: 1px; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--good); box-shadow: 0 0 0 1.5px var(--surface); }
+
+.bm-state { font: 600 10.5px var(--mono); text-transform: uppercase; letter-spacing: .05em; padding: 2px 7px;
+  border-radius: 999px; margin-left: 6px; vertical-align: 2px; background: var(--surface-2); color: var(--muted); }
+.bm-state-done { background: var(--good-bg); color: var(--good); }
+.bm-state-failed { background: var(--crit-bg); color: var(--crit); }
+.bm-state-planning, .bm-state-measuring, .bm-state-verdict { background: var(--accent-soft); color: var(--accent-ink); }
+
+.bm-stages { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.bm-chip { font-size: 12px; border: 1px solid var(--border); background: var(--surface-2); border-radius: 999px; padding: 2px 9px; }
+.bm-chip code { color: var(--faint); font-size: 11px; }
+.bm-banner { background: var(--warn-bg); color: var(--warn); border-radius: var(--radius-sm); padding: 7px 11px;
+  font-size: 12.5px; margin: 0 0 10px; }
+.bm-warning { overflow-wrap: anywhere; }
+.bm-busy { font-size: 12.5px; color: var(--muted); margin: 0 0 12px; }
+.bm-busy small { color: var(--faint); }
+.bm-busy a { color: var(--accent); }
+.bm-runs { font: 12px var(--sans); color: var(--ink); background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 5px 8px; max-width: 320px; margin-right: auto; }
+.bm-note { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
+.bm-activity { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; margin: 0 0 10px;
+  font-family: var(--mono); min-width: 0; }
+.bm-activity span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bm-spin { display: inline-block; flex: none; width: 11px; height: 11px; border-radius: 50%; vertical-align: -1px;
+  border: 2px solid var(--accent-soft); border-top-color: var(--accent); animation: bm-spin .8s linear infinite; }
+@keyframes bm-spin { to { transform: rotate(360deg); } }
+
+.bm-models { display: flex; gap: 6px; }
+.bm-models .btn[aria-pressed="true"], .bm-log-tabs .btn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
+
+.bm-fold { margin: 0 0 12px; font-size: 12.5px; }
+.bm-fold summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+.bm-fold summary small { font-weight: 400; color: var(--faint); margin-left: 4px; }
+.bm-fold dl { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 12px; }
+.bm-fold dt { font-weight: 600; }
+.bm-fold dd { margin: 0; color: var(--muted); }
+.bm-request { margin: 8px 0 0; }
+.bm-log-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 6px; }
+.bm-log-tabs .btn { font: 11.5px var(--mono); padding: 2px 8px; }
+.bm-log { margin: 0; padding: 10px 14px; max-height: 320px; overflow: auto; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: var(--radius); font: 11.5px/1.45 var(--mono); white-space: pre; }
+
+.bm-table-wrap { overflow-x: auto; max-width: 100%; }
+.bs-body table.bm-table { width: 100%; margin-top: 0; }
+.bm-table td { vertical-align: middle; }
+.bm-table th { white-space: nowrap; }
+.bm-table th small { font-weight: 400; color: var(--faint); }
+.bm-sortable { cursor: pointer; user-select: none; }
+.bm-sortable:hover, .bm-sorted { color: var(--ink); }
+.bm-sort-mark { margin-left: 4px; color: var(--accent); font-size: 10px; }
+.bm-num { white-space: nowrap; }
+.bm-subject code { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.bm-case { font-weight: 600; }
+.bm-ids-col { white-space: nowrap; }
+.bm-ms { font: 13px var(--mono); }
+.bm-inf { font: 600 13px var(--mono); color: var(--crit); }
+.bm-inf small { font-weight: 400; font-size: 11px; }
+.bm-none { color: var(--faint); }
+.bm-q { color: var(--faint); font-family: var(--mono); }
+.bm-delta { font: 600 11px var(--mono); padding: 1px 6px; border-radius: 999px; }
+.bm-faster { background: var(--good-bg); color: var(--good); }
+.bm-slower { background: var(--crit-bg); color: var(--crit); }
+.bm-noise { background: var(--surface-2); color: var(--faint); }
+.bm-ids { font-weight: 700; }
+.bm-ids-same { color: var(--good); }
+.bm-ids-differ { color: var(--crit); }
+.bm-ids-na { color: var(--faint); }
+.bm-plan-btn { border: none; background: none; color: var(--accent); cursor: pointer; padding: 0 2px; font-size: 12px; }
+.bm-plan-btn:hover { color: var(--accent-ink); }
+
+.bm-speed-h { width: 150px; }
+.bm-bars { display: flex; flex-direction: column; gap: 2px; width: 140px; }
+.bm-bar { display: block; height: 5px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.bm-bar span { display: block; height: 100%; }
+.bm-bar-0 { background: var(--faint); }
+.bm-bar-1 { background: var(--accent); }
+.bm-bar-2 { background: var(--turn); }
+.bm-bar-3 { background: var(--good); }
+.bm-bar-inf { background: var(--crit); }
+
+.bm-plan { position: absolute; inset: 56px 20px 64px; display: flex; flex-direction: column; background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow-pop); z-index: 2; }
+.bm-plan-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--border);
+  font-size: 12.5px; }
+.bm-plan-head span { flex: 1; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bm-plan pre { margin: 0; padding: 10px 14px; overflow: auto; flex: 1; font: 11.5px/1.45 var(--mono); }
+
+@media (max-width: 600px) {
+  .bm-speed, .bm-speed-h { display: none; }
+  .bm-plan { inset: 48px 8px 60px; }
+}

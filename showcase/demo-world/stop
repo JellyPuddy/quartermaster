@@ -1,0 +1,10 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Stops the demo `qm gui` and kills the demo tmux server (its chats).
+require_relative "lib/demo_world"
+require_relative "lib/demo_world/gui"
+
+world = DemoWorld::World.new(DemoWorld::DEFAULT_ROOT)
+pid = DemoWorld::Gui.new(world).stop
+puts pid ? "stopped demo qm gui (pid #{pid}) and the #{world.tmux_socket} tmux server" : "no demo qm gui was running; killed the #{world.tmux_socket} tmux server if any"

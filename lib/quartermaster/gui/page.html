@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>qm — work items</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css"
+  integrity="sha384-tStR1zLfWgsiXCF3IgfB3lBa8KmBe/lG287CL9WCeKgQYcp1bjb4/+mwN6oti4Co" crossorigin="anonymous">
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"
+  integrity="sha384-J4qzUjBl1FxyLsl/kQPQIOeINsmp17OHYXDOMpMxlKX53ZfYsL+aWHpgArvOuof9" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"
+  integrity="sha384-XGqKrV8Jrukp1NITJbOEHwg01tNkuXr6uB6YEj69ebpYU3v7FvoGgEg23C1Gcehk" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-unicode11@0.8.0/lib/addon-unicode11.min.js"
+  integrity="sha384-ehPNtYMGsNR0D1D+wbENM9EGGpCtHqf7ZRGzp/jbVfiutFchCdDErbpnwTF2KlOT" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.11.1/highlight.min.js"
+  integrity="sha384-RH2xi4eIQ/gjtbs9fUXM68sLSi99C7ZWBRX1vDrVv6GQXRibxXLbwO2NGZB74MbU" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"
+  integrity="sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="/assets/css/base.css">
+<link rel="stylesheet" href="/assets/css/header.css">
+<link rel="stylesheet" href="/assets/css/board.css">
+<link rel="stylesheet" href="/assets/css/overlays.css">
+<link rel="stylesheet" href="/assets/css/chat.css">
+<link rel="stylesheet" href="/assets/css/diff.css">
+<link rel="stylesheet" href="/assets/css/pr-threads.css">
+<link rel="stylesheet" href="/assets/css/issues.css">
+<link rel="stylesheet" href="/assets/css/side-panel.css">
+<link rel="stylesheet" href="/assets/css/stacks.css">
+<link rel="stylesheet" href="/assets/css/diff-stack.css">
+<link rel="stylesheet" href="/assets/css/branch-stats.css">
+<link rel="stylesheet" href="/assets/css/benchmark.css">
+<link rel="stylesheet" href="/assets/css/prs.css">
+<link rel="stylesheet" href="/assets/css/issues-list.css">
+<link rel="stylesheet" href="/assets/css/issue-start.css">
+<link rel="stylesheet" href="/assets/css/responsive.css">
+</head>
+<body data-mode="board">
+<div class="app">
+  <header class="toolbar">
+    <div class="brand">qm<span class="cursor"></span><small>work items</small></div>
+
+    <div class="segmented" id="modes" role="group" aria-label="View" title="Switch view (v)">
+      <button data-mode="board" aria-pressed="true">Board</button>
+      <button data-mode="chat" aria-pressed="false">Chats <span id="chat-count"></span></button>
+      <button data-mode="prs" aria-pressed="false" title="Open PRs: yours, and those asking your review (p)">PRs <span id="prs-badge"></span></button>
+      <button data-mode="issues" aria-pressed="false" title="Issue drafts across all items (⇧I)">Issues <span id="issues-badge"></span></button>
+    </div>
+
+    <label class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="search" type="text" placeholder="Search…  ⏎ ask by meaning  ⇧⏎ transcripts" autocomplete="off"
+             title="Every word must match. Fuzzy on slug/title; also searches project, branches, description, notes, snapshots.&#10;Fields: p:project  b:branch  #issue  project#issue  is:live|stale|degrading|merged  -exclude&#10;Enter asks Claude to find items by meaning (on #1234 or project#1234 alone: starts work on that issue); Shift+Enter searches session transcripts for the text.">
+      <span class="ask-state" id="ask-state" hidden></span>
+      <button class="elsewhere" id="elsewhere" hidden></button>
+      <kbd>/</kbd>
+      <div class="search-menu" id="search-menu" hidden>
+        <button type="button" id="search-menu-issue" hidden></button>
+        <button type="button" id="search-menu-ask"></button>
+        <button type="button" id="search-menu-grep"></button>
+      </div>
+    </label>
+
+    <div class="segmented" id="filters" role="group" aria-label="State filter">
+      <button data-filter="all" aria-pressed="false">All</button>
+      <button data-filter="open" aria-pressed="true">Open</button>
+      <button data-filter="in_progress" aria-pressed="false">In progress</button>
+      <button data-filter="fridge" aria-pressed="false">Fridge</button>
+      <button data-filter="resolved" aria-pressed="false">Resolved</button>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="limits-chip" id="limits-chip" hidden></div>
+    <div class="pf-badge" id="pf-badge" title="the dev server" hidden></div>
+    <button class="btn icon" id="caffeinate" aria-pressed="false" aria-label="Keep the Mac awake">☕</button>
+
+    <button class="btn primary" id="new-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      New item <kbd style="background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.28);color:inherit">c</kbd>
+    </button>
+    <button class="btn icon" id="theme" title="Toggle theme" aria-label="Toggle theme">
+      <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    </button>
+    <button class="btn icon" id="header-more" title="More" aria-label="More">⋯</button>
+  </header>
+
+  <div class="board-wrap">
+    <main class="columns" id="columns"></main>
+    <aside class="inbox">
+      <div class="inbox-head">
+        <span class="col-title">Inbox</span>
+        <span class="col-count" id="inbox-count">0</span>
+        <span style="margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--faint)">unlinked sessions</span>
+      </div>
+      <div class="inbox-body" id="inbox-body"></div>
+    </aside>
+  </div>
+
+  <div class="chat-wrap">
+    <aside class="att-list">
+      <div class="inbox-head">
+        <span class="col-title">Chats</span>
+        <span class="col-count" id="att-count">0</span>
+        <span class="att-order">by whose move</span>
+        <button class="att-min" id="loose-new" type="button" title="New loose chat: no work item, in a project's main checkout">+</button>
+        <button class="att-min" id="att-min" type="button" title="Shrink the chats list to a strip of dots">‹</button>
+      </div>
+      <div class="att-body" id="att-body"></div>
+    </aside>
+    <main class="chat-main" id="chat-main">
+      <div id="chat-head-slot"></div>
+      <section class="chat-history" id="chat-history" hidden>
+        <div class="hist-bar" id="hist-bar"></div>
+        <div class="hist-scroll" id="hist-scroll"></div>
+      </section>
+      <div class="term-wrap" id="term-wrap" hidden>
+        <div class="term-bar" id="term-bar"></div>
+        <div class="term-host" id="term-host"></div>
+      </div>
+      <div class="chat-body" id="chat-body-slot"></div>
+      <section class="aside-drawer" id="aside-drawer" hidden>
+        <div class="term-bar" id="aside-bar"></div>
+        <div class="term-host" id="aside-host" hidden></div>
+        <div class="aside-start" id="aside-start" hidden></div>
+      </section>
+    </main>
+    <section class="diff-pane" id="diff-pane" hidden>
+      <div class="diff-bar" id="diff-bar"></div>
+      <div class="diff-main">
+        <nav class="diff-nav" id="diff-nav" aria-label="Changed files"></nav>
+        <div class="diff-body" id="diff-body"></div>
+      </div>
+      <div class="diff-tray" id="diff-tray" hidden></div>
+    </section>
+    <section class="diff-pane issues-pane" id="issues-pane" hidden>
+      <div class="diff-bar" id="issues-bar"></div>
+      <div class="iss-body" id="issues-body"></div>
+    </section>
+    <aside class="chat-side" id="chat-side"></aside>
+  </div>
+
+  <div class="prs-wrap">
+    <main class="prs-main">
+      <div class="prs-head">
+        <span class="col-title">Pull requests</span>
+        <span class="col-count" id="prs-count">0</span>
+        <span class="prs-fetched" id="prs-fetched"></span>
+        <button class="act" id="prs-refresh" title="Fetch the list from GitHub now">Refresh</button>
+      </div>
+      <div class="prs-body" id="prs-body"></div>
+    </main>
+  </div>
+
+  <div class="il-wrap">
+    <main class="il-main">
+      <div class="il-headbar">
+        <span class="col-title">Issue drafts</span>
+        <span class="col-count" id="issue-list-count">0</span>
+        <span class="il-error" id="issue-list-error"></span>
+      </div>
+      <div class="il-body" id="issue-list-body"></div>
+    </main>
+  </div>
+
+  <footer class="legend">
+    <span class="tag">keyboard-first · mouse optional</span>
+    <span class="grp"><kbd>v</kbd><span>board / chats</span></span>
+    <span class="grp"><kbd>p</kbd><span>PRs</span></span>
+    <span class="grp prs-only"><kbd>⏎</kbd><span>chat about it</span></span>
+    <span class="grp prs-only"><kbd>w</kbd><span>review</span></span>
+    <span class="grp prs-only"><kbd>o</kbd><span>GitHub</span></span>
+    <span class="grp"><kbd>⇧I</kbd><span>issues</span></span>
+    <span class="grp issues-only"><kbd>⏎</kbd><span>open in its chat</span></span>
+    <span class="grp issues-only"><kbd>s</kbd><span>start work (created)</span></span>
+    <span class="grp"><kbd>j</kbd><kbd>k</kbd><span>move</span></span>
+    <span class="grp board-only"><kbd>←</kbd><kbd>→</kbd><span>column</span></span>
+    <span class="grp chat-only"><kbd>z</kbd><span>snooze your turn</span></span>
+    <span class="grp chat-only"><kbd>q</kbd><span>aside</span></span>
+    <span class="grp chat-only"><kbd>⌘⇧⏎</kbd><span>maximize chat</span></span>
+    <span class="grp chat-only"><kbd>⌘⇧esc</kbd><span>leave the terminal</span></span>
+    <span class="grp chat-only"><kbd>d</kbd><span>diff</span></span>
+    <span class="grp chat-only"><kbd>⇧D</kbd><span>diff full (also ⌘⇧⏎ outside the terminal)</span></span>
+    <span class="grp chat-only"><kbd>⏎</kbd><span>into the terminal</span></span>
+    <span class="grp chat-only"><kbd>i</kbd><span>full detail</span></span>
+    <span class="grp board-only"><kbd>⏎</kbd><span>open chat</span></span>
+    <span class="grp item-key"><kbd>r</kbd><span>resume</span></span>
+    <span class="grp item-key"><kbd>n</kbd><span>new session</span></span>
+    <span class="grp item-key"><kbd>s</kbd><span>state</span></span>
+    <span class="grp item-key"><kbd>a</kbd><span>note</span></span>
+    <span class="grp item-key"><kbd>.</kbd><span>more</span></span>
+    <span class="grp board-only"><kbd>/</kbd><span>search</span></span>
+    <span class="grp board-only"><kbd>⏎</kbd><span>ask (in search)</span></span>
+    <span class="grp board-only"><kbd>⇧⏎</kbd><span>search transcripts</span></span>
+    <span class="grp"><kbd>c</kbd><span>new item</span></span>
+    <span class="grp"><kbd>esc</kbd><span>close</span></span>
+  </footer>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+"use strict";
+
+/* Model taxonomies, injected by the server at serve time — the page renders
+   the model, it never restates it. */
+const TAXONOMIES = /*__TAXONOMIES__*/ null;
+const STATES = TAXONOMIES.states;
+/* Minted per GUI start; a terminal WebSocket without it is refused. Refreshed from
+   every state build, so a tab from before a GUI restart reattaches. */
+let terminalToken = /*__TERMINAL_TOKEN__*/ null;
+</script>
+<script src="/assets/js/core.js"></script>
+<script src="/assets/js/server.js"></script>
+<script src="/assets/js/search.js"></script>
+<script src="/assets/js/board.js"></script>
+<script src="/assets/js/long-actions.js"></script>
+<script src="/assets/js/focus.js"></script>
+<script src="/assets/js/popovers.js"></script>
+<script src="/assets/js/detail.js"></script>
+<script src="/assets/js/stacks.js"></script>
+<script src="/assets/js/chat.js"></script>
+<script src="/assets/js/terminal.js"></script>
+<script src="/assets/js/aside.js"></script>
+<script src="/assets/js/history.js"></script>
+<script src="/assets/js/chat-main.js"></script>
+<script src="/assets/js/loose.js"></script>
+<script src="/assets/js/chat-side.js"></script>
+<script src="/assets/js/cleanup.js"></script>
+<script src="/assets/js/prs.js"></script>
+<script src="/assets/js/session-sheet.js"></script>
+<script src="/assets/js/modals.js"></script>
+<script src="/assets/js/notify.js"></script>
+<script src="/assets/js/limits.js"></script>
+<script src="/assets/js/anchors.js"></script>
+<script src="/assets/js/diff.js"></script>
+<script src="/assets/js/diff-commits.js"></script>
+<script src="/assets/js/diff-nav.js"></script>
+<script src="/assets/js/diff-file.js"></script>
+<script src="/assets/js/diff-comments.js"></script>
+<script src="/assets/js/diff-annotations.js"></script>
+<script src="/assets/js/diff-stack.js"></script>
+<script src="/assets/js/branch-stats.js"></script>
+<script src="/assets/js/benchmark.js"></script>
+<script src="/assets/js/benchmark-table.js"></script>
+<script src="/assets/js/pr-threads.js"></script>
+<script src="/assets/js/drafts.js"></script>
+<script src="/assets/js/review.js"></script>
+<script src="/assets/js/issues.js"></script>
+<script src="/assets/js/issues-list.js"></script>
+<script src="/assets/js/issue-start.js"></script>
+<script src="/assets/js/transcript-search.js"></script>
+<script src="/assets/js/events.js"></script>
+</body>
+</html>

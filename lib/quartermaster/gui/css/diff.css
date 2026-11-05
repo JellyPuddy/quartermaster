@@ -1,0 +1,394 @@
+/* ------- diff pane: between the chat's terminal and its side panel ------- */
+.diff-pane {
+  flex: 0 0 48%; min-width: 360px; display: flex; flex-direction: column; min-height: 0;
+  border-left: 1px solid var(--border); background: var(--surface);
+}
+.diff-pane[hidden] { display: none; }
+/* The side panel steps aside while the diff is open. */
+body.diff-open .chat-side { display: none; }
+/* The terminal maximized (⌘⇧⏎) hides the diff too… */
+body[data-mode="chat"].pane-max .diff-pane { display: none; }
+/* …and the diff's own fullscreen hides everything else. */
+body[data-mode="chat"].diff-max .toolbar, body[data-mode="chat"].diff-max .legend,
+body[data-mode="chat"].diff-max .att-list, body[data-mode="chat"].diff-max .chat-main,
+body[data-mode="chat"].diff-max .chat-side { display: none; }
+body[data-mode="chat"].diff-max .diff-pane { display: flex; flex: 1 1 auto; border-left: none; }
+
+.act.diff-toggle[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--ink); }
+
+.diff-bar {
+  flex: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 12px;
+  border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 11px; color: var(--muted);
+}
+#diff-bar { flex-direction: column; align-items: stretch; gap: 6px; }
+.diff-bar-row { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; min-width: 0; }
+.diff-bar-row select { min-width: 0; flex: 0 1 auto; }
+.diff-bar-pane { display: inline-flex; gap: 6px; margin-left: auto; flex: none; }
+#diff-bar .grow { white-space: normal; overflow: visible; flex-basis: 220px; }
+.diff-bar .tag { color: var(--accent); font-weight: 700; letter-spacing: .06em; }
+.diff-bar .grow { flex: 1 1 160px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diff-bar button, .diff-bar select {
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink); font-family: var(--mono);
+  font-size: 10.5px; border-radius: 5px; padding: 2px 7px; cursor: pointer;
+}
+.diff-bar button:hover { border-color: var(--accent-line); }
+.diff-bar select {
+  max-width: 220px; appearance: none; padding-right: 20px; text-overflow: ellipsis;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 11px) 55%, calc(100% - 7px) 55%; background-size: 4px 4px; background-repeat: no-repeat;
+}
+.diff-bar select:hover { border-color: var(--accent-line); }
+.diff-bar .grow a { color: var(--accent); text-decoration: none; }
+.diff-bar .grow a:hover { text-decoration: underline; }
+.diff-bar button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); }
+.diff-scope { display: inline-flex; }
+.diff-scope button { border-radius: 0; }
+.diff-scope button:first-child { border-radius: 5px 0 0 5px; }
+.diff-scope button + button { border-left: none; }
+.diff-scope button:last-child { border-radius: 0 5px 5px 0; }
+.diff-scope button:disabled { opacity: .45; cursor: not-allowed; }
+.d-busy { color: var(--faint); }
+.d-add { color: var(--good); }
+.d-del { color: var(--crit); }
+
+.diff-main { flex: 1 1 auto; min-height: 0; display: flex; }
+.diff-body { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; padding: 10px 12px 40px; }
+/* The previous diff while the next one loads: dimmed only once the wait is noticeable. */
+.diff-body.d-stale { opacity: .55; transition: opacity .15s .2s; }
+.diff-empty { margin: 40px auto; text-align: center; color: var(--faint); font-family: var(--mono); font-size: 12px; }
+.diff-note { padding: 8px 10px; font-family: var(--mono); font-size: 11px; color: var(--faint); }
+
+.diff-file { border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 10px; background: var(--surface); }
+.diff-file > summary {
+  cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink); background: var(--surface-2);
+  border-radius: var(--radius-sm); position: sticky; top: -10px; z-index: 1;
+}
+.diff-file[open] > summary { border-bottom: 1px solid var(--border); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+/* Viewed: the header dims and the file folds (it can still be opened). */
+.diff-file.viewed > summary { color: var(--muted); }
+.diff-file.viewed > summary .d-path { opacity: .75; }
+.d-viewed {
+  flex: none; display: inline-flex; align-items: center; gap: 5px; margin-left: 2px; padding: 1px 7px;
+  border: 1px solid var(--border-strong); border-radius: 5px; background: var(--surface); color: var(--muted);
+  font-family: var(--mono); font-size: 10.5px; cursor: pointer;
+}
+.d-viewed:hover { border-color: var(--accent-line); color: var(--ink); }
+.d-viewed-box {
+  width: 10px; height: 10px; border: 1px solid var(--border-strong); border-radius: 2px; background: var(--surface);
+  display: inline-flex; align-items: center; justify-content: center; font-size: 9px; line-height: 1;
+}
+.d-viewed[aria-checked="true"] { color: var(--good); border-color: var(--good); background: var(--good-bg); }
+.d-viewed[aria-checked="true"] .d-viewed-box { border-color: var(--good); background: var(--good); color: var(--surface); }
+.d-viewed[aria-checked="true"] .d-viewed-box::after { content: "✓"; }
+.d-viewed-count { white-space: nowrap; }
+
+/* The changed-files column: only in the diff's fullscreen, and only with
+   room for it; elsewhere the bar's jump menu does its job. */
+.diff-nav {
+  display: none; flex: 0 0 280px; min-height: 0; overflow: auto; padding: 6px 0 40px;
+  border-right: 1px solid var(--border); background: var(--surface-2); font-family: var(--mono); font-size: 11px;
+}
+.diff-nav[hidden] { display: none !important; }
+.dn-head { display: flex; gap: 8px; justify-content: space-between; padding: 4px 12px 8px; color: var(--muted); }
+.dn-row {
+  display: flex; align-items: center; gap: 6px; padding: 3px 12px 3px 10px; cursor: pointer; color: var(--ink);
+  border-left: 2px solid transparent;
+}
+.dn-row:hover { background: var(--accent-soft); }
+.dn-row.cur { border-left-color: var(--accent); background: var(--accent-soft); }
+.dn-row.viewed { color: var(--faint); }
+.dn-check { flex: none; width: 10px; color: var(--good); font-size: 10px; }
+.dn-row.viewed .dn-check::after { content: "✓"; }
+.dn-path { flex: 1 1 0; min-width: 0; display: flex; gap: 6px; align-items: baseline; overflow: hidden; white-space: nowrap; }
+.dn-name { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.dn-dir { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--faint); }
+.dn-unc { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
+.dn-row .d-stat { font-size: 10px; }
+@media (min-width: 721px) {
+  body[data-mode="chat"].diff-max .diff-nav { display: block; }
+  body[data-mode="chat"].diff-max .diff-jump { display: none; }
+}
+
+.d-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d-stat { flex: none; }
+.d-status { flex: none; width: 14px; text-align: center; font-weight: 700; color: var(--warn); }
+.d-status.added { color: var(--good); }
+.d-status.deleted { color: var(--crit); }
+.d-status.renamed { color: var(--accent); }
+
+.diff-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; }
+.diff-table td { padding: 0 8px; vertical-align: top; }
+.diff-table .d-num {
+  width: 1%; min-width: 34px; text-align: right; color: var(--faint); user-select: none; white-space: nowrap;
+  border-right: 1px solid var(--border); font-size: 10.5px;
+}
+.diff-table .d-code { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
+.diff-table .d-sign { display: inline-block; width: 1.4ch; color: var(--faint); user-select: none; }
+.diff-table tr.add { background: var(--good-bg); }
+.diff-table tr.add .d-sign { color: var(--good); }
+.diff-table tr.del { background: var(--crit-bg); }
+.diff-table tr.del .d-sign { color: var(--crit); }
+/* Branch scope: a bar in the old-number gutter marks a line not committed yet
+   (amber, apart from the +/- green and red), badges a file with such lines. */
+.diff-table tr.unc td.d-num:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+.d-unc-legend { flex: none; display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+.d-unc-swatch { display: inline-block; width: 3px; height: 12px; background: var(--warn); border-radius: 1px; }
+.d-unc-badge {
+  flex: none; font-size: 10px; padding: 0 6px; border-radius: 9px; color: var(--warn);
+  background: var(--warn-bg); border: 1px solid var(--warn);
+}
+.d-unc-badge.partly { background: transparent; border-style: dashed; }
+/* Old / New: one side's code. The other side's lines, the rows under them
+   (data-side), its number column and the sign column go; changed lines lose
+   the row tint for a bar on the right of the number gutter. */
+.diff-body.d-only-new .diff-table tr.d-line.del, .diff-body.d-only-new .diff-table tr[data-side="old"],
+.diff-body.d-only-old .diff-table tr.d-line.add, .diff-body.d-only-old .diff-table tr[data-side="new"],
+.diff-body.d-only-new .diff-table td.d-num:first-child,
+.diff-body.d-only-old .diff-table td.d-num:nth-child(2),
+.diff-body.d-only-new .diff-table .d-sign, .diff-body.d-only-old .diff-table .d-sign { display: none; }
+.diff-body.d-only-new .diff-table tr.add, .diff-body.d-only-old .diff-table tr.del { background: none; }
+.diff-body.d-only-new .diff-table tr.add td.d-num:nth-child(2) { box-shadow: inset -3px 0 0 var(--good); }
+.diff-body.d-only-old .diff-table tr.del td.d-num:first-child { box-shadow: inset -3px 0 0 var(--crit); }
+/* The uncommitted bar moves to the number column still shown. */
+.diff-body.d-only-new .diff-table tr.unc td.d-num:nth-child(2) { box-shadow: inset 3px 0 0 var(--warn); }
+.diff-body.d-only-new .diff-table tr.unc.add td.d-num:nth-child(2) { box-shadow: inset 3px 0 0 var(--warn), inset -3px 0 0 var(--good); }
+.diff-body.d-only-old .diff-table tr.unc.del td.d-num:first-child { box-shadow: inset 3px 0 0 var(--warn), inset -3px 0 0 var(--crit); }
+.diff-table tr.d-hunk td { background: var(--accent-soft); color: var(--muted); padding-top: 2px; padding-bottom: 2px; }
+
+/* ------- comments on diff lines ------- */
+.diff-table tr.d-line { cursor: pointer; }
+.diff-table tr.d-line:hover .d-num { color: var(--accent); background: var(--accent-soft); }
+.diff-table tr.d-comment td { background: var(--surface-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.diff-table .d-comment-cell { padding: 6px 8px; font-family: var(--sans); font-size: 12.5px; }
+.d-comment-text {
+  white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); cursor: text;
+  border-left: 3px solid var(--accent); padding: 2px 8px;
+}
+.d-comment-input {
+  width: 100%; box-sizing: border-box; resize: vertical; font-family: var(--sans); font-size: 12.5px;
+  color: var(--ink); background: var(--surface); border: 1px solid var(--accent-line); border-radius: 5px; padding: 6px 8px;
+}
+.d-comment-acts { display: flex; gap: 6px; margin-top: 6px; }
+.d-comment-acts button, .diff-tray-btns button {
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink); font-family: var(--mono);
+  font-size: 10.5px; border-radius: 5px; padding: 3px 9px; cursor: pointer;
+}
+.d-comment-acts button.primary, .diff-tray-btns button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.d-comment-acts button.danger { color: var(--crit); }
+.diff-tray-btns button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* GitHub review drafts (PR scope) wear --good, chat drafts the accent. */
+.d-comment-acts button.primary.gh, .dt-group-btns button.primary.gh { background: var(--good); border-color: var(--good); color: #fff; }
+.diff-table tr.d-comment.gh .d-comment-text { border-left-color: var(--good); }
+.d-comment-tag { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; font-family: var(--mono); font-size: 10.5px; color: var(--accent); }
+.d-comment-tag.gh { color: var(--good); }
+.d-comment-refusal { flex: 1 1 100%; color: var(--warn); font-size: 12px; }
+.d-comment-acts { flex-wrap: wrap; }
+.dt-move {
+  border: 1px solid var(--accent-line); background: none; color: var(--accent); font-family: var(--mono);
+  font-size: 10px; border-radius: 9px; padding: 0 7px; cursor: pointer; flex: none;
+}
+.dt-move.gh { border-color: var(--good); color: var(--good); }
+.dt-move:hover { background: var(--surface-2); }
+.dt-entry.gh { border-left: 3px solid var(--good); }
+.dt-entry.gh .dt-where { color: var(--good); }
+.dt-group.gh { display: flex; align-items: center; gap: 8px; color: var(--good); text-transform: none; letter-spacing: 0; font-size: 11px; font-weight: 600; }
+.dt-group-btns { margin-left: auto; display: flex; gap: 6px; }
+.dt-group-btns button {
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink); font-family: var(--mono);
+  font-size: 10.5px; border-radius: 5px; padding: 2px 8px; cursor: pointer; font-weight: 400;
+}
+/* A range of lines: the one being picked, and a saved range draft's. */
+.diff-table tr.d-range-sel td.d-code, .diff-table tr.d-in-range td.d-code { box-shadow: inset 3px 0 0 var(--accent-line); }
+.diff-table tr.d-range-sel td.d-num { background: var(--accent-soft); }
+
+/* ------- the drafts tray: diff comments (accent) and page annotations (violet) ------- */
+/* Violet, not orange: --turn already means "your turn" in this GUI. */
+:root { --annot: #8A47C9; --annot-bg: rgba(138,71,201,.10); --annot-line: rgba(138,71,201,.38); }
+@media (prefers-color-scheme: dark) {
+  :root { --annot: #C79BFF; --annot-bg: rgba(199,155,255,.12); --annot-line: rgba(199,155,255,.42); }
+}
+:root[data-theme="light"] { --annot: #8A47C9; --annot-bg: rgba(138,71,201,.10); --annot-line: rgba(138,71,201,.38); }
+:root[data-theme="dark"] { --annot: #C79BFF; --annot-bg: rgba(199,155,255,.12); --annot-line: rgba(199,155,255,.42); }
+
+.diff-tray {
+  flex: none; display: flex; align-items: flex-start; gap: 8px; padding: 6px 12px; max-height: 40%; overflow: auto;
+  border-top: 1px solid var(--border); background: var(--surface-2); font-family: var(--mono); font-size: 11px;
+}
+.diff-tray[hidden] { display: none; }
+.dt-list { flex: 1 1 auto; min-width: 0; color: var(--muted); }
+.dt-list > summary { cursor: pointer; padding: 3px 0; color: var(--ink); }
+.diff-tray-btns { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.pg-icon { width: 13px; height: 13px; flex: none; color: var(--annot); vertical-align: -2px; }
+
+.dt-entry {
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+  padding: 4px 8px; margin: 4px 0; font-family: var(--sans); font-size: 12.5px;
+}
+.dt-entry.comment { border-left: 3px solid var(--accent); }
+.dt-entry.annot { border-left: 3px solid var(--annot); }
+.dt-top { display: flex; align-items: center; gap: 6px; min-width: 0; font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.dt-top .grow { flex: 1; }
+.dt-where { flex: 0 1 auto; min-width: 0; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt-entry.comment .dt-where { cursor: pointer; }
+.dt-entry.comment .dt-where:hover { text-decoration: underline; }
+.dt-where.annot { color: var(--annot); }
+.dt-page { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt-x { border: none; background: none; color: var(--faint); cursor: pointer; font-size: 12px; padding: 0 3px; border-radius: 4px; }
+.dt-x:hover { color: var(--ink); background: var(--surface-2); }
+.dt-x.del:hover { color: var(--crit); }
+.dt-comment { margin-top: 1px; color: var(--ink); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
+.dt-details { margin-top: 4px; font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+.dt-details > summary { cursor: pointer; color: var(--faint); list-style: none; }
+.dt-details > summary::-webkit-details-marker { display: none; }
+.dt-details > summary::before { content: "▸ "; }
+.dt-details[open] > summary::before { content: "▾ "; }
+.dt-details dl { margin: 4px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; }
+.dt-details dt { color: var(--faint); }
+.dt-details dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.dt-edit textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; font: 12.5px/1.45 var(--sans); color: var(--ink);
+  background: var(--surface); border: 1px solid var(--accent-line); border-radius: 5px; padding: 5px 7px; margin-top: 4px;
+}
+
+/* The chat header's "N drafts" chip beside Diff: violet while annotations wait. */
+.act.drafts-chip { color: var(--annot); background: var(--annot-bg); border-color: var(--annot-line); font-family: var(--mono); font-size: 10.5px; }
+.act.drafts-chip.comments-only { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-line); }
+
+/* ------- annotations anchored in the diff: a violet row, a header badge ------- */
+.diff-table tr.d-annot td { background: var(--annot-bg); border-top: 1px solid var(--annot-line); border-bottom: 1px solid var(--annot-line); }
+.diff-table .d-annot-cell { padding: 5px 8px; font-family: var(--sans); font-size: 12.5px; border-left: 3px solid var(--annot); }
+.d-annot-top { display: flex; align-items: center; gap: 6px; min-width: 0; font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.d-annot-tag { color: var(--annot); font-weight: 600; }
+.d-annot-text { margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); cursor: text; }
+.d-comment-input.annot, .d-annot-cell .dt-edit textarea { border-color: var(--annot-line); }
+.d-comment-acts button.primary.annot { background: var(--annot); border-color: var(--annot); color: #fff; }
+.d-annot-badge {
+  display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 0 6px; border-radius: 9px; cursor: pointer;
+  font-family: var(--mono); font-size: 10px; color: var(--annot); background: var(--annot-bg); border: 1px solid var(--annot-line);
+}
+.d-annot-badge:hover { border-color: var(--annot); }
+.dt-entry.anchored .dt-top { gap: 4px; }
+.dt-jump { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.dt-jump .dt-where { flex: none; }
+.dt-jump:hover .dt-line { text-decoration: underline; }
+.dt-line { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--sans); font-size: 12px; color: var(--ink); }
+@keyframes d-flash { from { box-shadow: inset 0 0 0 2px var(--annot); background-color: var(--annot-bg); } to { box-shadow: inset 0 0 0 2px transparent; } }
+.d-flash { animation: d-flash 1.5s ease-out; }
+
+/* Syntax colour (highlight.js classes), tuned to read on the add/del tints in
+   both themes. */
+:root {
+  --syn-kw: #8A2FA8; --syn-str: #0D6584; --syn-num: #A85300; --syn-com: #7A8293;
+  --syn-fn: #3550BF; --syn-type: #0F7363; --syn-attr: #A2385A; --syn-meta: #5D6577;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --syn-kw: #D59CF2; --syn-str: #82C9E6; --syn-num: #F0A868; --syn-com: #7F8AA0;
+    --syn-fn: #9DB1FF; --syn-type: #70D2BE; --syn-attr: #F293B0; --syn-meta: #9AA3B4;
+  }
+}
+:root[data-theme="light"] {
+  --syn-kw: #8A2FA8; --syn-str: #0D6584; --syn-num: #A85300; --syn-com: #7A8293;
+  --syn-fn: #3550BF; --syn-type: #0F7363; --syn-attr: #A2385A; --syn-meta: #5D6577;
+}
+:root[data-theme="dark"] {
+  --syn-kw: #D59CF2; --syn-str: #82C9E6; --syn-num: #F0A868; --syn-com: #7F8AA0;
+  --syn-fn: #9DB1FF; --syn-type: #70D2BE; --syn-attr: #F293B0; --syn-meta: #9AA3B4;
+}
+.d-code .hljs-keyword, .d-code .hljs-literal, .d-code .hljs-selector-tag, .d-code .hljs-bullet,
+.d-code .hljs-name { color: var(--syn-kw); }
+.d-code .hljs-string, .d-code .hljs-regexp, .d-code .hljs-symbol, .d-code .hljs-char,
+.d-code .hljs-link { color: var(--syn-str); }
+.d-code .hljs-number { color: var(--syn-num); }
+.d-code .hljs-comment, .d-code .hljs-quote { color: var(--syn-com); font-style: italic; }
+.d-code .hljs-title, .d-code .hljs-section { color: var(--syn-fn); }
+.d-code .hljs-type, .d-code .hljs-built_in, .d-code .hljs-title.class_ { color: var(--syn-type); }
+.d-code .hljs-attr, .d-code .hljs-attribute, .d-code .hljs-variable, .d-code .hljs-template-variable,
+.d-code .hljs-property, .d-code .hljs-selector-class, .d-code .hljs-selector-id { color: var(--syn-attr); }
+.d-code .hljs-meta, .d-code .hljs-doctag, .d-code .hljs-selector-pseudo { color: var(--syn-meta); }
+.d-code .hljs-params { color: inherit; }
+.d-code .hljs-subst { color: var(--ink); }
+.d-code .hljs-section, .d-code .hljs-strong { font-weight: 700; }
+.d-code .hljs-emphasis { font-style: italic; }
+
+/* Commits scope: the branch's commits, oldest first; one or a contiguous run selected. */
+.diff-commits { border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 10px; background: var(--surface); }
+.diff-commits > summary {
+  cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink); background: var(--surface-2); border-radius: var(--radius-sm);
+}
+.diff-commits[open] > summary { border-bottom: 1px solid var(--border); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+.diff-clear {
+  margin-left: auto; border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink);
+  font-family: var(--mono); font-size: 10.5px; border-radius: 5px; padding: 1px 7px; cursor: pointer;
+}
+.diff-clear:hover { border-color: var(--accent-line); }
+.diff-empty .diff-clear { margin: 10px auto 0; }
+.diff-commit-list { max-height: 30vh; overflow: auto; }
+.diff-commit-row {
+  display: flex; align-items: center; gap: 8px; padding: 3px 10px; font-family: var(--mono); font-size: 11px;
+  cursor: pointer; color: var(--muted); user-select: none;
+}
+.diff-commit-row:hover { background: var(--accent-soft); color: var(--ink); }
+.diff-commit-row.sel { background: var(--accent-soft); color: var(--ink); box-shadow: inset 2px 0 0 var(--accent); }
+.d-sha { flex: none; color: var(--accent); }
+.d-subject { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d-when { flex: none; color: var(--faint); }
+.d-commit-stat { flex: none; font-variant-numeric: tabular-nums; }
+
+/* The selected commits' messages, above the files. */
+.diff-messages { border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 10px; background: var(--surface); }
+.diff-messages > summary {
+  cursor: pointer; padding: 6px 10px; font-family: var(--mono); font-size: 11.5px; color: var(--ink);
+  background: var(--surface-2); border-radius: var(--radius-sm);
+}
+.diff-messages[open] > summary { border-bottom: 1px solid var(--border); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+.diff-message + .diff-message { border-top: 1px solid var(--border); }
+.d-msg-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px 0; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.d-msg-head .d-when { margin-left: auto; }
+.d-msg-body {
+  margin: 0; padding: 4px 10px 8px; max-height: 30vh; overflow: auto; font-family: var(--mono); font-size: 12px;
+  color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+/* After a single commit's last file: step to the next commit. */
+.diff-next-commit {
+  display: flex; align-items: center; gap: 8px; width: 100%; margin: 12px 0 4px; padding: 8px 12px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface);
+  color: var(--ink); font-family: var(--mono); font-size: 11.5px; cursor: pointer; text-align: left;
+}
+.diff-next-commit:hover { border-color: var(--accent-line); background: var(--accent-soft); }
+
+/* Outdated review drafts (D10): a card at the top of their file, or in the tray. */
+.d-outdated { margin: 6px 8px; padding: 8px 10px; border: 1px solid var(--warn); border-left-width: 3px; border-radius: var(--radius-sm); background: var(--warn-bg); font-size: 12px; }
+.d-outdated-head { color: var(--ink); overflow-wrap: anywhere; }
+.d-outdated-head b { color: var(--warn); }
+.d-outdated-code { margin: 6px 0; font-family: var(--mono); font-size: 11.5px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 0; overflow-x: auto; }
+.d-outdated-line { white-space: pre; padding: 0 8px; color: var(--muted); }
+.d-outdated-line.add { background: var(--good-bg); }
+.d-outdated-line.del { background: var(--crit-bg); }
+.d-outdated-line.at { color: var(--ink); font-weight: 600; box-shadow: inset 3px 0 0 var(--warn); }
+.d-outdated-comment { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0; color: var(--ink); }
+.dt-entry .d-outdated { margin: 6px 0 0; }
+.dt-tag { flex: none; padding: 0 6px; border-radius: 9px; font-size: 10.5px; border: 1px solid currentColor; }
+.dt-tag.outdated { color: var(--warn); }
+.dt-tag.failed { color: var(--crit); }
+.dt-failed { margin-top: 4px; color: var(--crit); font-size: 11.5px; overflow-wrap: anywhere; }
+body.diff-placing #diff-body tr.d-line { cursor: crosshair; }
+body.diff-placing #diff-body tr.d-line:hover td.d-code { box-shadow: inset 3px 0 0 var(--good); }
+.review-confirm { margin: 12px 0; padding-left: 18px; line-height: 1.5; }
+.review-confirm-link a { color: var(--accent); }
+
+/* Context expanding: the control rows over hidden unchanged lines, and the
+   lines they reveal (context, a shade apart from the diff's own). */
+.diff-table tr.d-expand td { background: var(--accent-soft); padding-top: 1px; padding-bottom: 1px; }
+.diff-table .d-expand-cell { font-size: 10.5px; color: var(--faint); }
+.d-expand-btn {
+  border: 1px solid var(--accent-line); background: var(--surface); color: var(--accent); font-family: var(--mono);
+  font-size: 10px; border-radius: 5px; padding: 0 6px; margin-right: 6px; cursor: pointer;
+}
+.d-expand-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+.d-expand-btn:disabled { opacity: .5; cursor: progress; }
+.diff-table tr.d-expanded { background: var(--surface-2); }

@@ -1,0 +1,230 @@
+<title>{{PAGE_TITLE}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: issue list on the left, one issue draft at a time on the right; stacks on phones */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --fg: #1d232b;
+  --muted: #5d6875;
+  --line: #dde2e8;
+  --accent: #2f5fa7;
+  --accent-soft: #e6eef9;
+  --bug: #a63d32;
+  --bug-soft: #fbe9e6;
+  --changed: #9a5b00;
+  --changed-soft: #fff1da;
+  --code-bg: #eef1f5;
+  --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161b; --surface: #1a2027; --fg: #e3e8ee; --muted: #9aa5b1; --line: #2c343e;
+    --accent: #7fa8e6; --accent-soft: #1f2d42; --bug: #f08a7e; --bug-soft: #3a1d1a;
+    --changed: #f0b45c; --changed-soft: #3a2a12; --code-bg: #232a33;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161b; --surface: #1a2027; --fg: #e3e8ee; --muted: #9aa5b1; --line: #2c343e;
+  --accent: #7fa8e6; --accent-soft: #1f2d42; --bug: #f08a7e; --bug-soft: #3a1d1a;
+  --changed: #f0b45c; --changed-soft: #3a2a12; --code-bg: #232a33;
+  color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 16px; line-height: 1.55; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 24px 48px; display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 24px; align-items: start; }
+header.top { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; }
+header.top h1 { margin: 0; font-size: 1.5rem; text-wrap: balance; }
+header.top p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+nav { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); display: flex; flex-direction: column; gap: 6px; }
+nav .group { font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-top: 10px; }
+nav button { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: 2rem minmax(0, 1fr); gap: 2px 8px; padding: 10px 12px; border-radius: 8px; border: 1px solid transparent; }
+nav button:hover { background: var(--surface); border-color: var(--line); }
+nav button[aria-current="true"] { background: var(--surface); border-color: var(--accent); }
+nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+nav .num { font-family: var(--font-mono); font-weight: 600; color: var(--accent); grid-row: span 2; }
+nav .t { font-weight: 600; font-size: 0.95rem; line-height: 1.3; }
+.meta { font-size: 0.85rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.pill { font-size: 0.72rem; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.pill.bug { background: var(--bug-soft); color: var(--bug); }
+.pill.changed { background: var(--changed-soft); color: var(--changed); }
+main { min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px 24px 28px; }
+.issue-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 14px; margin-bottom: 8px; }
+.issue-head .title { font-family: var(--font-mono); font-size: 0.95rem; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.issue-head .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { font: inherit; font-size: 0.9rem; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.change-note { background: var(--changed-soft); color: var(--fg); border-radius: 6px; padding: 8px 12px; font-size: 0.9rem; margin: 12px 0 4px; }
+.change-note b { color: var(--changed); }
+.md { max-width: 78ch; }
+.md h1 { font-size: 1.15rem; margin: 1.4em 0 0.4em; }
+.md h2 { font-size: 1.05rem; margin: 1.2em 0 0.3em; }
+.md p, .md ul, .md ol { margin: 0.5em 0; }
+.md li { margin: 0.2em 0; }
+.md code { font-family: var(--font-mono); font-size: 0.85em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.md pre { background: var(--code-bg); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
+.md pre code { background: none; padding: 0; }
+.md a { color: var(--accent); }
+.md .table-scroll { overflow-x: auto; margin: 0.8em 0; }
+.md table { border-collapse: collapse; font-size: 0.88rem; }
+.md th, .md td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+.md th { background: var(--bg); }
+.md input[type="checkbox"] { margin-right: 6px; }
+pre.raw { white-space: pre-wrap; font-family: var(--font-mono); font-size: 0.85rem; background: var(--code-bg); padding: 12px; border-radius: 6px; overflow-x: auto; }
+@media (max-width: 820px) {
+  .wrap { grid-template-columns: minmax(0, 1fr); }
+  nav { position: static; }
+  main { padding: 16px; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>{{HEADING}}</h1>
+    <p>Draft for review. Not created on GitHub yet. Dependencies between issues are linked on creation, not written in the text.</p>
+  </header>
+  <nav id="nav" aria-label="Issues"></nav>
+  <main id="main" aria-live="polite"></main>
+</div>
+
+<!--
+One block per issue, in display order. The block body is the exact issue body (GitHub markdown).
+  data-title   the GitHub issue title, e.g. "AAU I can do the thing"
+  data-kind    "feature" or "bug"
+  data-group   nav section the issue is listed under; sections appear in first-seen order
+  data-parent  parent issue (epic) number, linked on creation, e.g. "120"; "" for none
+  data-deps    issues this one depends on, linked as blockers on creation ("—" for none); shown on the page, not copied
+  data-change  what changed in the latest revision; "" when this issue did not change in it
+-->
+<script type="text/markdown" data-title="{{ISSUE_TITLE}}" data-kind="feature" data-group="{{GROUP}}" data-parent="{{PARENT}}" data-deps="—" data-change="">
+{{ISSUE_BODY}}
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script>
+(function () {
+  const issues = Array.from(document.querySelectorAll('script[type="text/markdown"]')).map((el, i) => ({
+    n: i + 1,
+    title: el.dataset.title,
+    kind: el.dataset.kind === 'bug' ? 'bug' : 'feature',
+    group: el.dataset.group || 'Issues',
+    parent: el.dataset.parent || '',
+    deps: el.dataset.deps || '—',
+    change: el.dataset.change || '',
+    md: el.textContent.replace(/^\n+/, '').replace(/\s+$/, '') + '\n',
+  }));
+
+  const nav = document.getElementById('nav');
+  const main = document.getElementById('main');
+  const storageKey = 'issue-drafts-selected';
+
+  function readStored() {
+    try { return parseInt(localStorage.getItem(storageKey) || '', 10); } catch (e) { return NaN; }
+  }
+  function store(n) {
+    try { localStorage.setItem(storageKey, String(n)); } catch (e) { /* storage unavailable */ }
+  }
+
+  function renderMarkdown(md) {
+    if (window.marked && typeof window.marked.parse === 'function') {
+      const holder = document.createElement('div');
+      holder.innerHTML = window.marked.parse(md, { gfm: true });
+      holder.querySelectorAll('table').forEach((t) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'table-scroll';
+        t.replaceWith(wrap);
+        wrap.appendChild(t);
+      });
+      holder.querySelectorAll('a').forEach((a) => { a.target = '_blank'; a.rel = 'noopener'; });
+      holder.querySelectorAll('input[type="checkbox"]').forEach((c) => { c.disabled = true; });
+      return holder;
+    }
+    const pre = document.createElement('pre');
+    pre.className = 'raw';
+    pre.textContent = md;
+    return pre;
+  }
+
+  function copyText(text, button) {
+    const label = button.textContent;
+    const done = () => { button.textContent = 'Copied'; setTimeout(() => { button.textContent = label; }, 1500); };
+    const fallback = () => {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) { button.textContent = 'Select and copy manually'; }
+      ta.remove();
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function show(n) {
+    const issue = issues.find((x) => x.n === n) || issues[0];
+    if (!issue) return;
+    store(issue.n);
+    nav.querySelectorAll('button').forEach((b) => b.setAttribute('aria-current', String(Number(b.dataset.n) === issue.n)));
+
+    main.innerHTML = '';
+    const head = el('div', 'issue-head');
+    const actions = el('div', 'actions');
+    const copyTitle = el('button', 'btn', 'Copy title');
+    copyTitle.type = 'button';
+    copyTitle.addEventListener('click', () => copyText(issue.title, copyTitle));
+    const copyBody = el('button', 'btn', 'Copy markdown');
+    copyBody.type = 'button';
+    copyBody.addEventListener('click', () => copyText(issue.md, copyBody));
+    actions.append(copyTitle, copyBody);
+    head.append(el('div', 'title', issue.title), actions);
+    main.append(head);
+
+    const meta = el('div', 'meta');
+    meta.append(el('span', issue.kind === 'bug' ? 'pill bug' : 'pill', issue.kind));
+    if (issue.parent) meta.append(el('span', null, 'Parent: #' + issue.parent));
+    meta.append(el('span', null, 'Depends on: ' + issue.deps));
+    main.append(meta);
+
+    if (issue.change) {
+      const note = el('div', 'change-note');
+      note.append(el('b', null, 'Changed in the last revision: '), document.createTextNode(issue.change));
+      main.append(note);
+    }
+
+    const body = el('div', 'md');
+    body.append(renderMarkdown(issue.md));
+    main.append(body);
+  }
+
+  const groups = [];
+  issues.forEach((issue) => { if (!groups.includes(issue.group)) groups.push(issue.group); });
+  groups.forEach((group) => {
+    if (groups.length > 1) nav.append(el('div', 'group', group));
+    issues.filter((x) => x.group === group).forEach((issue) => {
+      const b = el('button');
+      b.type = 'button';
+      b.dataset.n = String(issue.n);
+      const meta = el('span', 'meta');
+      meta.append(el('span', issue.kind === 'bug' ? 'pill bug' : 'pill', issue.kind));
+      if (issue.change) meta.append(el('span', 'pill changed', 'changed'));
+      b.append(el('span', 'num', String(issue.n)), el('span', 't', issue.title), meta);
+      b.addEventListener('click', () => show(issue.n));
+      nav.append(b);
+    });
+  });
+
+  const fromHash = parseInt((location.hash.match(/^#issue-(\d+)$/) || [])[1] || '', 10);
+  show(fromHash || readStored() || 1);
+})();
+</script>

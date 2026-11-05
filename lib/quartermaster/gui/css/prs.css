@@ -1,0 +1,62 @@
+/* ------- PRs view: open pull requests by why they are the user's ------- */
+.prs-wrap { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+.prs-main { max-width: 1080px; margin: 0 auto; padding: 4px 24px 48px; }
+.prs-head { display: flex; align-items: center; gap: 8px; padding: 16px 0 6px; }
+.prs-head .col-title { color: var(--ink); }
+.prs-fetched { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.prs-fetched.bad { color: var(--crit); }
+.prs-body { display: flex; flex-direction: column; gap: 8px; }
+.pr-row {
+  display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; align-items: center;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 10px 12px; outline: none;
+}
+.pr-row:hover { border-color: var(--border-strong); }
+.pr-row.focused, .pr-row:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pr-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.pr-line1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pr-title { font-size: 13px; font-weight: 500; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.pr-meta .branch { color: var(--muted); }
+.pr-meta .item-link { color: var(--accent); cursor: pointer; text-decoration: underline dotted; background: none; border: 0; padding: 0; font: inherit; }
+.pr-acts { display: flex; gap: 6px; }
+.pr-acts .act:disabled { opacity: .5; cursor: default; }
+.badge.draft { color: var(--muted); background: var(--surface-2); }
+.badge.draft::before { background: var(--faint); }
+@media (max-width: 860px) { .pr-row { grid-template-columns: 1fr; } .prs-main { padding: 4px 16px 40px; } }
+/* A stack of PRs (each based on the one before): one rail, bottom first. */
+.pr-stack { display: flex; flex-direction: column; gap: 6px; padding-left: 12px; border-left: 2px solid var(--accent-line); }
+.pr-stack-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-family: var(--mono); font-size: 11px;
+  color: var(--muted); padding: 2px 0; }
+.pr-stack-head .ok { color: var(--good); }
+.pr-stack-head .bad { color: var(--crit); }
+.pr-pos { font-family: var(--mono); font-size: 10.5px; color: var(--accent); }
+a.pr-link { color: inherit; text-decoration: none; }
+a.pr-link:hover { text-decoration: underline; }
+.pr-ci { font-family: var(--mono); font-size: 11px; color: var(--warn); text-decoration: none; white-space: nowrap; }
+.pr-ci:hover { text-decoration: underline; }
+.pr-ci.ok { color: var(--good); }
+.pr-ci.bad { color: var(--crit); }
+/* A prerequisite (qm pr-requires): what must be deployed before this PR merges. */
+.pr-req {
+  display: inline-flex; align-items: center; gap: 1px; font-family: var(--mono); font-size: 10.5px; white-space: nowrap;
+  border-radius: 4px; padding: 0 1px 0 6px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border);
+}
+.pr-req a { color: inherit; text-decoration: none; }
+.pr-req a:hover { text-decoration: underline; }
+.pr-req.pending { color: var(--warn); background: var(--warn-bg); border-color: transparent; }
+.pr-req.unmerged { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+.pr-req.deployed { color: var(--good); background: var(--good-bg); border-color: transparent; }
+.pr-req.closed { color: var(--crit); background: var(--crit-bg); border-color: transparent; }
+.pr-req button {
+  border: none; background: none; color: inherit; opacity: .55; cursor: pointer; font: inherit; line-height: 1;
+  padding: 1px 4px; border-radius: 3px;
+}
+.pr-req button:hover { opacity: 1; }
+.pr-req button.pr-req-note { opacity: 1; padding: 0; }
+.pr-req button.pr-req-note:hover { text-decoration: underline; }
+.pop-note { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 380px; font-size: 13px; color: var(--ink);
+  padding: 2px 9px 8px; }
+.pop-link { display: block; font-size: 12.5px; color: var(--accent); text-decoration: none; padding: 7px 9px;
+  border-radius: 5px; }
+.pop-link:hover, .pop-link:focus-visible { background: var(--accent-soft); }

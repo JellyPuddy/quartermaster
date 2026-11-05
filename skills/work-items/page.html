@@ -1,0 +1,381 @@
+<title>Quartermaster Work Items</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one phone-width column, a ship's-manifest list — state sections of
+     divided rows, chips for whose move it is, open notes folded under each row. */
+  :root {
+    --bg: #f5f6f8;
+    --surface: #ffffff;
+    --ink: #1b2330;
+    --muted: #5d6878;
+    --rule: #dde2ea;
+    --accent: #9a6a1e;
+    --blocked: #c23a32;
+    --turn: #b95f0b;
+    --working: #2f64c4;
+    --waiting: #7a4fc0;
+    --none: #7f8896;
+    --ok: #2c7a54;
+    --chip-tint: 14%;
+    --font-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+    --font-body: "Public Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12161d; --surface: #1a2029; --ink: #e6e9ee; --muted: #9aa4b2; --rule: #2a323e;
+      --accent: #d9a656; --blocked: #f07068; --turn: #f09a4a; --working: #6f9ef0; --waiting: #b293ee;
+      --none: #8d96a3; --ok: #5cc08a; --chip-tint: 22%; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12161d; --surface: #1a2029; --ink: #e6e9ee; --muted: #9aa4b2; --rule: #2a323e;
+    --accent: #d9a656; --blocked: #f07068; --turn: #f09a4a; --working: #6f9ef0; --waiting: #b293ee;
+    --none: #8d96a3; --ok: #5cc08a; --chip-tint: 22%; color-scheme: dark;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 var(--font-body);
+  }
+  .page {
+    max-width: 40rem;
+    margin: 0 auto;
+    padding-block: 20px 40px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: grid;
+    gap: 24px;
+  }
+
+  header { display: grid; gap: 8px; }
+  h1 {
+    margin: 0;
+    font: 700 1.75rem/1.1 var(--font-display);
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .eyebrow {
+    font: 500 0.72rem/1 var(--font-mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .fresh { color: var(--muted); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+  .fresh.stale { color: var(--turn); font-weight: 600; }
+  .tally { display: flex; flex-wrap: wrap; gap: 6px; }
+  /* Usage limits: coloured at 50/80% like the status line, greyed once old. */
+  .limits { font: 500 0.82rem/1.5 var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .limits .ok { color: var(--ok); }
+  .limits .warn { color: var(--turn); }
+  .limits .crit { color: var(--blocked); font-weight: 600; }
+  .limits.stale .ok, .limits.stale .warn, .limits.stale .crit { color: var(--none); font-weight: 500; }
+  .limits .sep { color: var(--rule); padding-inline: 4px; }
+
+  .chip {
+    --c: var(--none);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font: 600 0.75rem/1.6 var(--font-body);
+    white-space: nowrap;
+    color: var(--c);
+    background: color-mix(in srgb, var(--c) var(--chip-tint), transparent);
+  }
+  .chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+  .chip.blocked { --c: var(--blocked); }
+  .chip.your_turn { --c: var(--turn); }
+  .chip.working { --c: var(--working); }
+  .chip.waiting { --c: var(--waiting); }
+  .chip.snoozed { opacity: 0.6; }
+  .chip.plain::before { display: none; }
+
+  section { display: grid; gap: 8px; }
+  details.state > summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding-block: 4px;
+  }
+  details.state > summary::-webkit-details-marker { display: none; }
+  h2 {
+    margin: 0;
+    font: 600 1.15rem/1.2 var(--font-display);
+  }
+  .count { color: var(--muted); font: 500 0.85rem var(--font-mono); font-variant-numeric: tabular-nums; }
+  details.state > summary .count::after { content: " ▾"; }
+  details.state:not([open]) > summary .count::after { content: " ▸"; }
+  summary:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  ul.items {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+  }
+  li.item { padding: 12px 14px; display: grid; gap: 6px; min-width: 0; }
+  li.item + li.item { border-top: 1px solid var(--rule); }
+  .row-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .title { margin: 0; font-weight: 600; line-height: 1.35; min-width: 0; overflow-wrap: anywhere; }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 4px 12px;
+    color: var(--muted); font-size: 0.82rem; min-width: 0;
+  }
+  .mono { font-family: var(--font-mono); font-size: 0.78rem; overflow-wrap: anywhere; }
+  .pane { color: var(--working); font-weight: 600; }
+  .waiting-on { margin: 0; padding-left: 18px; color: var(--muted); font-size: 0.82rem; }
+  a { color: var(--accent); }
+
+  details.notes > summary {
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--turn);
+    width: fit-content;
+  }
+  details.notes ol { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+  details.notes li { display: grid; grid-template-columns: auto 1fr; gap: 8px; font-size: 0.88rem; }
+  details.notes li span:last-child { min-width: 0; overflow-wrap: anywhere; }
+  .pos { font: 500 0.75rem/1.7 var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .empty {
+    background: var(--surface);
+    border: 1px dashed var(--rule);
+    border-radius: 10px;
+    padding: 18px;
+    display: grid;
+    gap: 6px;
+  }
+  .empty p { margin: 0; max-width: 60ch; }
+  .empty .hint { color: var(--muted); font-size: 0.9rem; }
+  footer { color: var(--muted); font-size: 0.82rem; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    li.item { transition: background-color 0.2s; }
+  }
+</style>
+
+<main class="page">
+  <header>
+    <span class="eyebrow">qm · overview</span>
+    <h1>Work items</h1>
+    <span class="fresh" id="fresh">Waiting for the latest snapshot…</span>
+    <div class="tally" id="tally"></div>
+    <div class="limits" id="limits" hidden></div>
+  </header>
+  <div id="board">
+    <div class="empty">
+      <p><strong>No snapshot yet.</strong></p>
+      <p class="hint">Ask your qm chat to “show my work items”. It runs <span class="mono">qm overview --json</span> and writes the result here; this page then fills in by itself.</p>
+    </div>
+  </div>
+  <footer id="footer" hidden></footer>
+</main>
+
+<script>
+(() => {
+  const STATES = [
+    { key: "in_progress", label: "In progress", open: true },
+    { key: "fridge", label: "Fridge", open: false }
+  ];
+  const CHAT = {
+    blocked: "Blocked", your_turn: "Your turn", working: "Working", waiting: "Waiting", none: "No chat"
+  };
+  const STALE_MINUTES = 60;
+  const LIMITS_STALE_HOURS = 6;
+  let current = null;
+
+  const el = (tag, attrs = {}, ...kids) => {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === "class") node.className = v;
+      else if (k === "text") node.textContent = v;
+      else node.setAttribute(k, v);
+    }
+    for (const kid of kids) if (kid) node.append(kid);
+    return node;
+  };
+
+  const ago = (iso) => {
+    if (!iso) return null;
+    const mins = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins} min ago`;
+    const hours = Math.round(mins / 60);
+    if (hours < 48) return `${hours} h ago`;
+    return `${Math.round(hours / 24)} days ago`;
+  };
+
+  const remembered = (key, fallback) => {
+    try { const v = localStorage.getItem(key); return v === null ? fallback : v === "1"; } catch { return fallback; }
+  };
+  const remember = (key, open) => { try { localStorage.setItem(key, open ? "1" : "0"); } catch {} };
+
+  function chip(chat) {
+    const state = chat && CHAT[chat.state] ? chat.state : "none";
+    const node = el("span", { class: `chip ${state}${chat && chat.snoozed ? " snoozed" : ""}` }, CHAT[state]);
+    if (chat && chat.snoozed) node.append(" · snoozed");
+    return node;
+  }
+
+  function itemRow(item) {
+    const li = el("li", { class: "item" });
+    li.append(el("div", { class: "row-top" }, el("p", { class: "title", text: item.title || item.slug }), chip(item.chat)));
+
+    const meta = el("div", { class: "meta" });
+    if (item.project) meta.append(el("span", { text: item.project }));
+    for (const branch of item.branches || []) meta.append(el("span", { class: "mono", text: branch }));
+    if (item.paneLive) meta.append(el("span", { class: "pane", text: "pane open" }));
+    const since = item.chat && item.chat.state !== "none" ? ago(item.chat.since) : null;
+    const active = ago(item.lastActivity);
+    if (since) meta.append(el("span", { text: since === "just now" ? "since just now" : `for ${since.replace(" ago", "")}` }));
+    else if (active) meta.append(el("span", { text: `active ${active}` }));
+    if (item.board) meta.append(el("a", { href: item.board, target: "_blank", rel: "noopener", text: "Status board ↗" }));
+    li.append(meta);
+
+    const waiting = (item.chat && item.chat.waitingOn) || [];
+    if (waiting.length) {
+      const list = el("ul", { class: "waiting-on" });
+      for (const job of waiting) list.append(el("li", { text: job }));
+      li.append(list);
+    }
+
+    const notes = item.openNotes || [];
+    if (notes.length) {
+      const key = `qm-notes-${item.slug}`;
+      const details = el("details", { class: "notes" });
+      details.open = remembered(key, false);
+      details.addEventListener("toggle", () => remember(key, details.open));
+      details.append(el("summary", { text: notes.length === 1 ? "1 open note" : `${notes.length} open notes` }));
+      const list = el("ol");
+      for (const note of notes) list.append(el("li", {}, el("span", { class: "pos", text: `#${note.position}` }), el("span", { text: note.text })));
+      details.append(list);
+      li.append(details);
+    }
+    li.dataset.slug = item.slug;
+    return li;
+  }
+
+  // "2h15m", or "3d4h" from a day out on the weekly window.
+  const left = (ms, days) => {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    if (days && s >= 86400) return `${Math.floor(s / 86400)}d${Math.floor((s % 86400) / 3600)}h`;
+    return `${Math.floor(s / 3600)}h${Math.floor((s % 3600) / 60)}m`;
+  };
+
+  // The account's 5h/weekly limits as the Mac's status line last saw them.
+  function renderLimits(node, limits) {
+    node.replaceChildren();
+    const parts = [["5h", limits && limits.fiveHour, false], ["wk", limits && limits.sevenDay, true]]
+      .filter(([, w]) => w)
+      .map(([label, w, days]) => {
+        const pct = Math.round(w.usedPercentage);
+        const span = el("span", {}, el("span", { class: pct >= 80 ? "crit" : pct >= 50 ? "warn" : "ok", text: `${label} ${pct}%` }));
+        if (w.resetsAt) {
+          const ms = Date.parse(w.resetsAt) - Date.now();
+          span.append(ms > 0 ? ` · ${left(ms, days)}` : " · reset");
+        }
+        return span;
+      });
+    node.hidden = !parts.length;
+    if (!parts.length) return;
+    parts.forEach((part, i) => { if (i) node.append(el("span", { class: "sep", text: "│" })); node.append(part); });
+    const stale = (Date.now() - Date.parse(limits.capturedAt)) / 3600000 > LIMITS_STALE_HOURS;
+    node.classList.toggle("stale", stale);
+    if (stale) node.append(` · seen ${ago(limits.capturedAt)}`);
+  }
+
+  function render() {
+    const board = document.getElementById("board");
+    const fresh = document.getElementById("fresh");
+    const tally = document.getElementById("tally");
+    const footer = document.getElementById("footer");
+    if (!current) return;
+
+    const generated = ago(current.generatedAt);
+    const stale = current.generatedAt && (Date.now() - Date.parse(current.generatedAt)) / 60000 > STALE_MINUTES;
+    fresh.textContent = generated ? `Generated ${generated}${stale ? " — ask for a fresh one" : ""}` : "Snapshot time unknown";
+    fresh.classList.toggle("stale", Boolean(stale));
+
+    renderLimits(document.getElementById("limits"), current.rateLimits);
+
+    const counts = current.counts || {};
+    tally.replaceChildren();
+    for (const state of ["blocked", "your_turn", "working", "waiting"]) {
+      const n = (counts.chats || {})[state] || 0;
+      if (n) {
+        const c = chip({ state });
+        c.textContent = `${n} ${CHAT[state].toLowerCase()}`;
+        tally.append(c);
+      }
+    }
+
+    const items = current.items || [];
+    board.replaceChildren();
+    for (const state of STATES) {
+      const rows = items.filter((i) => i.state === state.key);
+      const total = (counts.states || {})[state.key] ?? rows.length;
+      const key = `qm-section-${state.key}`;
+      const details = el("details", { class: "state" });
+      details.open = remembered(key, state.open);
+      details.addEventListener("toggle", () => remember(key, details.open));
+      details.append(el("summary", {}, el("h2", { text: state.label }),
+        el("span", { class: "count", text: rows.length < total ? `${rows.length} of ${total}` : String(total) })));
+      if (rows.length) {
+        const list = el("ul", { class: "items" });
+        rows.forEach((r) => list.append(itemRow(r)));
+        details.append(list);
+      } else {
+        details.append(el("p", { class: "fresh", text: "Nothing here." }));
+      }
+      board.append(el("section", {}, details));
+    }
+
+    const resolved = (counts.states || {}).resolved || 0;
+    const omitted = counts.omitted || 0;
+    const parts = [];
+    if (omitted) parts.push(`${omitted} quieter fridge item${omitted === 1 ? "" : "s"} left out to keep this page small.`);
+    if (resolved) parts.push(`${resolved} resolved item${resolved === 1 ? "" : "s"} not shown.`);
+    footer.textContent = parts.join(" ");
+    footer.hidden = parts.length === 0;
+  }
+
+  function accept(snap) {
+    if (!snap || !snap.exists) return;
+    current = snap.data();
+    render();
+  }
+
+  function unavailable() {
+    document.getElementById("fresh").textContent = "Can't read the snapshot in this view.";
+    const board = document.getElementById("board");
+    board.replaceChildren(el("div", { class: "empty" },
+      el("p", {}, el("strong", { text: "This page needs its data store." })),
+      el("p", { class: "hint", text: "Open it signed in to claude.ai. The work items live in the page's own store, which this view can't reach." })));
+  }
+
+  async function start() {
+    const db = window.claude && (await window.claude.use("db"));
+    if (!db) return unavailable();
+    const ref = db.doc("overview/current");
+    ref.onSnapshot(accept, () => { if (!current) unavailable(); });
+    const reread = () => { if (document.visibilityState === "visible") ref.get().then(accept, () => {}); };
+    document.addEventListener("visibilitychange", reread);
+    window.addEventListener("focus", reread);
+    setInterval(() => { if (document.visibilityState === "visible") render(); }, 60000);
+  }
+
+  start();
+})();
+</script>

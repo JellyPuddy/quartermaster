@@ -1,0 +1,14 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Stops a running demo GUI, reseeds the world and starts `qm gui` against it
+# on the demo port, printing the URL. Opens nothing; stop with
+# showcase/demo-world/stop.
+require_relative "lib/demo_world"
+require_relative "lib/demo_world/gui"
+
+world = DemoWorld::World.new(DemoWorld::DEFAULT_ROOT)
+DemoWorld::Gui.new(world).stop
+world = DemoWorld.seed(world.root)
+pid = DemoWorld::Gui.new(world).start
+puts "demo qm gui → #{world.url}   (pid #{pid}; stop with showcase/demo-world/stop)"

@@ -1,0 +1,47 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# The demo world's `gh`: answers from canned JSON, never from GitHub.
+#
+# Every fixtures/gh/*.json is an array of routes:
+#   { "match": ["regex", ...], "stdout": "text" | <any JSON value>, "stderr": "", "exit": 0 }
+# A route matches when each regex matches the call's arguments joined by
+# spaces ("pr view feature/gift-cards --json state,number,url"). Of the
+# matching routes the one with the most regexes wins, ties going to the
+# earlier file and position, so a specific route overrides a generic one.
+# A non-string stdout is printed as JSON. Output is final: a call with
+# --jq gets the route's stdout as is. Every call is logged to log/gh.jsonl;
+# an unmatched call fails, so missing fixtures show up there.
+require "json"
+require "time"
+
+world = ENV["QM_DEMO_WORLD"] || File.expand_path("..", __dir__)
+args = ARGV.join(" ")
+
+routes = Dir[File.join(world, "fixtures", "gh", "*.json")].sort.flat_map do |file|
+  Array(JSON.parse(File.read(file)))
+rescue JSON::ParserError => e
+  warn "stub gh: #{File.basename(file)}: #{e.message}"
+  []
+end
+best = routes.each_with_index
+             .select { |route, _| Array(route["match"]).all? { |pattern| Regexp.new(pattern).match?(args) } }
+             .max_by { |route, i| [Array(route["match"]).size, -i] }&.first
+
+begin
+  File.open(File.join(world, "log", "gh.jsonl"), "a") do |f|
+    f.puts(JSON.generate({ "ts" => Time.now.iso8601, "argv" => ARGV, "cwd" => Dir.pwd, "matched" => best ? best["match"] : nil }))
+  end
+rescue SystemCallError
+  nil
+end
+
+unless best
+  warn "stub gh: no fixture for: #{args}"
+  exit 1
+end
+
+out = best["stdout"]
+$stdout.write(out.is_a?(String) ? out : "#{JSON.generate(out)}\n") unless out.nil?
+$stderr.write(best["stderr"].to_s)
+exit Integer(best.fetch("exit", 0))
