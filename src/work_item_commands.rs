@@ -48,6 +48,7 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
         "attach" => attach(args),
         "ack" => ack(args),
         "cleanup" => crate::cleanup_command::cleanup(args),
+        "sweep" => crate::cleanup_command::sweep(args),
         "issues-dir" => issues_dir(args),
         "draft" => crate::draft_command::run(args),
         "snooze" => snooze(args),

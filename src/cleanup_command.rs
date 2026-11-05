@@ -1,7 +1,7 @@
 //! `qm cleanup SLUG` (the plan only) and the resolve hint `state … resolved` prints. Removing anything
 //! — `--yes`, `--force`, the sweep — stays in Ruby.
 
-use crate::cleanup::{plan_item, Entry};
+use crate::cleanup::{plan_item, plan_sweep, Entry};
 use crate::cli_format::{paint, puts, short_path};
 use crate::data_root;
 use crate::outcome::{abort, done, Outcome};
@@ -75,6 +75,22 @@ pub fn cleanup(a: &[String]) -> Outcome {
         Ok(p) => p,
         Err(e) => return abort(&format!("qm: {}", e.message)),
     };
+    done(print_plan(&plan))
+}
+
+/// `qm sweep` with no flags: the plan over every repo. `--yes` and `--force` stay Ruby.
+pub fn sweep(a: &[String]) -> Outcome {
+    if !a.is_empty() || !crate::cleanup::sweep_supported() {
+        return Outcome::Delegate;
+    }
+    match plan_sweep() {
+        Ok(plan) => done(print_plan(&plan)),
+        Err(e) if e.class == crate::error::UNEMITTABLE => Outcome::Delegate,
+        Err(e) => abort(&format!("qm: {}", e.message)),
+    }
+}
+
+fn print_plan(plan: &crate::cleanup::Plan) -> String {
     let mut out = String::new();
     for note in &plan.notes {
         out.push_str(&puts(&paint(note, 90)));
@@ -86,7 +102,7 @@ pub fn cleanup(a: &[String]) -> Outcome {
     if !plan.is_empty() {
         out.push_str(&puts(&paint("--yes removes the [x] entries; --force PATH|BRANCH|SLUG/FILE adds a ⚠ one", 90)));
     }
-    done(out)
+    out
 }
 
 #[cfg(test)]

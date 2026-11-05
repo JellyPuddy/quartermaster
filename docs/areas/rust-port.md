@@ -17,7 +17,7 @@ context, byte for byte), `sessions`, `inbox`, `dismiss`, feature-use recording f
 session log, config.yml's project side, the project map, and the work-item commands `new` (with `--pf-mode`, checked against the project's dev-server modes under the lock),
 `note`, `retag`, `state`, `link-branch`, `unlink-branch`, `board`, `move`, `retitle`,
 `describe`, `detach` and `list` (bare `qm` without a terminal lists too), and `show-session`,
-`session-item`, `help`, `install-hooks`, `ack`, `snooze`, `show`, `attach`, `new --session`, `cleanup SLUG`, `state … resolved`, `issues-dir` and `draft list`. `attach` and `new --session` move the session between items under the work-item lock (reentrant per thread, as Ruby's, so a
+`session-item`, `help`, `install-hooks`, `ack`, `snooze`, `show`, `attach`, `new --session`, `cleanup SLUG`, `state … resolved`, `issues-dir`, `draft list` and `sweep` (the plan). `attach` and `new --session` move the session between items under the work-item lock (reentrant per thread, as Ruby's, so a
 compound move nests) and then rename the chat's tmux session to follow it, unless it is an aside, its
 pane runs another process, or the new name already has a chat (then a warning). `Tmux` is ported only
 as far as listing, liveness, pane pid and rename; starting a chat, typing into it, respawn and kill
@@ -41,14 +41,15 @@ is regenerated (`./quartermaster help > src/usage.txt`). `install-hooks` prints 
 the checkout's Ruby launcher, never for the Rust binary.
 
 **Cleanup is planned in Rust, never carried out.** `state … resolved` (which also drops the item's
-viewed marks) and `qm cleanup SLUG` build the item's plan with `GitRepo` (worktrees, dirt, and the
+viewed marks), `qm cleanup SLUG` and a bare `qm sweep` (every known repo's `.claude/worktrees` worktrees
+and `worktree-*` branches, plus the issue drafts of resolved or gone items) build the item's plan with `GitRepo` (worktrees, dirt, and the
 commits a head would lose: not in any base, no patch-equivalent among what the bases hold, not a
 squash merge into trunk or the head's upstream; a git failure reads as "couldn't check", never as
 nothing to lose) and `Cleanup`, and print it. The dev server's status and the project's test-DB
 dry run go through `command_runner` — read-only probes. The plan lists the item's issue drafts too
 (`IssueDrafts`: each file's front matter, its unsent comments from `drafts/<slug>.json`), and reading
 them keeps Ruby's `.prev` revision snapshots — what a file held when last seen and before that — and
-prunes those whose file is gone. Removing anything (`--yes`, `--force`, the sweep) stays Ruby, so no
+prunes those whose file is gone. Removing anything (`--yes`, `--force`) stays Ruby, as does `sweep` with any flag, so no
 Rust code path deletes a worktree, a branch or an issue draft.
 
 **Issue drafts are read in two steps.** `issue_drafts::load` only reads: it parses every `*.md`

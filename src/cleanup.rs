@@ -3,7 +3,7 @@
 //! a status (ok / warn / blocked), the reasons for it, and whether it starts ticked. Only ok entries
 //! start ticked. Removing anything stays in Ruby: nothing in this module changes a repo.
 //!
-//! The sweep over every repo is Ruby's.
+//! The sweep (every repo's `.claude/worktrees` worktrees and `worktree-*` branches) is planned here too.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -20,6 +20,8 @@ use crate::session_log::SessionLog;
 use crate::work_item::WorkItem;
 
 const COMMITS_SHOWN: usize = 3;
+const SWEEP_BRANCH_PREFIX: &str = "worktree-";
+const WORKTREES_DIR: &str = ".claude/worktrees";
 const MAINLINE_BRANCHES: [&str; 3] = ["main", "master", "develop"];
 
 #[derive(Clone)]
@@ -267,6 +269,97 @@ fn issue_entries(slug: &str) -> Res<Vec<Entry>> {
             }
         })
         .collect())
+}
+
+/// Listed, never pre-ticked: an unresolved item still claims it.
+fn protect(mut entry: Entry, slugs: Vec<String>) -> Entry {
+    if !slugs.is_empty() {
+        entry.ticked = false;
+        entry.notes.extend(slugs.into_iter().map(|slug| format!("belongs to unresolved item '{slug}'")));
+    }
+    entry
+}
+
+/// Slugs with an issue-drafts directory, as the sweep lists them. `None` when a name is not UTF-8.
+fn swept_issue_slugs() -> Option<Vec<String>> {
+    let Ok(entries) = std::fs::read_dir(data_root::root().join("issues")) else { return Some(vec![]) };
+    let mut slugs = vec![];
+    for e in entries.filter_map(|e| e.ok()) {
+        let name = e.file_name().into_string().ok()?;
+        if e.path().is_dir() && crate::cleanup_command::valid_slug(&name) {
+            slugs.push(name);
+        }
+    }
+    slugs.sort();
+    Some(slugs)
+}
+
+/// Whether the sweep's issue-draft part is something `issue_drafts::load` can answer for (nothing written).
+pub fn sweep_supported() -> bool {
+    swept_issue_slugs().is_some_and(|slugs| slugs.iter().all(|s| issue_drafts::supported(s)))
+}
+
+/// Every `.claude/worktrees/*` worktree and `worktree-*` branch across the repos qm knows, checked
+/// against the trunk and every other local branch. Anything an unresolved item still claims is listed
+/// but never pre-ticked.
+pub fn plan_sweep() -> Res<Plan> {
+    let unreadable = || QmError::new(UNEMITTABLE, "issue drafts only Ruby reads exactly");
+    let mut planner = Planner::new();
+    planner.open_items = WorkItem::all()?.into_iter().filter(|i| i.state().as_deref() != Some("resolved")).collect();
+    let items = std::mem::take(&mut planner.open_items);
+    let (mut entries, mut notes): (Vec<Entry>, Vec<String>) = (vec![], vec![]);
+    let config = ProjectConfig::current();
+    let mut seen: Vec<std::path::PathBuf> = vec![];
+    for (project, root) in config.roots() {
+        let normal = data_root::normalize(root);
+        if seen.contains(&normal) {
+            continue;
+        }
+        seen.push(normal);
+        if !std::path::Path::new(root).is_dir() {
+            continue;
+        }
+        let mut repo = GitRepo::new(root);
+        let listing = repo.worktrees();
+        if listing.is_empty() {
+            notes.push(format!("{project}: {} is not a git repo", crate::cli_format::short_path(Some(root))));
+            continue;
+        }
+        let trunk = repo.trunk_refs();
+        let locals = repo.local_branches();
+        let candidates: Vec<&String> = locals.iter().filter(|b| b.starts_with(SWEEP_BRANCH_PREFIX)).collect();
+        let keepers: Vec<String> = locals.iter().filter(|b| !b.starts_with(SWEEP_BRANCH_PREFIX)).cloned().collect();
+        let dir = format!("{}/{WORKTREES_DIR}", normalize(&listing[0].path).to_string_lossy());
+        let claimers: Vec<&WorkItem> = items.iter().filter(|i| i.project().as_deref() == Some(project)).collect();
+        let test_db = planner.config.settings(Some(project)).and_then(|s| s.test_db.clone());
+
+        let mut worktree_entries: Vec<Entry> = vec![];
+        for wt in listing.iter().skip(1).filter(|wt| within(&wt.path, &dir)) {
+            let mut bases = trunk.clone();
+            bases.extend(keepers.iter().filter(|k| Some(*k) != wt.branch.as_ref()).cloned());
+            bases.extend(upstream(wt.branch.as_deref()));
+            let entry = planner.worktree_entry(&mut repo, wt, &bases, test_db.as_deref(), &[]);
+            worktree_entries.push(protect(entry, planner.owners(&claimers, wt, Some(project))));
+        }
+        let checked_out: Vec<(String, Worktree)> = listing.iter().filter_map(|wt| wt.branch.clone().map(|b| (b, wt.clone()))).collect();
+        let mut branch_entries: Vec<Entry> = vec![];
+        for b in candidates {
+            let mut bases = trunk.clone();
+            bases.extend(keepers.iter().cloned());
+            let entry = planner.branch_entry(&mut repo, b, &bases, "worktree branch", &checked_out, &worktree_entries, &[]).entry;
+            branch_entries.push(protect(entry, Planner::branch_owners(&claimers, b, Some(project))));
+        }
+        entries.extend(worktree_entries);
+        entries.extend(branch_entries);
+    }
+    let open_slugs: Vec<&str> = items.iter().map(|i| i.slug.as_str()).collect();
+    for slug in swept_issue_slugs().ok_or_else(unreadable)? {
+        let owners = if open_slugs.contains(&slug.as_str()) { vec![slug.clone()] } else { vec![] };
+        for entry in issue_entries(&slug)? {
+            entries.push(protect(entry, owners.clone()));
+        }
+    }
+    Ok(Plan { scope: "sweep".into(), entries, notes })
 }
 
 /// The item's worktrees — by its branches, its temp branches and the cwds of its sessions — plus its

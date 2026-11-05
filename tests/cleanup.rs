@@ -305,3 +305,48 @@ fn rust_and_ruby_plan_the_same_cleanup_and_leave_the_same_traces() {
     assert!(plain.contains("issue-item: 1 worktree, 1 branch, 3 issue drafts — 1 ready, 4 need a look"), "worktrees and issue drafts share one plan\n{}", plain.lines().filter(|l| l.contains("issue-item")).collect::<Vec<_>>().join("\n"));
     assert!(plain.contains("issue-item/b.md “Created issue” — #5") && plain.contains("never created on GitHub; 1 unsent comment"));
 }
+
+fn sweeps(bin: &Path, w: &World, slugs: &[String]) -> String {
+    let mut out = String::new();
+    let mut sweep = |label: &str, out: &mut String| {
+        let (code, stdout, stderr) = run(bin, w, &["sweep"]);
+        out.push_str(&format!("=== sweep {label}: exit {code}\n{stdout}{stderr}"));
+    };
+    sweep("with every item open", &mut out);
+    for slug in slugs {
+        if slug != "ghost-item" && slug != "issue-item" {
+            run(bin, w, &["state", slug, "resolved"]);
+        }
+    }
+    sweep("after resolving most items", &mut out);
+    let cache = fs::read_to_string(w.root.join("pr-cache.json")).unwrap_or_default();
+    out.push_str(&format!("=== gh calls\n{}", fs::read_to_string(w.base.join("gh.log")).unwrap_or_default()));
+    out.push_str(&format!("=== dev server calls\n{}", fs::read_to_string(w.base.join("devsrv.log")).unwrap_or_default()));
+    out.push_str(&format!("=== cache {}\n", cache.len() > 0));
+    out.replace(w.base.to_str().unwrap(), "BASE")
+}
+
+#[test]
+fn rust_and_ruby_plan_the_same_sweep() {
+    let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let ((wa, slugs), (wb, _)) = (world(a.path()), world(b.path()));
+    for w in [&wa, &wb] {
+        // a repo that is no repo, a second project at the same root, and issue sets of an open, a resolved and a gone item
+        fs::create_dir_all(w.base.join("notgit")).unwrap();
+        // a worktree outside .claude/worktrees is not the sweep's
+        let out = Command::new("git").args(["worktree", "add", "-q", "-b", "b-outside", w.base.join("outside-wt").to_str().unwrap(), "main"]).current_dir(w.base.join("repo")).output().unwrap();
+        assert!(out.status.success());
+        fs::create_dir_all(w.root.join("issues/ghost-item")).unwrap();
+        fs::write(w.root.join("issues/ghost-item/x.md"), "---\ntitle: Orphan\nkind: bug\nnumber: 3\n---\n").unwrap();
+        let config = fs::read_to_string(w.root.join("config.yml")).unwrap();
+        fs::write(w.root.join("config.yml"), format!("{config}  nogit: {}\n  twin: {}\n", w.base.join("notgit").display(), w.base.join("repo").display())).unwrap();
+    }
+    let ruby_text = sweeps(&ruby(), &wa, &slugs);
+    let rust_text = sweeps(rust(), &wb, &slugs);
+    assert_eq!(rust_text, ruby_text, "the sweep plans differ");
+    let plain = regex::Regex::new("\x1b\\[[0-9;]*m").unwrap().replace_all(&ruby_text, "").into_owned();
+    assert!(!plain.contains("outside-wt"), "only .claude/worktrees is swept");
+    for expected in ["sweep: ", "is not a git repo", "belongs to unresolved item", "worktree branch", "issue-draft ghost-item/x.md", "issue-item/c.md"] {
+        assert!(plain.contains(expected), "the sweep should show {expected:?}\n{plain}");
+    }
+}
