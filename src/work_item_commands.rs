@@ -48,6 +48,8 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
         "attach" => attach(args),
         "ack" => ack(args),
         "cleanup" => crate::cleanup_command::cleanup(args),
+        "issues-dir" => issues_dir(args),
+        "draft" => crate::draft_command::run(args),
         "snooze" => snooze(args),
         "list" => list(),
         _ => return None,
@@ -124,6 +126,23 @@ fn note(a: &[String]) -> Outcome {
     done(format!("{}\n", note_line(&item.notes()[0])))
 }
 
+/// Where the /draft-issues skill writes an item's issue files: created here, printed.
+fn issues_dir(a: &[String]) -> Outcome {
+    let Some(slug) = a.first() else { return abort("usage: qm issues-dir SLUG") };
+    if slug.starts_with('-') {
+        return Outcome::Delegate;
+    }
+    if !crate::cleanup_command::valid_slug(slug) {
+        return abort(&format!("qm: '{slug}' is not a work item slug"));
+    }
+    tri!(WorkItem::find(slug));
+    let dir = crate::issue_drafts::dir(slug);
+    if std::fs::create_dir_all(&dir).is_err() {
+        return Outcome::Delegate;
+    }
+    done(format!("{}\n", dir.display()))
+}
+
 fn retag(a: &[String]) -> Outcome {
     let [slug, position, kind, ..] = a else {
         return abort(&format!("usage: qm retag SLUG POSITION KIND ({}) — POSITION is the number qm show prints", NOTE_KINDS.join(" | ")));
@@ -138,7 +157,7 @@ fn retag(a: &[String]) -> Outcome {
 fn state(a: &[String]) -> Outcome {
     let [slug, state, ..] = a else { return abort(&format!("usage: qm state SLUG ({})", STATES.join(" | "))) };
     if state == "resolved" && crate::cleanup_command::leaves_to_ruby(slug) {
-        return Outcome::Delegate; // an item with issue drafts lists them in its cleanup hint
+        return Outcome::Delegate; // the cleanup hint lists issue drafts, and only Ruby reads some of those
     }
     let mut item = tri!(WorkItem::find(slug));
     tri!(item.update_state(state));

@@ -224,6 +224,10 @@ fn world(base: &Path) -> (World, Vec<String>) {
     item("issue-item", "demo", &["b-clean"], &[], &[]);
     fs::create_dir_all(w.root.join("issues/issue-item")).unwrap();
     fs::write(w.root.join("issues/issue-item/a.md"), "---\ntitle: An issue\n---\nbody\n").unwrap();
+    fs::write(w.root.join("issues/issue-item/b.md"), "---\ntitle: Created issue\nkind: bug\nnumber: 5\n---\nbody\n").unwrap();
+    fs::write(w.root.join("issues/issue-item/c.md"), "---\ntitle: Open issue\nkind: feature\n---\nbody\n").unwrap();
+    fs::create_dir_all(w.root.join("drafts")).unwrap();
+    fs::write(w.root.join("drafts/issue-item.json"), "{\"v\":1,\"entries\":[{\"id\":\"a\",\"kind\":\"issue-comment\",\"comment\":\"x\",\"file\":\"c.md\"}]}").unwrap();
     slugs.push("ghost-item".into());
     (w, slugs)
 }
@@ -298,4 +302,6 @@ fn rust_and_ruby_plan_the_same_cleanup_and_leave_the_same_traces() {
     assert!(plain.contains("empty-item: 1 worktree — 1 ready"), "an empty commit has an empty counterpart on the sibling");
     assert!(plain.contains("hold-item: 1 worktree, 1 branch — 0 ready, 1 needs a look"), "the branch waits for its dirty worktree");
     assert!(plain.contains("two-wt-item: 2 worktrees — 2 ready"));
+    assert!(plain.contains("issue-item: 1 worktree, 1 branch, 3 issue drafts — 1 ready, 4 need a look"), "worktrees and issue drafts share one plan\n{}", plain.lines().filter(|l| l.contains("issue-item")).collect::<Vec<_>>().join("\n"));
+    assert!(plain.contains("issue-item/b.md “Created issue” — #5") && plain.contains("never created on GitHub; 1 unsent comment"));
 }

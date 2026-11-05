@@ -3,14 +3,15 @@
 //! a status (ok / warn / blocked), the reasons for it, and whether it starts ticked. Only ok entries
 //! start ticked. Removing anything stays in Ruby: nothing in this module changes a repo.
 //!
-//! An item with issue-draft files, or the sweep over every repo, is Ruby's too.
+//! The sweep over every repo is Ruby's.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::command_runner;
 use crate::data_root::{self, normalize};
-use crate::error::Res;
+use crate::error::{QmError, Res, UNEMITTABLE};
 use crate::git_repo::{GitRepo, Worktree};
+use crate::issue_drafts;
 use crate::pf::{self, Status};
 use crate::pr_status::PrStatus;
 use crate::project_config::ProjectConfig;
@@ -31,11 +32,18 @@ pub struct Entry {
     pub notes: Vec<String>,
     pub ticked: bool,
     pub db_names: Option<Vec<String>>,
+    /// An issue draft's item and title.
+    pub item: Option<String>,
+    pub title: Option<String>,
 }
 
 impl Entry {
     pub fn is_worktree(&self) -> bool {
         self.kind == "worktree"
+    }
+
+    pub fn is_issue_draft(&self) -> bool {
+        self.kind == "issue-draft"
     }
 }
 
@@ -60,7 +68,8 @@ impl Plan {
         };
         let worktrees = self.entries.iter().filter(|e| e.is_worktree()).count();
         let branches = self.entries.iter().filter(|e| e.kind == "branch").count();
-        let counts = [count(worktrees, "worktree"), count(branches, "branch")].into_iter().flatten().collect::<Vec<_>>().join(", ");
+        let issue_drafts = self.entries.iter().filter(|e| e.is_issue_draft()).count();
+        let counts = [count(worktrees, "worktree"), count(branches, "branch"), count(issue_drafts, "issue draft")].into_iter().flatten().collect::<Vec<_>>().join(", ");
         let ready = self.entries.iter().filter(|e| e.ticked).count();
         let look = self.entries.iter().filter(|e| e.status == "warn").count();
         let blocked = self.entries.iter().filter(|e| e.status == "blocked").count();
@@ -121,7 +130,7 @@ struct Built {
 
 fn build(kind: &'static str, path: Option<String>, branch: Option<String>, blocked: Vec<String>, warn: Vec<String>, notes: Vec<String>, db_names: Option<Vec<String>>) -> Entry {
     let status = if !blocked.is_empty() { "blocked" } else if !warn.is_empty() { "warn" } else { "ok" };
-    Entry { kind, path, branch, status, reasons: blocked.into_iter().chain(warn).collect(), notes, ticked: status == "ok", db_names }
+    Entry { kind, path, branch, status, reasons: blocked.into_iter().chain(warn).collect(), notes, ticked: status == "ok", db_names, item: None, title: None }
 }
 
 impl Planner {
@@ -222,13 +231,52 @@ impl Planner {
     }
 }
 
+/// One entry per issue file of the item, broken ones included: deleting takes the file's unsent
+/// issue comments along, so those are counted. Reading keeps the revision snapshots (as Ruby's does);
+/// files this port can't judge like Ruby come back as an `Unemittable` error, and callers check
+/// `issue_drafts::supported` first so that nothing has been written by then.
+fn issue_entries(slug: &str) -> Res<Vec<Entry>> {
+    let unreadable = || QmError::new(UNEMITTABLE, "issue drafts only Ruby reads exactly");
+    if issue_drafts::files(slug).ok_or_else(unreadable)?.is_empty() {
+        return Ok(vec![]);
+    }
+    let loaded = issue_drafts::load(slug).ok_or_else(unreadable)?;
+    loaded.record().map_err(|_| unreadable())?;
+    let unsent = issue_drafts::unsent_comments(slug).ok_or_else(unreadable)?;
+    let mut rows: Vec<(String, String, Option<u64>, Option<String>)> = loaded.issues.iter().map(|i| (i.file.clone(), i.title.clone(), i.number, None)).collect();
+    rows.extend(loaded.errors.iter().map(|e| (e.file.clone(), e.file.clone(), None, Some(format!("doesn't parse: {}", e.error)))));
+    rows.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(rows
+        .into_iter()
+        .map(|(file, title, number, problem)| {
+            let comments = unsent.get(&file).copied().unwrap_or(0);
+            let comments_note = (comments > 0).then(|| format!("{comments} unsent comment{}", if comments == 1 { "" } else { "s" }));
+            let warn: Vec<String> = if number.is_some() { vec![] } else { [Some(problem.unwrap_or_else(|| "never created on GitHub".into())), comments_note.clone()].into_iter().flatten().collect() };
+            let notes: Vec<String> = if let Some(n) = number { [Some(format!("#{n}")), comments_note].into_iter().flatten().collect() } else { vec![] };
+            Entry {
+                kind: "issue-draft",
+                path: Some(issue_drafts::dir(slug).join(&file).to_string_lossy().into_owned()),
+                branch: None,
+                status: if warn.is_empty() { "ok" } else { "warn" },
+                ticked: warn.is_empty(),
+                reasons: warn,
+                notes,
+                db_names: None,
+                item: Some(slug.to_string()),
+                title: Some(title),
+            }
+        })
+        .collect())
+}
+
 /// The item's worktrees — by its branches, its temp branches and the cwds of its sessions — plus its
 /// local branches whose PR merged and its temp branches. Never the main checkout.
 pub fn plan_item(item: &WorkItem) -> Res<Plan> {
+    let issues = issue_entries(&item.slug)?;
     let mut planner = Planner::new();
     let root = crate::project_map::root_for(item.project().as_deref()).filter(|r| std::path::Path::new(r).is_dir());
     let Some(root) = root else {
-        return Ok(Plan { scope: item.slug.clone(), entries: vec![], notes: vec![format!("no repo root configured for '{}'", item.project().unwrap_or_default())] });
+        return Ok(Plan { scope: item.slug.clone(), entries: issues, notes: vec![format!("no repo root configured for '{}'", item.project().unwrap_or_default())] });
     };
     let mut repo = GitRepo::new(&root);
     let listing = repo.worktrees();
@@ -283,7 +331,7 @@ pub fn plan_item(item: &WorkItem) -> Res<Plan> {
         let owners = Planner::branch_owners(&others, b, project.as_deref());
         branch_entries.push(planner.branch_entry(&mut repo, b, &bases, "temp branch", &checked_out, &worktree_entries, &owners).entry);
     }
-    Ok(Plan { scope: item.slug.clone(), entries: worktree_entries.into_iter().chain(branch_entries).collect(), notes: vec![] })
+    Ok(Plan { scope: item.slug.clone(), entries: worktree_entries.into_iter().chain(branch_entries).chain(issues).collect(), notes: vec![] })
 }
 
 #[cfg(test)]
@@ -291,7 +339,7 @@ mod tests {
     use super::*;
 
     fn entry(kind: &'static str, status: &'static str) -> Entry {
-        Entry { kind, path: None, branch: None, status, reasons: vec![], notes: vec![], ticked: status == "ok", db_names: None }
+        Entry { kind, path: None, branch: None, status, reasons: vec![], notes: vec![], ticked: status == "ok", db_names: None, item: None, title: None }
     }
 
     fn plan(entries: Vec<Entry>) -> Plan {

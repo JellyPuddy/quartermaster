@@ -30,7 +30,7 @@ fn blank_or_end(c: Option<&char>) -> bool {
 
 /// Psych's `ScalarScanner#tokenize` result: true when the string would read back as a non-string.
 /// `None` when the answer depends on details this port does not reproduce.
-fn reads_as_non_string(s: &str) -> Option<bool> {
+pub fn reads_as_non_string(s: &str) -> Option<bool> {
     let cs: Vec<char> = s.chars().collect();
     if cs.is_empty() {
         return Some(true);

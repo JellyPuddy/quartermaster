@@ -1,5 +1,5 @@
 //! `qm cleanup SLUG` (the plan only) and the resolve hint `state … resolved` prints. Removing anything
-//! — `--yes`, `--force`, the sweep — stays in Ruby, and so does an item with issue-draft files.
+//! — `--yes`, `--force`, the sweep — stays in Ruby.
 
 use crate::cleanup::{plan_item, Entry};
 use crate::cli_format::{paint, puts, short_path};
@@ -13,15 +13,10 @@ pub fn valid_slug(slug: &str) -> bool {
     matches!(chars.next(), Some(c) if c.is_ascii_alphanumeric()) && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
 }
 
-/// Whether the item has issue-draft files (`issues/<slug>/*.md`), or a slug IssueDrafts would refuse:
-/// the plan lists those too, which this port does not.
+/// Whether the plan must be Ruby's: a slug IssueDrafts would refuse, or issue-draft files this port
+/// can't read exactly as Ruby does (checked before anything is written).
 pub fn leaves_to_ruby(slug: &str) -> bool {
-    if !valid_slug(slug) {
-        return true;
-    }
-    std::fs::read_dir(data_root::root().join("issues").join(slug))
-        .map(|d| d.filter_map(|e| e.ok()).any(|e| e.file_name().to_string_lossy().ends_with(".md") && !e.file_name().to_string_lossy().starts_with('.')))
-        .unwrap_or(false)
+    !crate::issue_drafts::supported(slug)
 }
 
 /// Resolving is when worktrees go stale, so say what cleanup would do — a hint only: a failing plan
@@ -43,8 +38,21 @@ fn line(entry: &Entry) -> String {
         "blocked" => ("⛔ ", 31),
         _ => ("", 0),
     };
-    let target = if entry.is_worktree() { short_path(entry.path.as_deref()) } else { entry.branch.clone().unwrap_or_default() };
-    let head = if entry.is_worktree() { format!(" ({})", entry.branch.clone().unwrap_or_else(|| "detached".into())) } else { String::new() };
+    let target = if entry.is_worktree() {
+        short_path(entry.path.as_deref())
+    } else if entry.is_issue_draft() {
+        let file = std::path::Path::new(entry.path.as_deref().unwrap_or("")).file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+        format!("{}/{file}", entry.item.clone().unwrap_or_default())
+    } else {
+        entry.branch.clone().unwrap_or_default()
+    };
+    let head = if entry.is_worktree() {
+        format!(" ({})", entry.branch.clone().unwrap_or_else(|| "detached".into()))
+    } else if entry.is_issue_draft() {
+        format!(" “{}”", entry.title.clone().unwrap_or_default())
+    } else {
+        String::new()
+    };
     let dbs = match &entry.db_names {
         Some(names) if !names.is_empty() => format!(" · test DBs: {}", names.join(", ")),
         _ => String::new(),

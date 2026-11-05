@@ -522,6 +522,8 @@ fn sessions_and_inbox_do_not_log_hooks_but_do_log_themselves_as_feature_use() {
 #[test]
 fn the_seeded_config_matches_the_fixture() {
     let qm = Qm::new();
-    qm.ok(&["list"]);
-    golden("config_seed.yml", &qm.read("config.yml"));
+    qm.ok(&["new", "Seed the config"]);
+    let seeded = qm.read("config.yml");
+    assert!(seeded.starts_with("# qm configuration"), "{seeded:?}");
+    golden("config_seed.yml", &seeded);
 }
