@@ -240,12 +240,27 @@ impl WorkItem {
 
     // ---- writes
 
-    /// Runs `f` under the global work-item flock, as the Ruby `WorkItem.with_lock`.
+    /// Runs `f` under the global work-item flock, as the Ruby `WorkItem.with_lock`: one lock spans a
+    /// whole read-modify-write, and it is reentrant on this thread so compound moves nest.
     fn with_lock<T>(f: impl FnOnce() -> Res<T>) -> Res<T> {
+        thread_local! {
+            static HELD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        }
+        struct Release;
+        impl Drop for Release {
+            fn drop(&mut self) {
+                HELD.with(|h| h.set(false));
+            }
+        }
+        if HELD.with(|h| h.get()) {
+            return f();
+        }
         data_root::ensure_setup()?;
         let lock = OpenOptions::new().create(true).truncate(false).write(true).open(data_root::work_items_dir().join(".lock"))?;
         // SAFETY: the descriptor stays open until `lock` drops after `f` returns.
         unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) };
+        HELD.with(|h| h.set(true));
+        let _release = Release;
         f()
     }
 
@@ -295,7 +310,7 @@ impl WorkItem {
     }
 
     /// A new item; `Unemittable` when its front matter is something only Ruby writes faithfully.
-    pub fn create(title: &str, project: &str, branch: Option<&str>, description: Option<&str>) -> Res<WorkItem> {
+    pub fn create(title: &str, project: &str, branch: Option<&str>, session_id: Option<&str>, description: Option<&str>) -> Res<WorkItem> {
         let slug = Self::slugify(title);
         let unemittable = |what: &str| QmError::new(UNEMITTABLE, format!("cannot write {what} like Ruby"));
         if slug.is_empty() {
@@ -309,6 +324,11 @@ impl WorkItem {
         if let Some(b) = branch {
             lines.extend(psych::list("branches", &[b.to_string()]).ok_or_else(|| unemittable("the branch"))?);
         }
+        if let Some(id) = session_id {
+            let text = psych::scalar(6, id).ok_or_else(|| unemittable("the session id"))?;
+            lines.push("sessions:".to_string());
+            lines.push(format!("- id: {text}"));
+        }
         let body = format!("\n## Description\n\n{}\n\n## Notes\n\n## Snapshots\n", description.unwrap_or("_TODO_"));
         Self::with_lock(|| {
             if Self::path_for(&slug).exists() {
@@ -318,6 +338,26 @@ impl WorkItem {
             Self::write_file(&slug, &format!("---\n{front_text}\n---\n{body}"))?;
             Self::find(&slug)
         })
+    }
+
+    /// Attaching is a move: claim the session for this item and vacate it everywhere else. Returns
+    /// the slugs it left.
+    pub fn claim_session(&mut self, session_id: &str) -> Res<Vec<String>> {
+        Self::with_lock(|| {
+            self.attach_session(session_id)?;
+            Self::detach_session_elsewhere(session_id, &self.slug.clone())
+        })
+    }
+
+    /// A session belongs to one work item: detaches it from every item but `keep`.
+    pub fn detach_session_elsewhere(session_id: &str, keep: &str) -> Res<Vec<String>> {
+        let mut left = vec![];
+        for mut item in Self::all()? {
+            if item.slug != keep && item.detach_session(session_id)? {
+                left.push(item.slug.clone());
+            }
+        }
+        Ok(left)
     }
 
     pub fn attach_session(&mut self, session_id: &str) -> Res<bool> {

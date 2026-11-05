@@ -45,6 +45,7 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
         "retitle" => retitle(args),
         "describe" => describe(args),
         "detach" => detach(args),
+        "attach" => attach(args),
         "ack" => ack(args),
         "snooze" => snooze(args),
         "list" => list(),
@@ -53,16 +54,17 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
 }
 
 fn new(a: &[String]) -> Outcome {
-    let (mut project, mut branch, mut description) = ("No project".to_string(), None, None);
+    let (mut project, mut branch, mut description, mut session) = ("No project".to_string(), None, None, None);
     let mut parts: Vec<&str> = vec![];
     let mut i = 0;
     while i < a.len() {
         match a[i].as_str() {
-            flag @ ("--project" | "--branch" | "--description") => {
+            flag @ ("--project" | "--branch" | "--description" | "--session") => {
                 let Some(value) = a.get(i + 1) else { return Outcome::Delegate };
                 match flag {
                     "--project" => project = value.clone(),
                     "--branch" => branch = Some(value.clone()),
+                    "--session" => session = Some(value.clone()),
                     _ => description = Some(value.clone()),
                 }
                 i += 2;
@@ -78,8 +80,14 @@ fn new(a: &[String]) -> Outcome {
     if title.is_empty() {
         return abort("usage: qm new TITLE [--project P] [--branch B] [--session ID] [--description TEXT] [--pf-mode MODE]");
     }
-    let item = tri!(WorkItem::create(&title, &project, branch.as_deref(), description.as_deref()));
-    done(format!("{}\n", item.slug))
+    let mut item = tri!(WorkItem::create(&title, &project, branch.as_deref(), session.as_deref(), description.as_deref()));
+    let (mut stdout, mut stderr) = (String::new(), String::new());
+    if let Some(id) = &session {
+        let vacated = tri!(item.claim_session(id));
+        report_claim(&vacated, id, &item.slug, &mut stdout, &mut stderr);
+    }
+    stdout.push_str(&format!("{}\n", item.slug));
+    Outcome::Done { code: 0, stdout, stderr }
 }
 
 fn note(a: &[String]) -> Outcome {
@@ -254,16 +262,41 @@ fn describe(a: &[String]) -> Outcome {
     done(String::new())
 }
 
-fn detach(a: &[String]) -> Outcome {
-    if a.first().is_some_and(|s| s.starts_with('-')) {
-        return Outcome::Delegate;
+/// "detached from 'other'" for each item the session left, then the chat pane follows it.
+fn report_claim(vacated: &[String], session_id: &str, slug: &str, stdout: &mut String, stderr: &mut String) {
+    for other in vacated {
+        stdout.push_str(&format!("detached from '{other}'\n"));
     }
-    let session = match a.get(1..).unwrap_or(&[]) {
-        [] => None,
-        [flag, id] if flag == "--session" => Some(id),
-        _ => return Outcome::Delegate,
-    };
-    let (Some(slug), Some(session)) = (a.first(), session) else { return abort("usage: qm detach SLUG --session SESSION_ID") };
+    if let Some(warning) = crate::pane_follows_session::follow(session_id, vacated, slug) {
+        stderr.push_str(&format!("qm: {warning}\n"));
+    }
+}
+
+/// `SLUG --session ID`; None when the arguments are some other shape Ruby's parser would read.
+fn slug_and_session(a: &[String]) -> Result<(Option<&String>, Option<&String>), ()> {
+    if a.first().is_some_and(|s| s.starts_with('-')) {
+        return Err(());
+    }
+    match a.get(1..).unwrap_or(&[]) {
+        [] => Ok((a.first(), None)),
+        [flag, id] if flag == "--session" => Ok((a.first(), Some(id))),
+        _ => Err(()),
+    }
+}
+
+fn attach(a: &[String]) -> Outcome {
+    let Ok((slug, session)) = slug_and_session(a) else { return Outcome::Delegate };
+    let (Some(slug), Some(session)) = (slug, session) else { return abort("usage: qm attach SLUG --session SESSION_ID") };
+    let mut item = tri!(WorkItem::find(slug));
+    let vacated = tri!(item.claim_session(session));
+    let (mut stdout, mut stderr) = (String::new(), String::new());
+    report_claim(&vacated, session, slug, &mut stdout, &mut stderr);
+    Outcome::Done { code: 0, stdout, stderr }
+}
+
+fn detach(a: &[String]) -> Outcome {
+    let Ok((slug, session)) = slug_and_session(a) else { return Outcome::Delegate };
+    let (Some(slug), Some(session)) = (slug, session) else { return abort("usage: qm detach SLUG --session SESSION_ID") };
     let mut item = tri!(WorkItem::find(slug));
     tri!(item.detach_session(session));
     done(String::new())

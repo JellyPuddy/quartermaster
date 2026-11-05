@@ -75,6 +75,10 @@ impl Session {
             .or_else(|| self.aside_for().map(|a| format!("aside:{a}")))
             .or_else(|| self.loose_id().map(|l| format!("loose:{l}")))
     }
+    /// The claude process the SessionStart hook found.
+    pub fn pid(&self) -> Option<i64> {
+        self.start.get("pid").and_then(Value::as_i64)
+    }
     pub fn project(&self) -> Option<String> {
         text(self.start.get("project"))
     }
