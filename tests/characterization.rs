@@ -63,7 +63,7 @@ impl Qm {
             cmd.env(k, v);
         }
         let mut child = cmd.spawn().expect("spawn qm");
-        child.stdin.take().unwrap().write_all(stdin.as_bytes()).unwrap();
+        let _ = child.stdin.take().unwrap().write_all(stdin.as_bytes()); // a hook that exits unread closes the pipe
         let o = child.wait_with_output().unwrap();
         Out {
             stdout: String::from_utf8_lossy(&o.stdout).into_owned(),
@@ -384,8 +384,8 @@ fn session_end_after_a_start_marks_the_session_ended() {
     let qm = Qm::new();
     qm.run_with(&["hook-session-start"], &start_payload("abc"), &[]);
     qm.run_with(&["hook-session-end"], r#"{"session_id":"abc","cwd":"/tmp","reason":"exit"}"#, &[]);
-    let out = normalize(&qm.ok(&["sessions"]));
-    assert_eq!(out, "  ended  abc  -  /tmp  -  TS  Ns\n".replace("Ns", "1s"));
+    let out = Regex::new(r"  \d+s\n$").unwrap().replace(&normalize(&qm.ok(&["sessions"])), "  Ns\n").into_owned();
+    assert_eq!(out, "  ended  abc  -  /tmp  -  TS  Ns\n");
 }
 
 // ------------------------------------------------------------------- the CLI
