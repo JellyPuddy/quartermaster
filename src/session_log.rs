@@ -29,14 +29,26 @@ fn text(v: Option<&Value>) -> Option<String> {
 }
 
 /// One captured session, built from its log events — the only reader of the event schema.
+#[derive(Clone)]
 pub struct Session {
     pub id: String,
     start: Event,
     last: Event,
     pub live: bool,
+    captured: bool,
 }
 
 impl Session {
+    /// A session an item lists but the log never captured: identity only.
+    pub fn uncaptured(id: &str) -> Session {
+        Session { id: id.to_string(), start: Map::new(), last: Map::new(), live: false, captured: false }
+    }
+
+    /// The last event's timestamp, None when there is none.
+    pub fn last_ts_opt(&self) -> Option<String> {
+        text(self.last.get("ts"))
+    }
+
     pub fn started_ts(&self) -> String {
         text(self.start.get("ts")).unwrap_or_default()
     }
@@ -80,7 +92,9 @@ impl Session {
     }
     /// live (running: never resume, it would fork), resumable (transcript still exists) or expired.
     pub fn tier(&self) -> &'static str {
-        if self.live {
+        if !self.captured {
+            "uncaptured"
+        } else if self.live {
             "live"
         } else if self.transcript().is_some() {
             "resumable"
@@ -162,13 +176,34 @@ impl SessionLog {
                 let start = (*mine.iter().rev().find(|e| e.get("event").and_then(Value::as_str) == Some("start"))?).clone();
                 let last = (*mine.iter().rev().find(|e| e.get("event").and_then(Value::as_str) != Some("dismissed"))?).clone();
                 let live = last.get("event").and_then(Value::as_str) == Some("start") && alive(start.get("pid"));
-                Some(Session { id: id?, start, last, live })
+                Some(Session { id: id?, start, last, live, captured: true })
             })
             .collect()
     }
 
     pub fn session_for(&self, session_id: &str) -> Option<Session> {
         self.sessions().into_iter().find(|s| s.id == session_id)
+    }
+
+    /// An item's sessions, newest captured first, uncaptured last — the order plain resume would pick.
+    pub fn item_sessions(&self, item: &WorkItem) -> Res<Vec<Session>> {
+        let all = self.sessions();
+        let mut out: Vec<(Session, Option<f64>)> = vec![];
+        for id in item.session_ids() {
+            let session = all.iter().find(|s| s.id == id).cloned().unwrap_or_else(|| Session::uncaptured(&id));
+            let when = match session.last_ts_opt() {
+                Some(ts) => Some(-(crate::clock::parse(&ts).ok_or_else(|| crate::error::QmError::argument(format!("no time information in {ts:?}")))?.timestamp_millis() as f64 / 1000.0)),
+                None => None,
+            };
+            out.push((session, when));
+        }
+        out.sort_by(|a, b| match (a.1, b.1) {
+            (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        });
+        Ok(out.into_iter().map(|(s, _)| s).collect())
     }
 
     pub fn dismiss(session_id: &str) -> Res<()> {

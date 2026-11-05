@@ -271,7 +271,7 @@ pub fn attention_world(base: &Path, now: std::time::SystemTime, retention_days: 
     session("t-ten", 15.0, 999999, Some(15.0));
     put(&w.root.join("sessions.jsonl"), &log);
 
-    let mut item = |slug: &str, state: &str, project: &str, extra: &str, sessions: &[&str], body_extra: &str, age_days: f64| {
+    let item = |slug: &str, state: &str, project: &str, extra: &str, sessions: &[&str], body_extra: &str, age_days: f64| {
         let list = if sessions.is_empty() { String::new() } else { format!("sessions:\n{}", sessions.iter().map(|s| if *s == "d-acked" { format!("- id: {s}\n  ack_degrade: true\n") } else { format!("- id: {s}\n") }).collect::<String>()) };
         let path = w.root.join(format!("work-items/{slug}.md"));
         put(&path, &format!("---\nv: 1\ntitle: {slug}\nstate: {state}\nproject: {project}\ncreated: '2026-01-01'\n{extra}{list}---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n{body_extra}"));
