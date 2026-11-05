@@ -91,6 +91,49 @@ impl Qm {
     }
 }
 
+impl Qm {
+    /// Output with the data root, git hashes and the per-run temp dirs replaced by stable markers.
+    fn norm(&self, s: &str) -> String {
+        let root = self.root.path().to_string_lossy().into_owned();
+        let sha = Regex::new(r"\b[0-9a-f]{7,40}\b").unwrap();
+        let s = normalize(&s.replace(&root, "ROOT"));
+        sha.replace_all(&s, "SHA").into_owned()
+    }
+}
+
+/// Compares against `tests/fixtures/golden/<name>`; `QM_UPDATE_GOLDEN=1` rewrites it.
+fn golden(name: &str, actual: &str) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden").join(name);
+    if std::env::var("QM_UPDATE_GOLDEN").is_ok() {
+        std::fs::write(&path, actual).unwrap();
+    }
+    let expected = std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("missing golden {name}"));
+    assert_eq!(actual, expected, "golden {name} differs");
+}
+
+fn git(dir: &Path, args: &[&str]) -> String {
+    let out = Command::new("git")
+        .args(["-c", "commit.gpgsign=false", "-c", "user.name=t", "-c", "user.email=t@t.test"])
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .expect("git");
+    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+fn repo(dir: &Path, branch: &str) {
+    std::fs::create_dir_all(dir).unwrap();
+    git(dir, &["init", "-q", "-b", branch]);
+    std::fs::write(dir.join("a.txt"), "a\n").unwrap();
+    git(dir, &["add", "."]);
+    git(dir, &["commit", "-q", "-m", "first"]);
+}
+
+fn payload(id: &str, cwd: &Path) -> String {
+    format!(r#"{{"session_id":"{id}","cwd":"{}","source":"startup","transcript_path":"/nonexistent/x.jsonl"}}"#, cwd.display())
+}
+
 fn strip_ansi(s: &str) -> String {
     Regex::new("\x1b\\[[0-9;]*m").unwrap().replace_all(s, "").into_owned()
 }
@@ -387,4 +430,228 @@ fn every_qm_command_appends_to_the_feature_use_log_without_arguments() {
     let log = qm.read("feature-use.jsonl");
     assert!(log.contains("\"kind\":\"cli\"") || log.contains("\"kind\": \"cli\""), "{log}");
     assert!(!log.contains("Secret") && !log.contains("secret-title"), "{log}");
+}
+
+// ------------------------------------------- hook context (golden, from Ruby)
+
+fn busy_item(qm: &Qm) {
+    qm.ok(&["new", "Busy item", "--project", "demo", "--description", "The current truth."]);
+    qm.ok(&["link-branch", "busy-item", "feat/busy"]);
+    qm.ok(&["board", "busy-item", "https://example.test/b"]);
+    for (i, kind) in ["open", "decision", "history", "decision", "open", "history", "decision", "decision", "open", "decision"].iter().enumerate() {
+        qm.ok(&["note", "busy-item", &format!("note number {i}"), "--kind", kind]);
+    }
+    qm.ok(&["attach", "busy-item", "--session", "old1"]);
+}
+
+#[test]
+fn linked_context_digests_the_item_and_windows_its_notes() {
+    let qm = Qm::new();
+    busy_item(&qm);
+    let o = qm.run_with(&["hook-session-start"], &start_payload("new1"), &[("QM_ITEM", "busy-item")]);
+    assert_eq!(o.code, 0);
+    golden("linked_context.txt", &qm.norm(&o.stdout));
+    assert!(qm.read("work-items/busy-item.md").contains("- id: new1"));
+}
+
+#[test]
+fn linked_context_names_the_dev_server_ide_and_pr_prerequisites_when_configured() {
+    let qm = Qm::new();
+    std::fs::write(
+        qm.root.path().join("config.yml"),
+        "projects:\n  demo:\n    root: /nonexistent/demo\n    dev_server:\n      command: devsrv\n      modes: [dev, tunnel]\n      default_mode: tunnel\n    pr_prerequisites: true\n    ide_command: [code, PATH]\n    ide_label: Code\n",
+    )
+    .unwrap();
+    qm.ok(&["new", "Configured", "--project", "demo"]);
+    let o = qm.run_with(&["hook-session-start"], &start_payload("c1"), &[("QM_ITEM", "configured")]);
+    golden("linked_context_configured.txt", &qm.norm(&o.stdout));
+}
+
+#[test]
+fn unlinked_context_lists_open_items_with_project_branches_and_state() {
+    let qm = Qm::new();
+    qm.ok(&["new", "Alpha", "--project", "demo", "--branch", "feat/a"]);
+    qm.ok(&["new", "Beta"]);
+    qm.ok(&["state", "beta", "fridge"]);
+    qm.ok(&["new", "Gamma"]);
+    qm.ok(&["state", "gamma", "resolved"]);
+    let o = qm.run_with(&["hook-session-start"], &start_payload("u1"), &[]);
+    golden("unlinked_context.txt", &qm.norm(&o.stdout));
+}
+
+#[test]
+fn aside_context_carries_the_items_digest() {
+    let qm = Qm::new();
+    busy_item(&qm);
+    let o = qm.run_with(&["hook-session-start"], &start_payload("as1"), &[("QM_ASIDE", "busy-item")]);
+    golden("aside_context.txt", &qm.norm(&o.stdout));
+    let unknown = qm.run_with(&["hook-session-start"], &start_payload("as2"), &[("QM_ASIDE", "missing")]);
+    assert_eq!((unknown.code, unknown.stdout.as_str()), (0, ""));
+    assert!(qm.read("sessions.jsonl").contains("\"session_id\":\"as2\""));
+}
+
+#[test]
+fn a_promoted_loose_chat_follows_the_item_it_became() {
+    let qm = Qm::new();
+    qm.run_with(&["hook-session-start"], &start_payload("l1"), &[("QM_LOOSE", "L")]);
+    qm.ok(&["new", "Promoted", "--session", "l1"]);
+    let o = qm.run_with(&["hook-session-start"], &start_payload("l2"), &[("QM_LOOSE", "L")]);
+    assert!(o.stdout.contains("linked to work item 'promoted'"), "{}", o.stdout);
+    assert!(qm.read("work-items/promoted.md").contains("- id: l2"));
+}
+
+#[test]
+fn an_already_attached_item_beats_qm_item_and_an_unknown_qm_item_falls_through() {
+    let qm = Qm::new();
+    qm.ok(&["new", "One", "--session", "s1"]);
+    qm.ok(&["new", "Two"]);
+    let o = qm.run_with(&["hook-session-start"], &start_payload("s1"), &[("QM_ITEM", "two")]);
+    assert!(o.stdout.contains("linked to work item 'one'"), "{}", o.stdout);
+    let o = qm.run_with(&["hook-session-start"], &start_payload("s2"), &[("QM_ITEM", "ghost")]);
+    assert!(o.stdout.contains("is not linked to a work item"), "{}", o.stdout);
+}
+
+#[test]
+fn a_session_on_a_linked_branch_in_a_configured_project_attaches_by_branch() {
+    let qm = Qm::new();
+    let work = tempfile::tempdir().unwrap();
+    let dir = work.path().join("demo");
+    repo(&dir, "feat/x");
+    std::fs::write(qm.root.path().join("config.yml"), format!("projects:\n  demo: {}\n", dir.display())).unwrap();
+    qm.ok(&["new", "Branchy", "--project", "demo", "--branch", "feat/x"]);
+    qm.ok(&["new", "Other project", "--project", "elsewhere", "--branch", "feat/x"]);
+    let o = qm.run_with(&["hook-session-start"], &payload("b1", &dir), &[]);
+    assert!(o.stdout.contains("linked to work item 'branchy'"), "{}", o.stdout);
+    let log = qm.norm(&qm.read("sessions.jsonl")).replace(&dir.display().to_string(), "DIR");
+    assert!(log.contains("\"branch\":\"feat/x\",\"head\":\"SHA\""), "{log}");
+    assert!(log.contains("\"project\":\"demo\",\"work_item\":\"branchy\""), "{log}");
+}
+
+#[test]
+fn a_mainline_branch_links_nothing_and_a_worktree_branch_is_recorded_as_temporary() {
+    let qm = Qm::new();
+    let work = tempfile::tempdir().unwrap();
+    let main = work.path().join("m");
+    repo(&main, "main");
+    qm.ok(&["new", "Item"]);
+    let o = qm.run_with(&["hook-session-start"], &payload("m1", &main), &[]);
+    assert!(o.stdout.contains("is not linked"), "{}", o.stdout);
+
+    let wt = work.path().join("proj/.claude/worktrees/w1");
+    repo(&wt, "worktree-w1");
+    qm.run_with(&["hook-session-start"], &payload("w1", &wt), &[("QM_ITEM", "item")]);
+    assert!(qm.read("work-items/item.md").contains("temp_branches:\n- worktree-w1\n"));
+    let main_wt = work.path().join("proj2/.claude/worktrees/w2");
+    repo(&main_wt, "main");
+    qm.run_with(&["hook-session-start"], &payload("w2", &main_wt), &[("QM_ITEM", "item")]);
+    assert!(!qm.read("work-items/item.md").contains("- main"));
+}
+
+#[test]
+fn session_end_records_commits_and_the_diff_stat_and_keeps_a_used_session() {
+    let qm = Qm::new();
+    let work = tempfile::tempdir().unwrap();
+    let dir = work.path().join("r");
+    repo(&dir, "main");
+    qm.ok(&["new", "Item", "--session", "e1"]);
+    qm.run_with(&["hook-session-start"], &payload("e1", &dir), &[]);
+    std::fs::write(dir.join("a.txt"), "a\nb\n").unwrap();
+    git(&dir, &["commit", "-qam", "second change"]);
+    std::fs::write(dir.join("a.txt"), "a\nb\nc\n").unwrap();
+    let transcript = work.path().join("t.jsonl");
+    std::fs::write(&transcript, "{}\n").unwrap();
+    let end = format!(r#"{{"session_id":"e1","cwd":"{}","reason":"clear","transcript_path":"{}"}}"#, dir.display(), transcript.display());
+    let o = qm.run_with(&["hook-session-end"], &end, &[]);
+    assert_eq!((o.code, o.stdout.as_str()), (0, ""));
+    let log = qm.norm(&qm.read("sessions.jsonl"));
+    let end_line = log.lines().nth(1).unwrap();
+    assert!(end_line.contains("\"reason\":\"clear\",\"duration_s\":N,\"commits\":[\"SHA second change\"],\"diff_stat\":\"1 file changed, 1 insertion(+)\""), "{end_line}");
+    assert!(!end_line.contains("empty"));
+    assert_eq!(log.lines().count(), 2, "a used session is not dismissed");
+    assert!(qm.read("work-items/item.md").contains("- id: e1"));
+}
+
+#[test]
+fn session_end_finds_the_transcript_by_session_id_under_the_transcripts_dir() {
+    let qm = Qm::new();
+    let projects = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(projects.path().join("proj")).unwrap();
+    std::fs::write(projects.path().join("proj/t9.jsonl"), "{}\n").unwrap();
+    let env = [("QM_TRANSCRIPTS_DIR", projects.path().to_str().unwrap())];
+    qm.run_with(&["hook-session-start"], &start_payload("t9"), &env);
+    qm.run_with(&["hook-session-end"], r#"{"session_id":"t9","cwd":"/tmp","reason":"exit"}"#, &env);
+    assert!(!qm.read("sessions.jsonl").contains("empty"));
+}
+
+#[test]
+fn an_empty_session_end_detaches_it_from_its_item() {
+    let qm = Qm::new();
+    qm.ok(&["new", "Item"]);
+    qm.run_with(&["hook-session-start"], &start_payload("z1"), &[("QM_ITEM", "item")]);
+    assert!(qm.read("work-items/item.md").contains("- id: z1"));
+    qm.run_with(&["hook-session-end"], r#"{"session_id":"z1","cwd":"/tmp","reason":"exit"}"#, &[]);
+    assert!(!qm.read("work-items/item.md").contains("z1"));
+}
+
+#[test]
+fn a_hook_that_fails_logs_to_qm_log_and_stays_silent() {
+    let qm = Qm::new();
+    let o = qm.run_with(&["hook-session-start"], "not json", &[]);
+    assert_eq!((o.code, o.stdout.as_str(), o.stderr.as_str()), (0, "", ""));
+    assert!(qm.read("qm.log").contains("[hook-session-start] JSON::ParserError"), "{}", qm.read("qm.log"));
+}
+
+#[test]
+fn sessions_list_newest_first_truncate_ids_and_honor_n() {
+    let qm = Qm::new();
+    qm.ok(&["new", "Item"]);
+    qm.run_with(&["hook-session-start"], &start_payload("sess-one-1"), &[("QM_ITEM", "item")]);
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    qm.run_with(&["hook-session-start"], &start_payload("sess-two-2"), &[("QM_LOOSE", "L9")]);
+    let all = qm.norm(&qm.ok(&["sessions"]));
+    assert_eq!(all, "● live   sess-two  loose:L9  /tmp  -  TS  -\n● live   sess-one  item  /tmp  -  TS  -\n");
+    let one = qm.ok(&["sessions", "-n", "1"]);
+    assert_eq!(one.lines().count(), 1);
+    assert!(one.contains("sess-two"));
+    // launched, loose-aside and dismissed sessions stay out of the inbox; a loose chat does not
+    let inbox = qm.norm(&qm.ok(&["inbox"]));
+    assert_eq!(inbox, "● live   sess-two  loose:L9  /tmp  -  TS  -\n");
+}
+
+#[test]
+fn dismiss_needs_a_session_id() {
+    let qm = Qm::new();
+    let o = qm.run(&["dismiss"]);
+    assert_eq!((o.code, o.stderr.as_str()), (1, "usage: qm dismiss SESSION_ID\n"));
+    qm.ok(&["dismiss", "zzz"]);
+    assert_eq!(qm.read("sessions.jsonl"), "{\"v\":1,\"event\":\"dismissed\",\"session_id\":\"zzz\",\"ts\":\"TS\"}\n");
+}
+
+#[test]
+fn sessions_on_a_dead_pid_are_not_live() {
+    let qm = Qm::new();
+    std::fs::write(
+        qm.root.path().join("sessions.jsonl"),
+        "{\"v\":1,\"event\":\"start\",\"session_id\":\"dead1234\",\"cwd\":\"/tmp\",\"pid\":999999,\"branch\":\"b\",\"ts\":\"2026-01-02T03:04:05+00:00\"}\nbroken line\n",
+    )
+    .unwrap();
+    assert_eq!(qm.ok(&["sessions"]), "  ended  dead1234  -  /tmp  b  2026-01-02T03:04  -\n");
+}
+
+#[test]
+fn sessions_and_inbox_do_not_log_hooks_but_do_log_themselves_as_feature_use() {
+    let qm = Qm::new();
+    qm.run_with(&["hook-session-start"], &start_payload("f1"), &[]);
+    assert!(!qm.exists("feature-use.jsonl"));
+    qm.ok(&["sessions"]);
+    qm.ok(&["inbox"]);
+    let log = qm.read("feature-use.jsonl");
+    assert!(log.contains("\"name\":\"sessions\"") && log.contains("\"name\":\"inbox\""), "{log}");
+}
+
+#[test]
+fn the_seeded_config_matches_the_fixture() {
+    let qm = Qm::new();
+    qm.ok(&["list"]);
+    golden("config_seed.yml", &qm.read("config.yml"));
 }
