@@ -24,3 +24,17 @@ pub fn seconds_since(ts: &str) -> Option<i64> {
     let delta = Local::now().signed_duration_since(then);
     Some((delta.num_milliseconds() as f64 / 1000.0).round() as i64)
 }
+
+/// `Time.parse(ts).to_f`: seconds since the epoch, as Ruby computes them (the nanosecond count as a
+/// double divided by 1e9). None when the text is not a timestamp.
+pub fn parse_f64(ts: &str) -> Option<f64> {
+    let t = parse(ts)?;
+    let nanos = t.timestamp() as i128 * 1_000_000_000 + t.timestamp_subsec_nanos() as i128;
+    Some(nanos as f64 / 1e9)
+}
+
+/// `Time.now.to_f`.
+pub fn now_f64() -> f64 {
+    let d = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    d.as_nanos() as f64 / 1e9
+}

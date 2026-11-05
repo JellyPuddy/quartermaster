@@ -4,6 +4,11 @@ pub fn strip(s: &str) -> &str {
         .trim_end_matches([' ', '\t', '\n', '\u{b}', '\u{c}', '\r', '\0'])
 }
 
+/// Ruby's `String#rstrip`.
+pub fn rstrip(s: &str) -> &str {
+    s.trim_end_matches([' ', '\t', '\n', '\u{b}', '\u{c}', '\r', '\0'])
+}
+
 /// `str[0, n]` by characters.
 pub fn prefix(s: &str, n: usize) -> String {
     s.chars().take(n).collect()

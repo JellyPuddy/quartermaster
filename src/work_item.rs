@@ -102,6 +102,20 @@ impl WorkItem {
         })
     }
 
+    /// The session was handed over (wrapped up or distilled): its context is spent.
+    pub fn rotated_from(&self, session_id: &str) -> bool {
+        array(get(&self.front, "rotations")).iter().any(|r| match r {
+            Value::Mapping(m) => get(m, "from").map(text).is_some_and(|f| f == session_id),
+            _ => false,
+        })
+    }
+
+    /// Whether the chat's current your-turn (started at `since`) was snoozed: a snooze stamp at or after it.
+    pub fn turn_snoozed(&self, since: Option<f64>) -> bool {
+        let (Some(stored), Some(since)) = (self.field("turn_snoozed_at"), since) else { return false };
+        crate::clock::parse_f64(&stored).is_some_and(|at| at >= since)
+    }
+
     /// The one note to show when only one fits: the newest open one, else the newest that is not history.
     pub fn headline_note(&self) -> Option<Note> {
         let all = self.notes();

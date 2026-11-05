@@ -10,9 +10,9 @@ path = "src/main.rs"
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 libc = "0.2"
+regex = "1"
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 serde_yaml = "0.9"
 
 [dev-dependencies]
-regex = "1"
 tempfile = "3"

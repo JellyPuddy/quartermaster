@@ -68,7 +68,7 @@ fn string_to_i(s: &str) -> i64 {
 }
 
 /// `value.to_i` for a JSON value; a boolean, array or object has no `to_i` in Ruby.
-fn to_i(v: Option<&Value>) -> Result<i64, QmError> {
+pub fn to_i(v: Option<&Value>) -> Result<i64, QmError> {
     match v {
         None | Some(Value::Null) => Ok(0),
         Some(Value::Number(n)) => Ok(n.as_i64().unwrap_or_else(|| n.as_f64().unwrap_or(0.0).trunc() as i64)),

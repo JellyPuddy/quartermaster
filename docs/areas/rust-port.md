@@ -1,7 +1,7 @@
 # Rust port
 
-**Code:** `Cargo.toml`, `src/attention.rs`, `src/cli.rs`, `src/cli_format.rs`, `src/clock.rs`, `src/data_root.rs`, `src/delegate.rs`, `src/error.rs`, `src/feature_use.rs`, `src/front_edit.rs`, `src/gh_stack.rs`, `src/git.rs`, `src/hook.rs`, `src/item_usage.rs`, `src/lib.rs`, `src/main.rs`, `src/note.rs`, `src/outcome.rs`, `src/pane_follows_session.rs`, `src/pr_status.rs`, `src/price_defaults.rs`, `src/price_table.rs`, `src/project_config.rs`, `src/project_map.rs`, `src/psych.rs`, `src/ruby_format.rs`, `src/ruby_num.rs`, `src/ruby_text.rs`, `src/sections.rs`, `src/session_commands.rs`, `src/session_log.rs`, `src/session_rows.rs`, `src/show_command.rs`, `src/tmux.rs`, `src/transcript_usage.rs`, `src/transcripts.rs`, `src/usage_ledger.rs`, `src/work_item.rs`, `src/work_item_commands.rs`, `src/yaml_scalar.rs`, `src/config_seed.yml`, `src/usage.txt`
-**Tests:** `tests/attention.rs`, `tests/attention_commands.rs`, `tests/characterization.rs`, `tests/interop.rs`, `tests/pane_follow.rs`, `tests/psych_scalars.rs`, `tests/sessions.rs`, `tests/show.rs`, `tests/usage.rs`, `tests/work_items.rs`, `tests/common/mod.rs`, the golden files in `tests/fixtures/golden/`, and the unit tests inside the `src` files
+**Code:** `Cargo.toml`, `src/attention.rs`, `src/attention_command.rs`, `src/background_jobs.rs`, `src/chat_attention.rs`, `src/cli.rs`, `src/cli_format.rs`, `src/clock.rs`, `src/data_root.rs`, `src/delegate.rs`, `src/error.rs`, `src/event_log.rs`, `src/feature_use.rs`, `src/front_edit.rs`, `src/gh_stack.rs`, `src/git.rs`, `src/hook.rs`, `src/item_usage.rs`, `src/lib.rs`, `src/main.rs`, `src/note.rs`, `src/outcome.rs`, `src/pane_follows_session.rs`, `src/pr_status.rs`, `src/price_defaults.rs`, `src/price_table.rs`, `src/project_config.rs`, `src/project_map.rs`, `src/psych.rs`, `src/ruby_format.rs`, `src/ruby_num.rs`, `src/ruby_text.rs`, `src/sections.rs`, `src/session_commands.rs`, `src/session_log.rs`, `src/session_rows.rs`, `src/show_command.rs`, `src/tmux.rs`, `src/transcript_usage.rs`, `src/transcript_vitals.rs`, `src/transcripts.rs`, `src/usage_ledger.rs`, `src/work_item.rs`, `src/work_item_commands.rs`, `src/yaml_scalar.rs`, `src/config_seed.yml`, `src/usage.txt`
+**Tests:** `tests/attention.rs`, `tests/attention_commands.rs`, `tests/characterization.rs`, `tests/chat_attention.rs`, `tests/interop.rs`, `tests/pane_follow.rs`, `tests/psych_scalars.rs`, `tests/sessions.rs`, `tests/show.rs`, `tests/usage.rs`, `tests/work_items.rs`, `tests/common/mod.rs`, the golden files in `tests/fixtures/golden/`, and the unit tests inside the `src` files
 **Depends on:** [capture](capture.md), [work-items](work-items.md), [cli](cli.md)
 
 ## What it does
@@ -29,7 +29,10 @@ refreshes `pr-cache.json` through `gh`, and saves the usage ledger. `GhStack` ha
 caches — they only help a long-lived GUI — and its `chains` (stacks and loose branches with ahead
 counts and restack flags) are ported whole for the GUI port to use. The attention rules themselves
 (`Attention`: expiring transcripts, quiet items, merged PRs, with `PrStatus` and its `pr-cache.json`)
-are ported as a library; the `qm attention` command stays Ruby because it also lists chats.
+are ported as a library, and so are the chat rules under `qm attention`, which is ported too:
+`EventLog` folds `events.jsonl` into `events-fold.json` (rewritten by a read that finds new bytes,
+and only when a live session needs a turn), `TranscriptVitals` reads a transcript's tail,
+`BackgroundJobs` finds pending background work, and `ChatAttention` ranks the chats from them.
 So is the usage side of the side panel — `TranscriptUsage`, `UsageLedger` (`usage-cache.json`),
 `PriceTable` and `ItemUsage` — which `show` will print. The ledger is a record: Rust reads it, adds
 to it and saves it atomically over whatever another process saved meanwhile, and never prunes or
@@ -69,7 +72,11 @@ files written. The same file passes against Ruby and against Rust:
 seeded `config.yml` are golden files in `tests/fixtures/golden/`, generated from Ruby with
 `QM_UPDATE_GOLDEN=1` — regenerate only against the Ruby launcher. `tests/interop.rs` mixes the
 two binaries on one data root. `tests/work_items.rs` records command transcripts (exit code, streams, the item file after
-every step); `tests/attention.rs` builds one world twice (items, sessions, transcripts, a fake `gh`) and
+every step); `tests/chat_attention.rs` builds about 35 chats (every transition, interrupt, background-job and
+snooze case) twice, runs Ruby's `qm attention` on one copy and the Rust binary on the other, and
+compares the output and the fold file's bytes, then a second run after appends, a truncated log and
+no log; it also fuzzes the two transcript parsers and the watcher patterns against Ruby (it names
+both binaries itself, so `QM_BIN` does not matter there). `tests/attention.rs` builds one world twice (items, sessions, transcripts, a fake `gh`) and
 compares Ruby's and Rust's entries, `pr-cache.json` and `gh` calls; `tests/psych_scalars.rs` dumps about 3,400 generated strings with the real Psych and
 compares. `tests/pane_follow.rs` runs a real tmux server on a throwaway socket (killed afterwards, never the
 `qm` socket) with chat-like panes whose pids are written into `sessions.jsonl`. `tests/show.rs` builds a git repo with gh-stack stacks (packed and loose refs, an origin-only branch,
@@ -91,7 +98,8 @@ covers it and passes on both.
 - **Append-only stays append-only**: `sessions.jsonl` is written under flock, one line per event,
   with `v` first; readers skip unparsable lines and tolerate unknown fields.
 - **Tests never touch live state**: `QM_ROOT`, throwaway git repos with signing off.
-- **Stdlib-light**: crates are `serde_json` (order preserved), `serde_yaml`, `chrono`, `libc`.
+- **Stdlib-light**: crates are `serde_json` (order preserved), `serde_yaml`, `chrono`, `libc`, `regex`.
+  Ruby's `\w` and `\s` are ASCII-only while its `\b` is Unicode, so patterns spell the classes out.
 - **Numbers match Ruby, not C**: `Array#sum` compensates (Kahan-Babuska) once a Float appears and
   keeps Integers exact before that (`ruby_num.rs`); `Time#to_f` is the nanosecond count as a double
   divided by 1e9; and `format("%.Nf")` rounds a near-tie to even on the last digit generated,
