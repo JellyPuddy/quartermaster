@@ -464,7 +464,20 @@ impl WorkItem {
         if !STATES.contains(&state) {
             return Err(QmError::argument(format!("state must be one of: {}", STATES.join(", "))));
         }
-        self.edit(|_, lines, _| Self::set_pair(lines, "state", state).map(|_| true)).map(|_| ())
+        self.edit(|_, lines, _| Self::set_pair(lines, "state", state).map(|_| true))?;
+        if state == "resolved" {
+            self.clear_viewed_marks()?;
+        }
+        Ok(())
+    }
+
+    /// Resolving drops the diff pane's viewed marks (viewed/<slug>.json).
+    fn clear_viewed_marks(&self) -> Res<()> {
+        if !crate::cleanup_command::valid_slug(&self.slug) {
+            return Err(QmError::argument(format!("'{}' is not a work item slug", self.slug)));
+        }
+        let _ = fs::remove_file(data_root::root().join("viewed").join(format!("{}.json", self.slug)));
+        Ok(())
     }
 
     pub fn move_to(&mut self, project: &str) -> Res<()> {

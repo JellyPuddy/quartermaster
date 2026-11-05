@@ -47,6 +47,7 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
         "detach" => detach(args),
         "attach" => attach(args),
         "ack" => ack(args),
+        "cleanup" => crate::cleanup_command::cleanup(args),
         "snooze" => snooze(args),
         "list" => list(),
         _ => return None,
@@ -136,12 +137,13 @@ fn retag(a: &[String]) -> Outcome {
 
 fn state(a: &[String]) -> Outcome {
     let [slug, state, ..] = a else { return abort(&format!("usage: qm state SLUG ({})", STATES.join(" | "))) };
-    if state == "resolved" {
-        return Outcome::Delegate; // resolving also offers cleanup and clears the diff pane's viewed marks
+    if state == "resolved" && crate::cleanup_command::leaves_to_ruby(slug) {
+        return Outcome::Delegate; // an item with issue drafts lists them in its cleanup hint
     }
     let mut item = tri!(WorkItem::find(slug));
     tri!(item.update_state(state));
-    done(String::new())
+    // resolving is when worktrees go stale, so say what cleanup would do
+    done(if state == "resolved" { crate::cleanup_command::offer(&item) } else { String::new() })
 }
 
 fn link_branch(a: &[String]) -> Outcome {

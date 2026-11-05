@@ -11,6 +11,8 @@ pub struct Ide {
 pub struct DevServer {
     pub command: String,
     pub default_mode: String,
+    pub status_url: Option<String>,
+    pub state_file: Option<String>,
 }
 
 pub struct ProjectSettings {
@@ -19,6 +21,7 @@ pub struct ProjectSettings {
     pub dev_server: Option<DevServer>,
     pub ide: Option<Ide>,
     pub pr_prerequisites: bool,
+    pub test_db: Option<String>,
 }
 
 /// config.yml's project side; an unreadable or malformed file reads as no projects.
@@ -47,9 +50,9 @@ fn expand(path: Option<String>) -> Option<String> {
 }
 
 fn parse_dev_server(value: Option<&Value>) -> Option<DevServer> {
-    let (command, modes_value, default_value) = match value {
-        Some(Value::String(_)) => (string(value), None, None),
-        Some(Value::Mapping(m)) => (string(get(m, "command")), get(m, "modes"), get(m, "default_mode")),
+    let (command, modes_value, default_value, status_url, state_file) = match value {
+        Some(Value::String(_)) => (string(value), None, None, None, None),
+        Some(Value::Mapping(m)) => (string(get(m, "command")), get(m, "modes"), get(m, "default_mode"), string(get(m, "status_url")), expand(string(get(m, "state_file")))),
         _ => return None,
     };
     let command = command?;
@@ -62,7 +65,7 @@ fn parse_dev_server(value: Option<&Value>) -> Option<DevServer> {
         Some(d) if modes.contains(d) => d.clone(),
         _ => modes[0].clone(),
     };
-    Some(DevServer { command, default_mode })
+    Some(DevServer { command, default_mode, status_url, state_file })
 }
 
 fn parse_project(name: String, value: &Value) -> Option<ProjectSettings> {
@@ -78,6 +81,7 @@ fn parse_project(name: String, value: &Value) -> Option<ProjectSettings> {
         dev_server: parse_dev_server(get_raw("dev_server")),
         ide: parse_ide(get_raw("ide_command"), get_raw("ide_label")),
         pr_prerequisites: matches!(get_raw("pr_prerequisites"), Some(Value::Bool(true))),
+        test_db: string(get_raw("test_db")),
     })
 }
 
@@ -97,6 +101,11 @@ impl ProjectConfig {
             _ => vec![],
         };
         ProjectConfig { projects, ide: parse_ide(get(&data, "ide_command"), get(&data, "ide_label")) }
+    }
+
+    /// One dev server serves one checkout at a time across projects: the first project that configures one.
+    pub fn dev_server(&self) -> Option<&DevServer> {
+        self.projects.iter().find_map(|p| p.dev_server.as_ref())
     }
 
     /// name → root, in config order.

@@ -1,7 +1,7 @@
 # Rust port
 
-**Code:** `Cargo.toml`, `src/attention.rs`, `src/attention_command.rs`, `src/background_jobs.rs`, `src/chat_attention.rs`, `src/cli.rs`, `src/cli_format.rs`, `src/clock.rs`, `src/data_root.rs`, `src/delegate.rs`, `src/error.rs`, `src/event_log.rs`, `src/feature_use.rs`, `src/front_edit.rs`, `src/gh_stack.rs`, `src/git.rs`, `src/hook.rs`, `src/item_usage.rs`, `src/lib.rs`, `src/main.rs`, `src/note.rs`, `src/outcome.rs`, `src/pane_follows_session.rs`, `src/pr_status.rs`, `src/price_defaults.rs`, `src/price_table.rs`, `src/project_config.rs`, `src/project_map.rs`, `src/psych.rs`, `src/ruby_format.rs`, `src/ruby_num.rs`, `src/ruby_text.rs`, `src/sections.rs`, `src/session_commands.rs`, `src/session_log.rs`, `src/session_rows.rs`, `src/show_command.rs`, `src/tmux.rs`, `src/transcript_usage.rs`, `src/transcript_vitals.rs`, `src/transcripts.rs`, `src/usage_ledger.rs`, `src/work_item.rs`, `src/work_item_commands.rs`, `src/yaml_scalar.rs`, `src/config_seed.yml`, `src/usage.txt`
-**Tests:** `tests/attention.rs`, `tests/attention_commands.rs`, `tests/characterization.rs`, `tests/chat_attention.rs`, `tests/interop.rs`, `tests/pane_follow.rs`, `tests/psych_scalars.rs`, `tests/sessions.rs`, `tests/show.rs`, `tests/usage.rs`, `tests/work_items.rs`, `tests/common/mod.rs`, the golden files in `tests/fixtures/golden/`, and the unit tests inside the `src` files
+**Code:** `Cargo.toml`, `src/attention.rs`, `src/attention_command.rs`, `src/background_jobs.rs`, `src/chat_attention.rs`, `src/cleanup.rs`, `src/cleanup_command.rs`, `src/cli.rs`, `src/cli_format.rs`, `src/clock.rs`, `src/command_runner.rs`, `src/data_root.rs`, `src/delegate.rs`, `src/error.rs`, `src/event_log.rs`, `src/feature_use.rs`, `src/front_edit.rs`, `src/gh_stack.rs`, `src/git.rs`, `src/git_repo.rs`, `src/hook.rs`, `src/item_usage.rs`, `src/lib.rs`, `src/main.rs`, `src/note.rs`, `src/outcome.rs`, `src/pane_follows_session.rs`, `src/pf.rs`, `src/pr_status.rs`, `src/price_defaults.rs`, `src/price_table.rs`, `src/project_config.rs`, `src/project_map.rs`, `src/psych.rs`, `src/ruby_format.rs`, `src/ruby_num.rs`, `src/ruby_text.rs`, `src/sections.rs`, `src/session_commands.rs`, `src/session_log.rs`, `src/session_rows.rs`, `src/show_command.rs`, `src/tmux.rs`, `src/transcript_usage.rs`, `src/transcript_vitals.rs`, `src/transcripts.rs`, `src/usage_ledger.rs`, `src/work_item.rs`, `src/work_item_commands.rs`, `src/yaml_scalar.rs`, `src/config_seed.yml`, `src/usage.txt`
+**Tests:** `tests/attention.rs`, `tests/attention_commands.rs`, `tests/characterization.rs`, `tests/chat_attention.rs`, `tests/cleanup.rs`, `tests/interop.rs`, `tests/pane_follow.rs`, `tests/psych_scalars.rs`, `tests/sessions.rs`, `tests/show.rs`, `tests/usage.rs`, `tests/work_items.rs`, `tests/common/mod.rs`, the golden files in `tests/fixtures/golden/`, and the unit tests inside the `src` files
 **Depends on:** [capture](capture.md), [work-items](work-items.md), [cli](cli.md)
 
 ## What it does
@@ -17,8 +17,7 @@ context, byte for byte), `sessions`, `inbox`, `dismiss`, feature-use recording f
 session log, config.yml's project side, the project map, and the work-item commands `new`,
 `note`, `retag`, `state`, `link-branch`, `unlink-branch`, `board`, `move`, `retitle`,
 `describe`, `detach` and `list` (bare `qm` without a terminal lists too), and `show-session`,
-`session-item`, `help`, `install-hooks`, `ack`, `snooze`, `show`, `attach` and `new --session`. The last
-two move the session between items under the work-item lock (reentrant per thread, as Ruby's, so a
+`session-item`, `help`, `install-hooks`, `ack`, `snooze`, `show`, `attach`, `new --session`, `cleanup SLUG` and `state … resolved`. `attach` and `new --session` move the session between items under the work-item lock (reentrant per thread, as Ruby's, so a
 compound move nests) and then rename the chat's tmux session to follow it, unless it is an aside, its
 pane runs another process, or the new name already has a chat (then a warning). `Tmux` is ported only
 as far as listing, liveness, pane pid and rename; starting a chat, typing into it, respawn and kill
@@ -41,8 +40,16 @@ the tests compare it with Ruby's, so a change to `CliFormat::USAGE_SECTIONS` fai
 is regenerated (`./quartermaster help > src/usage.txt`). `install-hooks` prints the snippet for
 the checkout's Ruby launcher, never for the Rust binary.
 
-Still Ruby, even for these words: `new --pf-mode`, `state
-… resolved` (it offers cleanup and clears the viewed marks), and every argument shape the
+**Cleanup is planned in Rust, never carried out.** `state … resolved` (which also drops the item's
+viewed marks) and `qm cleanup SLUG` build the item's plan with `GitRepo` (worktrees, dirt, and the
+commits a head would lose: not in any base, no patch-equivalent among what the bases hold, not a
+squash merge into trunk or the head's upstream; a git failure reads as "couldn't check", never as
+nothing to lose) and `Cleanup`, and print it. The dev server's status and the project's test-DB
+dry run go through `command_runner` — read-only probes. Removing anything (`--yes`, `--force`, the
+sweep), and an item with issue-draft files, stay Ruby, so no Rust code path deletes a worktree or a branch.
+
+Still Ruby, even for these words: `new --pf-mode`, `state … resolved` and `cleanup SLUG` for an item
+that has issue-draft files (the plan lists those), and every argument shape the
 port does not parse exactly as Ruby's `OptionParser` does — abbreviated or `=`-joined flags,
 `--`, a dash-leading title or note, `retag` positions Ruby's `Integer()` would read as octal or
 hex, `~user` paths, arguments that are not UTF-8. Such a command is handed to Ruby before
@@ -78,7 +85,7 @@ compares the output and the fold file's bytes, then a second run after appends, 
 no log; it also fuzzes the two transcript parsers and the watcher patterns against Ruby (it names
 both binaries itself, so `QM_BIN` does not matter there). `tests/attention.rs` builds one world twice (items, sessions, transcripts, a fake `gh`) and
 compares Ruby's and Rust's entries, `pr-cache.json` and `gh` calls; `tests/psych_scalars.rs` dumps about 3,400 generated strings with the real Psych and
-compares. `tests/pane_follow.rs` runs a real tmux server on a throwaway socket (killed afterwards, never the
+compares. `tests/cleanup.rs` builds a git repo with worktrees in every state cleanup cares about (fixed commit\ndates, so shas agree), runs Ruby's plan and `state … resolved` on one copy and Rust's on the other and\ncompares every printed line and trace, down to how often the dev server was asked. `tests/pane_follow.rs` runs a real tmux server on a throwaway socket (killed afterwards, never the
 `qm` socket) with chat-like panes whose pids are written into `sessions.jsonl`. `tests/show.rs` builds a git repo with gh-stack stacks (packed and loose refs, an origin-only branch,
 a restack), a fake `gh`, transcripts and sessions, runs `show` over every item and compares the output
 and every trace it leaves with Ruby's; mutation checks of the port need `QM_BIN` set to the Rust binary,

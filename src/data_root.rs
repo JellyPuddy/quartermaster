@@ -35,6 +35,12 @@ pub fn expand_path(path: &str) -> PathBuf {
     out
 }
 
+/// `File.realpath(File.expand_path(path))`, else the expanded path.
+pub fn normalize(path: &str) -> PathBuf {
+    let expanded = expand_path(path);
+    std::fs::canonicalize(&expanded).unwrap_or(expanded)
+}
+
 pub fn root() -> PathBuf {
     match std::env::var("QM_ROOT") {
         Ok(v) => expand_path(&v),
