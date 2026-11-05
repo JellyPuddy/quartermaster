@@ -3,26 +3,14 @@
 
 use std::io::Read;
 
+use crate::cli_format::{ljust, note_line};
 use crate::error::{QmError, UNEMITTABLE};
 use crate::git::git;
-use crate::note::{Note, DEFAULT_NOTE_KIND, NOTE_KINDS};
+pub use crate::outcome::Outcome;
+use crate::outcome::{abort, done};
+use crate::note::{DEFAULT_NOTE_KIND, NOTE_KINDS};
 use crate::ruby_text::strip;
 use crate::work_item::{WorkItem, STATES};
-
-pub enum Outcome {
-    /// Finished: the exit code and what to print.
-    Done { code: i32, stdout: String, stderr: String },
-    /// Let the Ruby qm run this command instead.
-    Delegate,
-}
-
-fn done(stdout: String) -> Outcome {
-    Outcome::Done { code: 0, stdout, stderr: String::new() }
-}
-
-fn abort(message: &str) -> Outcome {
-    Outcome::Done { code: 1, stdout: String::new(), stderr: format!("{message}\n") }
-}
 
 /// An error as `Cli#run` reports it: `qm: <message>`, or Ruby's job when only it can write the value.
 fn failed(e: QmError) -> Outcome {
@@ -40,20 +28,6 @@ macro_rules! tri {
             Err(e) => return failed(e),
         }
     };
-}
-
-fn paint(text: &str, code: u8) -> String {
-    format!("\x1b[{code}m{text}\x1b[0m")
-}
-
-fn note_line(n: &Note) -> String {
-    format!("{} {} {}: {}", paint(&format!("#{}", n.position), 36), paint(&format!("[{}]", n.kind), 90), n.stamp, n.text)
-}
-
-/// Pads like Ruby's `ljust`, by characters.
-fn ljust(s: &str, width: usize) -> String {
-    let len = s.chars().count();
-    format!("{s}{}", " ".repeat(width.saturating_sub(len)))
 }
 
 /// `Some(outcome)` for the commands ported here, `None` for every other word.

@@ -191,3 +191,13 @@ fn ruby_reads_and_edits_what_rust_wrote_and_the_other_way_round() {
     let (_, board, _) = run(rust(), root.path(), &["board", "cross-check"], "", &[]);
     assert_eq!(board, "https://example.test/b\n");
 }
+
+#[test]
+fn static_outputs_and_usage_errors_are_identical_in_both_binaries() {
+    let root = tempfile::tempdir().unwrap();
+    for args in [&["help"][..], &["--help"], &["-h"], &["install-hooks"], &["show-session"], &["show-session", "nope"], &["session-item"], &["session-item", "nope"]] {
+        let (rc, rout, rerr) = run(&ruby(), root.path(), args, "", &[]);
+        let (xc, xout, xerr) = run(rust(), root.path(), args, "", &[]);
+        assert_eq!((xc, xout, xerr), (rc, rout, rerr), "qm {args:?}");
+    }
+}

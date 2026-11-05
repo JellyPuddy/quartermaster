@@ -3,11 +3,16 @@ use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::Command;
 
+/// The launcher of the checkout this binary was built from, whatever `QM_RUBY_LAUNCHER` says.
+pub fn checkout_launcher() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("quartermaster")
+}
+
 /// The Ruby launcher, which still serves every command this binary has not ported.
 pub fn launcher() -> PathBuf {
     match std::env::var_os("QM_RUBY_LAUNCHER") {
         Some(p) => PathBuf::from(p),
-        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("quartermaster"),
+        None => checkout_launcher(),
     }
 }
 

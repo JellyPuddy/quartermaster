@@ -8,6 +8,7 @@ use crate::note::{Note, DEFAULT_NOTE_KIND, NOTE_KINDS};
 use crate::project_config::ProjectConfig;
 use crate::project_map;
 use crate::session_log::{Event, SessionLog};
+use crate::transcripts;
 use crate::work_item::WorkItem;
 
 const WORKTREE_SEGMENT: &str = "/.claude/worktrees/";
@@ -133,7 +134,7 @@ pub fn session_ended(input: &Value) -> Res<()> {
         Some(Value::String(p)) => Some(p.clone()),
         _ => start.as_ref().and_then(|s| s.get("transcript_path")).and_then(Value::as_str).map(String::from),
     };
-    let empty = locate_transcript(session_id, recorded.as_deref()).is_none();
+    let empty = transcripts::locate(session_id, recorded.as_deref()).is_none();
 
     let duration = match start.as_ref() {
         Some(s) => {
@@ -166,19 +167,6 @@ pub fn session_ended(input: &Value) -> Res<()> {
         SessionLog::dismiss(id)?;
     }
     Ok(())
-}
-
-/// The recorded transcript path when it exists, else the session's file under any project directory.
-fn locate_transcript(session_id: Option<&str>, recorded: Option<&str>) -> Option<std::path::PathBuf> {
-    if let Some(p) = recorded {
-        if std::path::Path::new(p).exists() {
-            return Some(p.into());
-        }
-    }
-    let id = session_id?;
-    let mut dirs: Vec<_> = std::fs::read_dir(data_root::transcripts_dir()).ok()?.filter_map(|e| e.ok()).map(|e| e.path()).collect();
-    dirs.sort();
-    dirs.into_iter().map(|d| d.join(format!("{id}.jsonl"))).find(|p| p.exists())
 }
 
 fn aside_started(input: &Value, slug: &str, branch: Option<String>, project: &str) -> Res<Option<String>> {

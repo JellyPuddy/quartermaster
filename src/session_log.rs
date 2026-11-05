@@ -7,6 +7,7 @@ use serde_json::{Map, Value};
 use crate::clock;
 use crate::data_root;
 use crate::error::Res;
+use crate::transcripts;
 use crate::work_item::WorkItem;
 
 pub const EVENT_VERSION: i64 = 1;
@@ -61,6 +62,34 @@ impl Session {
         self.launched_for()
             .or_else(|| self.aside_for().map(|a| format!("aside:{a}")))
             .or_else(|| self.loose_id().map(|l| format!("loose:{l}")))
+    }
+    pub fn project(&self) -> Option<String> {
+        text(self.start.get("project"))
+    }
+    pub fn end_reason(&self) -> Option<String> {
+        if self.ended() { text(self.last.get("reason")) } else { None }
+    }
+    pub fn commits(&self) -> Vec<String> {
+        match (self.ended(), self.last.get("commits")) {
+            (true, Some(Value::Array(c))) => c.iter().map(|v| text(Some(v)).unwrap_or_default()).collect(),
+            _ => vec![],
+        }
+    }
+    pub fn transcript(&self) -> Option<std::path::PathBuf> {
+        transcripts::locate(Some(&self.id), self.start.get("transcript_path").and_then(Value::as_str))
+    }
+    /// live (running: never resume, it would fork), resumable (transcript still exists) or expired.
+    pub fn tier(&self) -> &'static str {
+        if self.live {
+            "live"
+        } else if self.transcript().is_some() {
+            "resumable"
+        } else {
+            "expired"
+        }
+    }
+    pub fn first_prompt(&self) -> Option<String> {
+        transcripts::first_prompt(self.transcript().as_deref())
     }
     pub fn ended(&self) -> bool {
         self.last.get("event").and_then(Value::as_str) == Some("end")
@@ -136,6 +165,10 @@ impl SessionLog {
                 Some(Session { id: id?, start, last, live })
             })
             .collect()
+    }
+
+    pub fn session_for(&self, session_id: &str) -> Option<Session> {
+        self.sessions().into_iter().find(|s| s.id == session_id)
     }
 
     pub fn dismiss(session_id: &str) -> Res<()> {

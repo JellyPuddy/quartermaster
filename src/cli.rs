@@ -8,7 +8,9 @@ use crate::feature_use;
 use crate::hook;
 use crate::session_log::SessionLog;
 use crate::session_rows;
-use crate::work_item_commands::{self, Outcome};
+use crate::outcome::Outcome;
+use crate::session_commands;
+use crate::work_item_commands;
 
 fn out(text: &str) {
     let _ = std::io::stdout().write_all(text.as_bytes());
@@ -59,7 +61,7 @@ pub fn run(raw: Vec<OsString>) -> i32 {
     let command = args.first().map(String::as_str);
     let rest = args.get(1..).unwrap_or(&[]);
     if let Some(word) = command {
-        if let Some(outcome) = work_item_commands::run(word, rest) {
+        if let Some(outcome) = work_item_commands::run(word, rest).or_else(|| session_commands::run(word, rest)) {
             return match outcome {
                 Outcome::Delegate => delegate::exec_ruby(&raw),
                 Outcome::Done { code, stdout, stderr } => {

@@ -1,7 +1,7 @@
 # Rust port
 
-**Code:** `Cargo.toml`, `src/cli.rs`, `src/clock.rs`, `src/data_root.rs`, `src/delegate.rs`, `src/error.rs`, `src/feature_use.rs`, `src/front_edit.rs`, `src/git.rs`, `src/hook.rs`, `src/lib.rs`, `src/main.rs`, `src/note.rs`, `src/project_config.rs`, `src/project_map.rs`, `src/psych.rs`, `src/ruby_text.rs`, `src/sections.rs`, `src/session_log.rs`, `src/session_rows.rs`, `src/work_item.rs`, `src/work_item_commands.rs`, `src/yaml_scalar.rs`, `src/config_seed.yml`
-**Tests:** `tests/characterization.rs`, `tests/interop.rs`, `tests/psych_scalars.rs`, `tests/work_items.rs`, `tests/common/mod.rs`, the golden files in `tests/fixtures/golden/`, and the unit tests inside the `src` files
+**Code:** `Cargo.toml`, `src/cli.rs`, `src/cli_format.rs`, `src/clock.rs`, `src/data_root.rs`, `src/delegate.rs`, `src/error.rs`, `src/feature_use.rs`, `src/front_edit.rs`, `src/git.rs`, `src/hook.rs`, `src/lib.rs`, `src/main.rs`, `src/note.rs`, `src/outcome.rs`, `src/project_config.rs`, `src/project_map.rs`, `src/psych.rs`, `src/ruby_text.rs`, `src/sections.rs`, `src/session_commands.rs`, `src/session_log.rs`, `src/session_rows.rs`, `src/transcripts.rs`, `src/work_item.rs`, `src/work_item_commands.rs`, `src/yaml_scalar.rs`, `src/config_seed.yml`, `src/usage.txt`
+**Tests:** `tests/characterization.rs`, `tests/interop.rs`, `tests/psych_scalars.rs`, `tests/sessions.rs`, `tests/work_items.rs`, `tests/common/mod.rs`, the golden files in `tests/fixtures/golden/`, and the unit tests inside the `src` files
 **Depends on:** [capture](capture.md), [work-items](work-items.md), [cli](cli.md)
 
 ## What it does
@@ -16,9 +16,14 @@ Ported so far: the SessionStart and SessionEnd hooks (the same events, the same 
 context, byte for byte), `sessions`, `inbox`, `dismiss`, feature-use recording for them, the
 session log, config.yml's project side, the project map, and the work-item commands `new`,
 `note`, `retag`, `state`, `link-branch`, `unlink-branch`, `board`, `move`, `retitle`,
-`describe`, `detach` and `list` (bare `qm` without a terminal lists too).
+`describe`, `detach` and `list` (bare `qm` without a terminal lists too), and `show-session`,
+`session-item`, `help` and `install-hooks`. `src/usage.txt` is `qm help`'s output as Ruby prints it;
+the tests compare it with Ruby's, so a change to `CliFormat::USAGE_SECTIONS` fails until the file
+is regenerated (`./quartermaster help > src/usage.txt`). `install-hooks` prints the snippet for
+the checkout's Ruby launcher, never for the Rust binary.
 
-Still Ruby, even for these words: `show` (it needs stacks, PR state and usage tallies),
+Still Ruby, even for these words: `show` (it needs stacks, PR state, the attention fold and usage
+tallies — each a stage of its own),
 `attach` and `new --session` (they rename the chat's tmux pane), `new --pf-mode`, `state
 … resolved` (it offers cleanup and clears the viewed marks), and every argument shape the
 port does not parse exactly as Ruby's `OptionParser` does — abbreviated or `=`-joined flags,
