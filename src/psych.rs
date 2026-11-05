@@ -49,9 +49,10 @@ fn reads_as_non_string(s: &str) -> Option<bool> {
         return Some(matches!(lower.as_str(), "~" | "null" | "yes" | "true" | "on" | "no" | "false" | "off"));
     }
     let digits = |c: char| c.is_ascii_digit();
-    // timestamps: Psych may or may not manage to parse them, so leave them to Ruby
-    if looks_like_time(&cs) {
-        return None;
+    match time_shape(&cs) {
+        TimeShape::No => {}
+        TimeShape::Parses => return Some(true),
+        TimeShape::Unsure => return None,
     }
     if is_date(&cs) {
         return Some(valid_date(&cs));
@@ -139,11 +140,89 @@ fn int_form(shaped: bool, rest: &str) -> Option<bool> {
     }
 }
 
-fn looks_like_time(cs: &[char]) -> bool {
-    let s: String = cs.iter().collect();
-    let t = s.strip_prefix('-').unwrap_or(&s);
-    let b = t.as_bytes();
-    b.len() > 11 && b[..4].iter().all(u8::is_ascii_digit) && b[4] == b'-' && t.contains(':') && t.chars().any(|c| c == 'T' || c == 't' || c == ' ')
+enum TimeShape {
+    No,
+    /// Matches Psych's TIME pattern and `Time.utc` accepts its fields, so it reads back as a Time.
+    Parses,
+    /// Matches in part, or in a form whose parsing this port does not reproduce.
+    Unsure,
+}
+
+/// Psych's `TIME`: `YYYY-M-D[Tt ]H:MM:SS[.frac][ ][Z|±H[H][:][MM]]`.
+fn time_shape(cs: &[char]) -> TimeShape {
+    let n = cs.len();
+    let digits_at = |from: usize| cs[from.min(n)..].iter().take_while(|c| c.is_ascii_digit()).count();
+    let num = |from: usize, len: usize| -> u32 { cs[from..from + len].iter().collect::<String>().parse().unwrap_or(0) };
+    if n < 14 || cs[0] == '-' || digits_at(0) != 4 || cs[4] != '-' {
+        return TimeShape::No;
+    }
+    let year_ok = true;
+    let mut i = 5;
+    let m = digits_at(i);
+    if !(1..=2).contains(&m) || cs.get(i + m) != Some(&'-') {
+        return TimeShape::No;
+    }
+    let month = num(i, m);
+    i += m + 1;
+    let d = digits_at(i);
+    if !(1..=2).contains(&d) {
+        return TimeShape::No;
+    }
+    let day = num(i, d);
+    i += d;
+    match cs.get(i) {
+        Some('T') | Some('t') => i += 1,
+        Some(c) if c.is_ascii_whitespace() => {
+            while cs.get(i).is_some_and(|c| c.is_ascii_whitespace()) {
+                i += 1;
+            }
+        }
+        _ => return TimeShape::No,
+    }
+    let h = digits_at(i);
+    if !(1..=2).contains(&h) || cs.get(i + h) != Some(&':') {
+        return TimeShape::No;
+    }
+    let hour = num(i, h);
+    i += h + 1;
+    if digits_at(i) < 2 || cs.get(i + 2) != Some(&':') {
+        return TimeShape::No;
+    }
+    let minute = num(i, 2);
+    i += 3;
+    if digits_at(i) < 2 {
+        return TimeShape::No;
+    }
+    let second = num(i, 2);
+    i += 2;
+    let in_range = year_ok && (1..=12).contains(&month) && (1..=31).contains(&day) && hour < 24 && minute < 60 && second < 60;
+    if cs.get(i) == Some(&'.') {
+        i += 1;
+        let f = digits_at(i);
+        if f == 0 {
+            return TimeShape::Unsure;
+        }
+        i += f;
+    }
+    if i == n {
+        return if in_range { TimeShape::Parses } else { TimeShape::Unsure };
+    }
+    while cs.get(i).is_some_and(|c| c.is_ascii_whitespace()) {
+        i += 1;
+    }
+    let rest: String = cs[i..].iter().collect();
+    let zone_ok = rest == "Z" || {
+        let b = rest.as_bytes();
+        let tail = rest.get(3..).unwrap_or("");
+        let tail = tail.strip_prefix(':').unwrap_or(tail);
+        rest.is_ascii()
+            && b.len() >= 3
+            && (b[0] == b'+' || b[0] == b'-')
+            && b[1..3].iter().all(u8::is_ascii_digit)
+            && rest[1..3].parse::<u32>().unwrap_or(99) < 24
+            && (tail.is_empty() || (tail.len() == 2 && tail.bytes().all(|c| c.is_ascii_digit()) && tail.parse::<u32>().unwrap_or(99) < 60))
+    };
+    if zone_ok && in_range { TimeShape::Parses } else { TimeShape::Unsure }
 }
 
 fn is_date(cs: &[char]) -> bool {
@@ -479,7 +558,9 @@ mod tests {
     fn what_ruby_would_handle_differently_is_left_to_it() {
         assert!(pair("k", "two\nlines").is_none());
         assert!(pair("k", "<<").is_none());
-        assert!(pair("k", "2026-01-02 10:11:12").is_none());
+        assert!(pair("k", "2026-13-02 10:11:12").is_none());
+        assert_eq!(one("2026-01-02 10:11:12"), "k: '2026-01-02 10:11:12'");
+        assert_eq!(one("2026-11-05T18:00:00Z"), "k: '2026-11-05T18:00:00Z'");
     }
 
     #[test]

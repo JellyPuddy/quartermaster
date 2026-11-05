@@ -10,7 +10,8 @@ pub use crate::outcome::Outcome;
 use crate::outcome::{abort, done};
 use crate::note::{DEFAULT_NOTE_KIND, NOTE_KINDS};
 use crate::ruby_text::strip;
-use crate::work_item::{WorkItem, STATES};
+use crate::attention::Attention;
+use crate::work_item::{Snooze, WorkItem, STATES};
 
 /// An error as `Cli#run` reports it: `qm: <message>`, or Ruby's job when only it can write the value.
 fn failed(e: QmError) -> Outcome {
@@ -44,6 +45,8 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
         "retitle" => retitle(args),
         "describe" => describe(args),
         "detach" => detach(args),
+        "ack" => ack(args),
+        "snooze" => snooze(args),
         "list" => list(),
         _ => return None,
     })
@@ -292,4 +295,29 @@ fn list() -> Outcome {
         out.push('\n');
     }
     done(out)
+}
+
+fn ack(a: &[String]) -> Outcome {
+    let Some(slug) = a.first() else { return abort("usage: qm ack SLUG [SESSION_ID]") };
+    let mut item = tri!(WorkItem::find(slug));
+    let attention = Attention::new(std::time::SystemTime::now());
+    let ids = tri!(attention.acknowledge_all(&mut item, a.get(1).map(String::as_str)));
+    if ids.is_empty() {
+        done(format!("{slug}: no degradation warnings to acknowledge\n"))
+    } else {
+        done(format!("{slug}: acknowledged degradation of {} session(s)\n", ids.len()))
+    }
+}
+
+fn snooze(a: &[String]) -> Outcome {
+    let usage = || abort("usage: qm snooze SLUG (1d | 7d | Nd | turn | clear)");
+    let [slug, duration, ..] = a else { return usage() };
+    let mut item = tri!(WorkItem::find(slug));
+    match item.snooze(duration) {
+        Ok(Snooze::Cleared) => done(format!("{slug}: snooze cleared\n")),
+        Ok(Snooze::Turn) => done(format!("{slug}: your-turn snoozed until the chat's next turn ends\n")),
+        Ok(Snooze::Until(date)) => done(format!("{slug}: snoozed until {date}\n")),
+        Err(e) if e.class == "ArgumentError" => usage(),
+        Err(e) => failed(e),
+    }
 }

@@ -1,3 +1,4 @@
+pub mod attention;
 pub mod cli;
 pub mod cli_format;
 pub mod clock;
@@ -10,6 +11,7 @@ pub mod git;
 pub mod hook;
 pub mod note;
 pub mod outcome;
+pub mod pr_status;
 pub mod psych;
 pub mod sections;
 pub mod project_config;

@@ -18,6 +18,13 @@ pub const STATES: [&str; 3] = ["in_progress", "fridge", "resolved"];
 pub const INJECTED_NOTES: usize = 5;
 pub const INJECTED_OPEN_NOTES: usize = 3;
 
+/// What `snooze` did.
+pub enum Snooze {
+    Cleared,
+    Turn,
+    Until(String),
+}
+
 pub struct WorkItem {
     pub slug: String,
     front: Mapping,
@@ -148,7 +155,8 @@ impl WorkItem {
         chosen.into_iter().map(|i| carried[i].clone()).collect()
     }
 
-    pub fn snapshot_count(&self) -> usize {
+    /// The `## Snapshots` section cut at its `### ` headings, blank pieces dropped.
+    fn snapshot_pieces(&self) -> Vec<String> {
         let section = self.section_body("## Snapshots");
         let mut pieces: Vec<String> = vec![String::new()];
         for line in section.split_inclusive('\n') {
@@ -158,7 +166,52 @@ impl WorkItem {
                 pieces.last_mut().unwrap().push_str(line);
             }
         }
-        pieces.iter().filter(|p| !strip(p).is_empty()).count()
+        pieces.into_iter().filter(|p| !strip(p).is_empty()).collect()
+    }
+
+    pub fn snapshot_count(&self) -> usize {
+        self.snapshot_pieces().len()
+    }
+
+    /// Whether the session was distilled: a snapshot headed `YYYY-MM-DD — session <id>` exists.
+    pub fn snapshot_for(&self, session_id: &str) -> bool {
+        self.snapshot_pieces().iter().any(|piece| {
+            let header = piece.lines().next().unwrap_or("");
+            let dated = header.get(..10).is_some_and(|d| {
+                d.bytes().enumerate().all(|(i, c)| if i == 4 || i == 7 { c == b'-' } else { c.is_ascii_digit() })
+            });
+            dated
+                && header[10..]
+                    .strip_prefix(" — session ")
+                    .and_then(|rest| rest.split_whitespace().next())
+                    .is_some_and(|id| id == session_id)
+        })
+    }
+
+    /// The attached sessions with whether each has had its transcript degradation acknowledged.
+    pub fn attached_sessions(&self) -> Vec<(String, bool)> {
+        array(get(&self.front, "sessions"))
+            .into_iter()
+            .filter_map(|s| match s {
+                Value::Mapping(m) => get(m, "id").map(|id| (text(id), !matches!(m.get("ack_degrade"), None | Some(Value::Null) | Some(Value::Bool(false))))),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The item file's modification time, in seconds since the epoch.
+    pub fn file_mtime(&self) -> Option<f64> {
+        let modified = fs::metadata(Self::path_for(&self.slug)).and_then(|m| m.modified()).ok()?;
+        Some(match modified.duration_since(std::time::UNIX_EPOCH) {
+            Ok(d) => d.as_secs_f64(),
+            Err(e) => -e.duration().as_secs_f64(),
+        })
+    }
+
+    /// Whether the item is snoozed through `date`; an unreadable `snooze_until` snoozes nothing.
+    pub fn snoozed_at(&self, date: chrono::NaiveDate) -> bool {
+        let Some(stored) = self.field("snooze_until") else { return false };
+        stored.get(..10).and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()).is_some_and(|until| until >= date)
     }
 
     // ---- writes
@@ -422,6 +475,61 @@ impl WorkItem {
             Ok(true)
         })?;
         Ok(retagged.expect("set above"))
+    }
+
+    /// Marks an attached session's transcript degradation as accepted; false when it is not attached.
+    pub fn ack_degrade(&mut self, session_id: &str) -> Res<bool> {
+        let id = session_id.to_string();
+        self.edit(move |fresh, lines, _| {
+            if !fresh.session_ids().contains(&id) {
+                return Ok(false);
+            }
+            let (at, end) = front_edit::block(lines, "sessions").expect("sessions present");
+            if lines[at] != "sessions:" {
+                return Err(QmError::new("RuntimeError", "front matter 'sessions' is not a block list; edit it with the Ruby qm"));
+            }
+            for (s, e) in front_edit::items(lines, at, end) {
+                let entry = lines[s..e].join("\n");
+                let listed = serde_yaml::from_str::<Value>(&entry).ok().and_then(|v| match v {
+                    Value::Sequence(items) => items.first().and_then(|i| i.as_mapping().and_then(|m| get(m, "id").map(text))),
+                    _ => None,
+                });
+                if listed.as_deref() != Some(id.as_str()) {
+                    continue;
+                }
+                match (s + 1..e).find(|&i| lines[i].starts_with("  ack_degrade:")) {
+                    Some(i) => lines[i] = "  ack_degrade: true".to_string(),
+                    None => lines.insert(e, "  ack_degrade: true".to_string()),
+                }
+                return Ok(true);
+            }
+            Ok(false)
+        })
+    }
+
+    /// `Nd` snoozes N days from today, `turn` quiets the chat's current your-turn, `clear` wakes the item.
+    pub fn snooze(&mut self, duration: &str) -> Res<Snooze> {
+        if duration == "clear" {
+            self.edit(|_, lines, _| {
+                front_edit::delete(lines, "snooze_until");
+                front_edit::delete(lines, "turn_snoozed_at");
+                Ok(true)
+            })?;
+            return Ok(Snooze::Cleared);
+        }
+        if duration == "turn" {
+            let at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+            self.edit(move |_, lines, _| Self::set_pair(lines, "turn_snoozed_at", &at).map(|_| true))?;
+            return Ok(Snooze::Turn);
+        }
+        let days = duration.strip_suffix('d').filter(|n| !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit()));
+        let Some(days) = days else { return Err(QmError::argument("snooze duration must be Nd, turn or clear")) };
+        let n: u64 = days.parse().ok().filter(|n| *n <= 100_000).ok_or_else(|| QmError::new(UNEMITTABLE, "a snooze this long"))?;
+        let until = chrono::Local::now().date_naive() + chrono::Days::new(n);
+        let until = until.format("%Y-%m-%d").to_string();
+        let written = until.clone();
+        self.edit(move |_, lines, _| Self::set_pair(lines, "snooze_until", &written).map(|_| true))?;
+        Ok(Snooze::Until(until))
     }
 
     pub fn describe(&mut self, text: &str) -> Res<()> {

@@ -1,7 +1,7 @@
 # Rust port
 
-**Code:** `Cargo.toml`, `src/cli.rs`, `src/cli_format.rs`, `src/clock.rs`, `src/data_root.rs`, `src/delegate.rs`, `src/error.rs`, `src/feature_use.rs`, `src/front_edit.rs`, `src/git.rs`, `src/hook.rs`, `src/lib.rs`, `src/main.rs`, `src/note.rs`, `src/outcome.rs`, `src/project_config.rs`, `src/project_map.rs`, `src/psych.rs`, `src/ruby_text.rs`, `src/sections.rs`, `src/session_commands.rs`, `src/session_log.rs`, `src/session_rows.rs`, `src/transcripts.rs`, `src/work_item.rs`, `src/work_item_commands.rs`, `src/yaml_scalar.rs`, `src/config_seed.yml`, `src/usage.txt`
-**Tests:** `tests/characterization.rs`, `tests/interop.rs`, `tests/psych_scalars.rs`, `tests/sessions.rs`, `tests/work_items.rs`, `tests/common/mod.rs`, the golden files in `tests/fixtures/golden/`, and the unit tests inside the `src` files
+**Code:** `Cargo.toml`, `src/attention.rs`, `src/cli.rs`, `src/cli_format.rs`, `src/clock.rs`, `src/data_root.rs`, `src/delegate.rs`, `src/error.rs`, `src/feature_use.rs`, `src/front_edit.rs`, `src/git.rs`, `src/hook.rs`, `src/lib.rs`, `src/main.rs`, `src/note.rs`, `src/outcome.rs`, `src/pr_status.rs`, `src/project_config.rs`, `src/project_map.rs`, `src/psych.rs`, `src/ruby_text.rs`, `src/sections.rs`, `src/session_commands.rs`, `src/session_log.rs`, `src/session_rows.rs`, `src/transcripts.rs`, `src/work_item.rs`, `src/work_item_commands.rs`, `src/yaml_scalar.rs`, `src/config_seed.yml`, `src/usage.txt`
+**Tests:** `tests/attention.rs`, `tests/attention_commands.rs`, `tests/characterization.rs`, `tests/interop.rs`, `tests/psych_scalars.rs`, `tests/sessions.rs`, `tests/work_items.rs`, `tests/common/mod.rs`, the golden files in `tests/fixtures/golden/`, and the unit tests inside the `src` files
 **Depends on:** [capture](capture.md), [work-items](work-items.md), [cli](cli.md)
 
 ## What it does
@@ -17,7 +17,9 @@ context, byte for byte), `sessions`, `inbox`, `dismiss`, feature-use recording f
 session log, config.yml's project side, the project map, and the work-item commands `new`,
 `note`, `retag`, `state`, `link-branch`, `unlink-branch`, `board`, `move`, `retitle`,
 `describe`, `detach` and `list` (bare `qm` without a terminal lists too), and `show-session`,
-`session-item`, `help` and `install-hooks`. `src/usage.txt` is `qm help`'s output as Ruby prints it;
+`session-item`, `help`, `install-hooks`, `ack` and `snooze`. The attention rules themselves
+(`Attention`: expiring transcripts, quiet items, merged PRs, with `PrStatus` and its `pr-cache.json`)
+are ported as a library; the `qm attention` command stays Ruby because it also lists chats. `src/usage.txt` is `qm help`'s output as Ruby prints it;
 the tests compare it with Ruby's, so a change to `CliFormat::USAGE_SECTIONS` fails until the file
 is regenerated (`./quartermaster help > src/usage.txt`). `install-hooks` prints the snippet for
 the checkout's Ruby launcher, never for the Rust binary.
@@ -55,7 +57,8 @@ files written. The same file passes against Ruby and against Rust:
 seeded `config.yml` are golden files in `tests/fixtures/golden/`, generated from Ruby with
 `QM_UPDATE_GOLDEN=1` — regenerate only against the Ruby launcher. `tests/interop.rs` mixes the
 two binaries on one data root. `tests/work_items.rs` records command transcripts (exit code, streams, the item file after
-every step); `tests/psych_scalars.rs` dumps about 3,400 generated strings with the real Psych and
+every step); `tests/attention.rs` builds one world twice (items, sessions, transcripts, a fake `gh`) and
+compares Ruby's and Rust's entries, `pr-cache.json` and `gh` calls; `tests/psych_scalars.rs` dumps about 3,400 generated strings with the real Psych and
 compares. A command is ported only after the characterization suite covers it and passes on both.
 
 ## Rules

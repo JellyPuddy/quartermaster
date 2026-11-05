@@ -4,34 +4,6 @@
 mod common;
 use common::*;
 
-type Step<'a> = (&'a [&'a str], &'a str);
-
-fn scrub(qm: &Qm, s: &str) -> String {
-    normalize(&s.replace(qm.root.path().to_string_lossy().as_ref(), "ROOT"))
-}
-
-fn transcript(qm: &Qm, watch: &str, steps: &[Step]) -> String {
-    let mut out = String::new();
-    for (args, stdin) in steps {
-        let o = qm.run_with(args, stdin, &[]);
-        let shown: Vec<String> = args.iter().map(|a| format!("{a:?}")).collect();
-        out.push_str(&format!("$ qm {}\nexit {}\n", shown.join(" "), o.code));
-        for (label, text) in [("stdout", &o.stdout), ("stderr", &o.stderr)] {
-            if !text.is_empty() {
-                out.push_str(&format!("--- {label}\n{text}"));
-                if !text.ends_with('\n') {
-                    out.push('\n');
-                }
-            }
-        }
-        if let Ok(file) = std::fs::read_to_string(qm.root.path().join(format!("work-items/{watch}.md"))) {
-            out.push_str(&format!("--- {watch}.md\n{file}"));
-        }
-        out.push('\n');
-    }
-    scrub(qm, &out)
-}
-
 #[test]
 fn the_happy_paths_of_every_work_item_command() {
     let qm = Qm::new();

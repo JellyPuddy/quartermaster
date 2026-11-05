@@ -42,6 +42,14 @@ fn corpus() -> Vec<String> {
         all.push(format!("{lead}{}", "w".repeat(100)));
         all.push(format!("{lead}{} end", "w".repeat(95)));
     }
+    for t in [
+        "2026-01-02T10:11:12Z", "2026-01-02 10:11:12", "2026-01-02 10:11:12.5", "2026-01-02 10:11:12 +05:30", "2026-01-02T10:11:12+0530",
+        "2026-13-02 10:11:12", "2026-01-02 10:11:12.", "2026-01-02t10:11:12-05", "2026-1-2 1:02:03", "2026-01-02 24:00:00", "2026-01-02 10:11:12 Z",
+        "2026-01-02 10:11:12 +25:00", "2026-02-31 10:11:12", "2026-01-02  10:11:12", "2026-01-02 10:11:12Z", "2026-01-02 10:11:12 +5", "2026-01-02 10:11:12.123456",
+        "2026-01-02T10:11:12 extra", "2026-01-02 10:11", "-2026-01-02 10:11:12", "2026-01-32 10:11:12", "2026-01-02 10:60:12", "2026-01-02 10:11:60",
+    ] {
+        all.push(t.to_string());
+    }
     all.sort();
     all.dedup();
     all.retain(|s| !s.contains('\n') && !s.contains('\r'));
@@ -88,7 +96,13 @@ fn every_generated_string_dumps_as_psych_dumps_it_or_is_declined() {
         }
         assert!(wrong.is_empty(), "{} of {} differ for key {key}:\n{}", wrong.len(), strings.len(), wrong.iter().take(12).cloned().collect::<Vec<_>>().join("\n"));
         declined.sort();
-        assert_eq!(declined, ["2026-01-02x: y", "<<", "\u{a0}", "٣", "\u{feff}", "🎉"], "the strings left to Ruby changed");
+        assert_eq!(
+            declined,
+            [
+                "2026-01-02 10:11:12 +25:00", "2026-01-02 10:11:12 +5", "2026-01-02 10:11:12.", "2026-01-02 10:11:60", "2026-01-02 10:60:12", "2026-01-02 24:00:00",
+                "2026-01-02T10:11:12 extra", "2026-01-32 10:11:12", "2026-13-02 10:11:12", "<<", "\u{a0}", "٣", "\u{feff}", "🎉"
+            ],
+            "the strings left to Ruby changed");
         assert!(matched * 10 > strings.len() * 9, "only {matched} of {} matched; declined: {:?}", strings.len(), declined.iter().take(20).collect::<Vec<_>>());
         eprintln!("key {key}: {matched} identical, {} declined of {}", declined.len(), strings.len());
     }
