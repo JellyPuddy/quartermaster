@@ -22,6 +22,11 @@ pub fn ljust(s: &str, width: usize) -> String {
     format!("{s}{}", " ".repeat(width.saturating_sub(len)))
 }
 
+/// `str[0, n]` by characters.
+pub fn prefix_chars(s: &str, n: usize) -> String {
+    s.chars().take(n).collect()
+}
+
 /// The path with the first occurrence of the home directory shown as `~` ("?" when unknown).
 pub fn short_path(path: Option<&str>) -> String {
     path.unwrap_or("?").replacen(&home(), "~", 1)

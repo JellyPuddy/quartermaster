@@ -1,7 +1,7 @@
 # Rust port
 
-**Code:** `Cargo.toml`, `src/attention.rs`, `src/cli.rs`, `src/cli_format.rs`, `src/clock.rs`, `src/data_root.rs`, `src/delegate.rs`, `src/error.rs`, `src/feature_use.rs`, `src/front_edit.rs`, `src/git.rs`, `src/hook.rs`, `src/item_usage.rs`, `src/lib.rs`, `src/main.rs`, `src/note.rs`, `src/outcome.rs`, `src/pr_status.rs`, `src/price_defaults.rs`, `src/price_table.rs`, `src/project_config.rs`, `src/project_map.rs`, `src/psych.rs`, `src/ruby_format.rs`, `src/ruby_num.rs`, `src/ruby_text.rs`, `src/sections.rs`, `src/session_commands.rs`, `src/session_log.rs`, `src/session_rows.rs`, `src/transcript_usage.rs`, `src/transcripts.rs`, `src/usage_ledger.rs`, `src/work_item.rs`, `src/work_item_commands.rs`, `src/yaml_scalar.rs`, `src/config_seed.yml`, `src/usage.txt`
-**Tests:** `tests/attention.rs`, `tests/attention_commands.rs`, `tests/characterization.rs`, `tests/interop.rs`, `tests/psych_scalars.rs`, `tests/sessions.rs`, `tests/usage.rs`, `tests/work_items.rs`, `tests/common/mod.rs`, the golden files in `tests/fixtures/golden/`, and the unit tests inside the `src` files
+**Code:** `Cargo.toml`, `src/attention.rs`, `src/cli.rs`, `src/cli_format.rs`, `src/clock.rs`, `src/data_root.rs`, `src/delegate.rs`, `src/error.rs`, `src/feature_use.rs`, `src/front_edit.rs`, `src/gh_stack.rs`, `src/git.rs`, `src/hook.rs`, `src/item_usage.rs`, `src/lib.rs`, `src/main.rs`, `src/note.rs`, `src/outcome.rs`, `src/pr_status.rs`, `src/price_defaults.rs`, `src/price_table.rs`, `src/project_config.rs`, `src/project_map.rs`, `src/psych.rs`, `src/ruby_format.rs`, `src/ruby_num.rs`, `src/ruby_text.rs`, `src/sections.rs`, `src/session_commands.rs`, `src/session_log.rs`, `src/session_rows.rs`, `src/show_command.rs`, `src/transcript_usage.rs`, `src/transcripts.rs`, `src/usage_ledger.rs`, `src/work_item.rs`, `src/work_item_commands.rs`, `src/yaml_scalar.rs`, `src/config_seed.yml`, `src/usage.txt`
+**Tests:** `tests/attention.rs`, `tests/attention_commands.rs`, `tests/characterization.rs`, `tests/interop.rs`, `tests/psych_scalars.rs`, `tests/sessions.rs`, `tests/show.rs`, `tests/usage.rs`, `tests/work_items.rs`, `tests/common/mod.rs`, the golden files in `tests/fixtures/golden/`, and the unit tests inside the `src` files
 **Depends on:** [capture](capture.md), [work-items](work-items.md), [cli](cli.md)
 
 ## What it does
@@ -17,7 +17,12 @@ context, byte for byte), `sessions`, `inbox`, `dismiss`, feature-use recording f
 session log, config.yml's project side, the project map, and the work-item commands `new`,
 `note`, `retag`, `state`, `link-branch`, `unlink-branch`, `board`, `move`, `retitle`,
 `describe`, `detach` and `list` (bare `qm` without a terminal lists too), and `show-session`,
-`session-item`, `help`, `install-hooks`, `ack` and `snooze`. The attention rules themselves
+`session-item`, `help`, `install-hooks`, `ack`, `snooze` and `show`. `show` keeps the Ruby command's
+side effects, in its order: it auto-links the item's gh-stack branches (`GhStack`, read from the
+repo's common git dir; refs read from loose files and `packed-refs`, or git for a reftable repo),
+refreshes `pr-cache.json` through `gh`, and saves the usage ledger. `GhStack` has no in-process
+caches — they only help a long-lived GUI — and its `chains` (stacks and loose branches with ahead
+counts and restack flags) are ported whole for the GUI port to use. The attention rules themselves
 (`Attention`: expiring transcripts, quiet items, merged PRs, with `PrStatus` and its `pr-cache.json`)
 are ported as a library; the `qm attention` command stays Ruby because it also lists chats.
 So is the usage side of the side panel — `TranscriptUsage`, `UsageLedger` (`usage-cache.json`),
@@ -28,9 +33,7 @@ the tests compare it with Ruby's, so a change to `CliFormat::USAGE_SECTIONS` fai
 is regenerated (`./quartermaster help > src/usage.txt`). `install-hooks` prints the snippet for
 the checkout's Ruby launcher, never for the Rust binary.
 
-Still Ruby, even for these words: `show` (it needs stacks, PR state, the attention fold and usage
-tallies — each a stage of its own),
-`attach` and `new --session` (they rename the chat's tmux pane), `new --pf-mode`, `state
+Still Ruby, even for these words: `attach` and `new --session` (they rename the chat's tmux pane), `new --pf-mode`, `state
 … resolved` (it offers cleanup and clears the viewed marks), and every argument shape the
 port does not parse exactly as Ruby's `OptionParser` does — abbreviated or `=`-joined flags,
 `--`, a dash-leading title or note, `retag` positions Ruby's `Integer()` would read as octal or
@@ -63,7 +66,10 @@ seeded `config.yml` are golden files in `tests/fixtures/golden/`, generated from
 two binaries on one data root. `tests/work_items.rs` records command transcripts (exit code, streams, the item file after
 every step); `tests/attention.rs` builds one world twice (items, sessions, transcripts, a fake `gh`) and
 compares Ruby's and Rust's entries, `pr-cache.json` and `gh` calls; `tests/psych_scalars.rs` dumps about 3,400 generated strings with the real Psych and
-compares. `tests/usage.rs` runs Ruby and Rust over the same transcripts pass after pass (appends, rewrites,
+compares. `tests/show.rs` builds a git repo with gh-stack stacks (packed and loose refs, an origin-only branch,
+a restack), a fake `gh`, transcripts and sessions, runs `show` over every item and compares the output
+and every trace it leaves with Ruby's; mutation checks of the port need `QM_BIN` set to the Rust binary,
+or the CLI-level tests only exercise Ruby. `tests/usage.rs` runs Ruby and Rust over the same transcripts pass after pass (appends, rewrites,
 a pruned transcript, another process's save) and compares every row and the ledger's bytes; it also
 fuzzes costs, labels and `mtime` floats. A command is ported only after the characterization suite
 covers it and passes on both.
@@ -87,5 +93,5 @@ covers it and passes on both.
 - **Known Ruby race, not fixed here**: Ruby reads an item before taking the lock and saves with a
   plain `File.write`, so concurrent Ruby writers often fail with "malformed work item file". Rust
   writers cannot produce that state; the mixed-writer test allows only that failure, from Ruby.
-- **Not ported yet** (still Ruby): `show`, `attach`, the viewer and every other command, `qm gui`, chats, worktrees,
+- **Not ported yet** (still Ruby): `attach`, the viewer and every other command, `qm gui`, chats, worktrees,
   PRs, diffs, rotation, benchmarks and `statusline/statusline.rb`.

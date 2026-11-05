@@ -89,6 +89,30 @@ impl WorkItem {
     pub fn board(&self) -> Option<String> {
         self.field("board")
     }
+    pub fn snooze_until_raw(&self) -> Option<String> {
+        self.field("snooze_until")
+    }
+
+    /// The number of the first branch named `issue/<number>…`, if any.
+    pub fn issue_number(&self) -> Option<String> {
+        self.branches().iter().find_map(|b| {
+            let at = b.find("issue/")?;
+            let digits: String = b[at + 6..].chars().take_while(|c| c.is_ascii_digit()).collect();
+            (!digits.is_empty()).then_some(digits)
+        })
+    }
+
+    /// The one note to show when only one fits: the newest open one, else the newest that is not history.
+    pub fn headline_note(&self) -> Option<Note> {
+        let all = self.notes();
+        all.iter().find(|n| n.is_open()).or_else(|| all.iter().find(|n| !n.is_history())).or_else(|| all.first()).cloned()
+    }
+
+    /// The body with each stored note line rendered by `f` (the position and kind handles `qm retag` takes).
+    pub fn body_with_notes(&self, f: impl FnMut(Note) -> String) -> String {
+        sections::map_notes(&self.body, f)
+    }
+
     pub fn pf_mode_override(&self) -> Option<String> {
         self.field("pf_mode")
     }
@@ -359,6 +383,27 @@ impl WorkItem {
             Self::set_list(lines, "temp_branches", &all)?;
             Ok(true)
         })
+    }
+
+    /// Links branches the item lacks (a stack's others); returns those added, none when all were there.
+    pub fn link_branches(&mut self, list: &[String]) -> Res<Vec<String>> {
+        let list = list.to_vec();
+        let mut added = vec![];
+        self.edit(|fresh, lines, _| {
+            let mut branches = fresh.branches();
+            for b in &list {
+                if !branches.contains(b) && !added.contains(b) {
+                    added.push(b.clone());
+                }
+            }
+            if added.is_empty() {
+                return Ok(false);
+            }
+            branches.extend(added.iter().cloned());
+            Self::store_branches(lines, &branches)?;
+            Ok(true)
+        })?;
+        Ok(added)
     }
 
     pub fn update_state(&mut self, state: &str) -> Res<()> {

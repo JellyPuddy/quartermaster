@@ -60,3 +60,18 @@ fn snooze_sets_clears_and_refuses() {
     ];
     golden("attention_snooze.txt", &run_steps(None, "stale", &steps));
 }
+
+/// The transcripts normalize dates, so the day arithmetic gets its own check.
+#[test]
+fn snooze_counts_days_from_today() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), SystemTime::now(), None);
+    let qm = Qm::at(&w.root);
+    for n in [0u64, 1, 3, 7, 30] {
+        let expected = (chrono::Local::now().date_naive() + chrono::Days::new(n)).format("%Y-%m-%d").to_string();
+        let o = qm.ok(&["snooze", "stale", &format!("{n}d")]);
+        assert_eq!(o, format!("stale: snoozed until {expected}\n"));
+        let item = std::fs::read_to_string(w.root.join("work-items/stale.md")).unwrap();
+        assert!(item.contains(&format!("snooze_until: '{expected}'\n")), "{n}d: {item}");
+    }
+}

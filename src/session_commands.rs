@@ -15,6 +15,7 @@ const USAGE: &str = include_str!("usage.txt");
 /// `Some(outcome)` for the commands ported here, `None` for every other word.
 pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
     Some(match command {
+        "show" => crate::show_command::show(args),
         "show-session" => show_session(args),
         "session-item" => session_item(args),
         "help" | "--help" | "-h" => done(USAGE.to_string()),

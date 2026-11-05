@@ -33,3 +33,11 @@ pub fn project_for(cwd: Option<&str>) -> String {
     }
     NO_PROJECT.to_string()
 }
+
+/// The configured repo root of a project, if it has one.
+pub fn root_for(project: Option<&str>) -> Option<String> {
+    let _ = data_root::ensure_setup();
+    let name = project?;
+    let config = ProjectConfig::current();
+    config.roots().into_iter().find(|(n, _)| *n == name).map(|(_, r)| r.to_string())
+}

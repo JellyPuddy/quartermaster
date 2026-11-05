@@ -34,8 +34,8 @@ pub fn replace_section(body: &str, heading: &str, content: &str) -> String {
     format!("{}{}{}", l[..=idx].concat(), content, l[end..].concat())
 }
 
-/// Rewrites every stored note line of `## Notes` through `f`, in the note's normal form.
-pub fn rewrite_notes(body: &str, mut f: impl FnMut(Note) -> Note) -> String {
+/// Renders every stored note line of `## Notes` through `f`; other lines are kept as they are.
+pub fn map_notes(body: &str, mut f: impl FnMut(Note) -> String) -> String {
     let mut seen = 0;
     let mut in_notes = false;
     let mut out = String::new();
@@ -46,13 +46,18 @@ pub fn rewrite_notes(body: &str, mut f: impl FnMut(Note) -> Note) -> String {
         match if in_notes { Note::parse(line, seen + 1) } else { None } {
             Some(note) => {
                 seen += 1;
-                out.push_str(&f(note).to_line());
+                out.push_str(&f(note));
                 out.push('\n');
             }
             None => out.push_str(line),
         }
     }
     out
+}
+
+/// Rewrites every stored note line of `## Notes` through `f`, in the note's normal form.
+pub fn rewrite_notes(body: &str, mut f: impl FnMut(Note) -> Note) -> String {
+    map_notes(body, |n| f(n).to_line())
 }
 
 #[cfg(test)]
