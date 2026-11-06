@@ -149,13 +149,13 @@ module Quartermaster
       { mode: :start, cwd: start_cwd(item), argv: [*chat_command, *prompt], env: { "QM_ITEM" => item.slug } }
     end
 
-    private
-
     # QM_CHAT_COMMAND swaps the program a pane runs (`claude --model haiku`
     # for an end-to-end check, a stand-in in tests); the user's chats run claude.
     def chat_command
       Shellwords.split(ENV.fetch("QM_CHAT_COMMAND", "claude"))
     end
+
+    private
 
     # Where `claude --resume ID` can actually find the session. Claude Code
     # files a transcript under the project directory for the cwd it was

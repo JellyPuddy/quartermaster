@@ -1,8 +1,8 @@
 # Local automations
 
-**Code:** `lib/quartermaster/run_log.rb`, `lib/quartermaster/tick_installer.rb`
-**Tests:** `test/run_log_test.rb`, `test/automation_store_test.rb`, `test/tick_installer_test.rb`
-**Depends on:** [automations](automations.md) (the store, the item, the GUI tab), [attention](attention.md) (a run's session state), [gui-shell](gui-shell.md) (`CommandRunner`)
+**Code:** `lib/quartermaster/run_log.rb`, `lib/quartermaster/tick_installer.rb`, `lib/quartermaster/automation_flows.rb`, `lib/quartermaster/chat_flow.rb`, `lib/quartermaster/pr_review_flow.rb`
+**Tests:** `test/run_log_test.rb`, `test/automation_store_test.rb`, `test/tick_installer_test.rb`, `test/automation_flows_test.rb`
+**Depends on:** [automations](automations.md) (the store, the item, the GUI tab), [attention](attention.md) (a run's session state), [gui-shell](gui-shell.md) (`CommandRunner`), [chats](chats.md) (tmux, the chat env), [prs](prs.md) (`PrReviewStart`)
 
 ## What it does
 
@@ -30,6 +30,25 @@ runs until the user enables it. Its chat's brief (`AutomationChat.local_brief`) 
 `~/.claude/projects/`) → refine. Nothing to push; no RemoteTrigger wording. Its end — decisions as
 notes, the house rules verbatim (with their "Local automations" section on drafting, unattended
 runs and the guard's output), description and notes — is the cloud brief's (`brief_tail`).
+
+**Flows** — every run goes through the flow its yml's `flow:` names, from `AutomationFlows`
+(`chat` when unset). A flow has a `name`, the item fields it `needs` and `start(automation, item,
+prompt, run_id:, session_id:)`, answering `{item_slug:, tmux:}` once a chat runs or `{waiting:
+reason}` when the run stays queued. `AutomationFlows#problem(flow, item)` says why a flow can't take
+an item (an unknown flow, or a `needs` field missing or blank; a cron run's nil item lacks every
+field), and `#start` raises it as an ArgumentError. Both flows pass claude `--session-id` (qm's
+uuid), then `--model`, `--permission-mode` and `--allowedTools` (one comma-joined value: the flag
+is variadic and would swallow the prompt) when the yml sets them, before the prompt.
+- `chat` (`ChatFlow`): tmux session `<slug>--run-<run id>` on qm's socket, running
+  `Launcher#chat_command` (so `QM_CHAT_COMMAND` swaps it) with `QM_ITEM=<automation slug>`; Tmux
+  unsets every `CLAUDE*` var. cwd is the yml's `cwd`, else the automation item's project root,
+  else home. The prompt is `<slug>.prompt.md`, plus for an item a final `## Item` section: the
+  item pretty-printed as JSON, or a guard's plain line (an item of only `key` and `line`) as the line.
+- `pr-review` (`PrReviewFlow`, needs `url`): the PR from the inbox cache, else one
+  `gh pr view URL --json …` through the runner (a failure raises). While the PR's Review chat is
+  live (`PrReviewStart#live?`) it answers `waiting: "Review chat for <repo>#<n> is open"` and
+  starts nothing; else `PrReviewStart#start` opens the Review item's own chat (tmux named by its
+  slug) with the flags before the kickoff and the automation's prompt appended to it.
 
 **Run log** — `RunLog.new(slug)` is `automations/<slug>.runs.jsonl`, one `{v: 1, at, event, …}`
 line per event, appended under a flock; a writer that decides from the fold (`enqueue_item`,
@@ -83,6 +102,9 @@ plist exists.
   never retried automatically; only `retry` queues a key again.
 - Cron runs coalesce to at most one queued cron run per automation; guard items queue one each, FIFO.
 - `bypassPermissions` is refused for local automations at the store.
+- Only a `chat` run gets a `--run-` tmux session; a `pr-review` run lives in its Review item's own
+  chat and never opens a second one beside it.
+- Flows hand tmux the argv and env only through the `Tmux` wrapper; tests pass a `FakeTmux`.
 - Deleting an automation (`AutomationStore#delete_local`) removes its run log with its files.
 - The LaunchAgent is installed or removed only on the user's explicit command or button, never
   as a side effect of anything else.
