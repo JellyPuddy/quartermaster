@@ -1,7 +1,7 @@
 # Local automations
 
-**Code:** `lib/quartermaster/local_cron.rb`, `lib/quartermaster/run_log.rb`, `lib/quartermaster/automation_flows.rb`, `lib/quartermaster/chat_flow.rb`, `lib/quartermaster/pr_review_flow.rb`, `lib/quartermaster/automation_tick.rb`, `lib/quartermaster/automation_guard.rb`, `lib/quartermaster/run_lifecycle.rb`, `lib/quartermaster/tick_installer.rb`
-**Tests:** `test/local_cron_test.rb`, `test/run_log_test.rb`, `test/automation_store_test.rb`, `test/automation_flows_test.rb`, `test/automation_tick_test.rb`, `test/automation_run_lifecycle_test.rb`, `test/tick_installer_test.rb`
+**Code:** `lib/quartermaster/local_cron.rb`, `lib/quartermaster/run_log.rb`, `lib/quartermaster/automation_flows.rb`, `lib/quartermaster/chat_flow.rb`, `lib/quartermaster/pr_review_flow.rb`, `lib/quartermaster/automation_tick.rb`, `lib/quartermaster/automation_guard.rb`, `lib/quartermaster/run_lifecycle.rb`, `lib/quartermaster/tick_installer.rb`, `lib/quartermaster/local_automations.rb`, `lib/quartermaster/cli_local_automation.rb`
+**Tests:** `test/local_cron_test.rb`, `test/run_log_test.rb`, `test/automation_store_test.rb`, `test/automation_flows_test.rb`, `test/automation_tick_test.rb`, `test/automation_run_lifecycle_test.rb`, `test/tick_installer_test.rb`, `test/local_automation_cli_test.rb`
 **Depends on:** [automations](automations.md) (the store, the item, the GUI tab; `LocalSchedule`'s DST rule), [attention](attention.md) (a run's session state), [chats](chats.md) (tmux, the chat env), [prs](prs.md) (`PrReviewStart`), [gui-shell](gui-shell.md) (`CommandRunner`)
 
 ## What it does
@@ -10,94 +10,76 @@ A local automation is a scheduled Claude Code run on this machine, managed by qm
 cloud automations' store (`AutomationStore`), its `kind: automation` work item and its GUI tab;
 its yml says `runner: local` instead of `cloud`. This page owns what only local ones have.
 
-**Fields** — a `runner: local` yml holds `v`, `runner`, `name`, `cron` (5-field, Europe/Amsterdam
-local time), `enabled`, `when` (the guard: a shell command), `flow` (default `chat`), `cwd`
-(default the project's root), `model`, `allowed_tools` (a list), `permission_mode`,
-`timeout_minutes` (default 30) and `notify` (`attention` or `quiet`, default `attention`); no
-`routine` or `remote_*`. `AutomationStore.local_settings(record)` fills the defaults for unset
-fields without writing them. `AutomationStore#write` validates the merged record of a local
-automation with `AutomationStore.validate_local` and writes nothing when it fails: an
-ArgumentError naming every bad field — `permission_mode: bypassPermissions`, a `notify` outside
-the two values, a `flow` that isn't a non-empty string, a `timeout_minutes` that isn't a positive
-whole number, an `allowed_tools` that isn't a list of strings. Cloud records are never held to it.
+**Fields** — a `runner: local` yml holds `v`, `runner`, `name`, `cron` (5-field, Amsterdam local
+time), `enabled`, `when` (the guard: a shell command), `flow` (default `chat`), `cwd` (default the
+project's root), `model`, `allowed_tools` (a list), `permission_mode`, `timeout_minutes` (30) and
+`notify` (`attention` or `quiet`, default `attention`); no `routine` or `remote_*`.
+`AutomationStore.local_settings(record)` fills unset defaults without writing them;
+`AutomationStore#write` checks a local record with `validate_local` and writes nothing when it
+fails: an ArgumentError naming every bad field (`bypassPermissions`, an unknown `notify`, an
+empty `flow`, a `timeout_minutes` not a positive whole number, `allowed_tools` not a list of
+strings). Cloud records are never held to it.
 
 **Schedule** — `LocalCron` reads a local automation's 5-field `cron` as wall-clock time in
-Europe/Amsterdam, not UTC as cloud crons are. Every field takes `*`, numbers, lists, ranges and
-steps (`*/n`, `a-b/n`, `a/n` = from a to the field's end); weekday is 0-7, 7 = Sunday. When
-day-of-month and weekday both start with something other than `*`, a day matches either;
-otherwise both must match (so `*/2` counts as a star).
-- `due?(cron, since:, now:)` — some scheduled minute lies in `(since, now]`; any number of
-  missed minutes count as one. `last_due` gives the latest such minute (UTC). A `since` older than
-  8 days before `now` counts from 8 days back, so a long-stopped scheduler fires once, not never.
-- `next_after(cron, t)` — the first scheduled minute after `t`, for display; nil when none falls
-  in nine years (`0 0 31 2 *`).
-- DST: a wall-clock minute in the spring-forward gap (02:00-02:59 on the last Sunday of March)
-  never happens; one in the fall-back hour (02:00-02:59 on the last Sunday of October) happens at
-  two UTC instants, so checks an hour apart both find it due.
-- `label` — "Mon, Thu 08:00" / "every day 08:00" for a simple `M H * * <weekdays>` cron (whose
-  `days` and `time` feed the schedule picker, and `to_cron(days:, time:)` writes back unshifted),
-  else the cron itself plus "Amsterdam time". `error(cron)` — nil, or what is wrong with a cron
-  (field count, a value outside the field, a backwards range, a zero step, anything else).
+Europe/Amsterdam, not UTC as cloud crons are. Fields take `*`, numbers, lists, ranges and steps
+(`*/n`, `a-b/n`, `a/n` = from a to the field's end); weekday 0-7, 7 = Sunday. When day-of-month
+and weekday both start with something other than `*`, a day matches either; else both must match.
+- `due?(cron, since:, now:)` — a scheduled minute lies in `(since, now]`, any number counting as
+  one; `last_due` gives the latest (UTC). A `since` over 8 days back counts from 8 days back.
+- `next_after(cron, t)` — the first scheduled minute after `t`; nil when none in nine years.
+- DST: a minute in the spring-forward gap never happens; one in the fall-back hour happens at two
+  UTC instants, so checks an hour apart both find it due.
+- `label` — "Mon, Thu 08:00" / "every day 08:00" for a simple `M H * * <weekdays>` cron (its
+  `days` and `time` feed the picker; `to_cron(days:, time:)` writes back unshifted), else the cron
+  plus "Amsterdam time". `error(cron)` — nil, or what is wrong with it.
 
 **Flows** — every run goes through the flow its yml's `flow:` names, from `AutomationFlows`
-(`chat` when unset). A flow has a `name`, the item fields it `needs` and `start(automation, item,
-prompt, run_id:, session_id:)`, answering `{item_slug:, tmux:}` once a chat runs or `{waiting:
-reason}` when the run stays queued. `AutomationFlows#problem(flow, item)` says why a flow can't take
-an item (an unknown flow, or a `needs` field missing or blank; a cron run's nil item lacks every
-field), and `#start` raises it as an ArgumentError, as it does for a yml the store would refuse
-(a hand edit never reaches the store's write). Both flows pass claude `--session-id` (qm's
-uuid), then `--model`, `--permission-mode` and `--allowedTools` (one comma-joined value: the flag
-is variadic and would swallow the prompt) when the yml sets them, before the prompt.
-- `chat` (`ChatFlow`): tmux session `<slug>--run-<run id>` on qm's socket, running
-  `Launcher#chat_command` (so `QM_CHAT_COMMAND` swaps it) with `QM_ITEM=<automation slug>`; Tmux
-  unsets every `CLAUDE*` var. cwd is the yml's `cwd`, else the automation item's project root,
-  else home. The prompt is `<slug>.prompt.md`, plus for an item a final `## Item` section: the
-  item pretty-printed as JSON, or a guard's plain line (only `key` and `line`, equal) as the line.
-- `pr-review` (`PrReviewFlow`, needs `url`): the PR from the inbox cache, else one
-  `gh pr view URL --json …` through the runner (a failure raises). While the PR's Review chat is
-  live (`PrReviewStart#live?`) it answers `waiting: "Review chat for <repo>#<n> is open"` and
-  starts nothing; else `PrReviewStart#start` opens the Review item's own chat (tmux named by its
-  slug) with the flags before the kickoff and the automation's prompt appended to it.
+(`chat` when unset): a `name`, the item fields it `needs` and `start(automation, item, prompt,
+run_id:, session_id:)`, answering `{item_slug:, tmux:}` once a chat runs or `{waiting: reason}`
+to stay queued. `AutomationFlows#problem(flow, item)` says why a flow can't take an item (unknown
+flow, a `needs` field missing or blank; a cron run's nil item lacks every field); `#start` raises
+it, and for a yml the store would refuse. Both pass claude `--session-id` (qm's uuid), then
+`--model`, `--permission-mode` and `--allowedTools` (one comma-joined value, so the variadic flag
+can't swallow the prompt) when set, before the prompt.
+- `chat` (`ChatFlow`): tmux `<slug>--run-<run id>` on qm's socket running `Launcher#chat_command`
+  (`QM_CHAT_COMMAND` swaps it) with `QM_ITEM=<automation slug>`, `CLAUDE*` unset by Tmux; cwd the
+  yml's `cwd`, else the project root, else home. The prompt is `<slug>.prompt.md`, plus for an
+  item a final `## Item`: JSON pretty-printed, or a guard's plain line as the line.
+- `pr-review` (`PrReviewFlow`, needs `url`): the PR from the inbox cache, else `gh pr view URL
+  --json …` (a failure raises). While its Review chat is live (`PrReviewStart#live?`) it answers
+  `waiting: "Review chat for <repo>#<n> is open"`; else `PrReviewStart#start` opens the Review
+  item's own chat with the flags before the kickoff and the automation's prompt appended.
 
 **New and its brief** — `qm automation new TITLE --project P --runner local` (the GUI's `new` with
-`runner: local`) makes the item with `runner: local` and a yml with `enabled: false`, so nothing
-runs until the user enables it. Its chat's brief (`AutomationChat.local_brief`) names both files
-(cron in local time, the local fields), and the loop: edit the files → `qm automation tick
---dry-run SLUG` (the guard's items, nothing written) → `qm automation run SLUG` → read the run
-(`qm automation runs SLUG` for its session id, `qm show-session`, the transcript under
-`~/.claude/projects/`) → refine. Nothing to push; no RemoteTrigger wording. Its end — decisions as
-notes, the house rules verbatim (with their "Local automations" section on drafting, unattended
-runs and the guard's output), description and notes — is the cloud brief's (`brief_tail`).
+`runner: local`) makes the item and a yml with `runner: local`, `enabled: false`: nothing runs until
+the user enables it. Its chat's brief (`AutomationChat.local_brief`) names both files (cron in local
+time, the local fields) and the loop: edit → `qm automation tick --dry-run SLUG` (the guard's items,
+nothing written) → `qm automation run SLUG` → read the run (`qm automation runs SLUG`, `qm
+show-session`, the transcript) → refine; nothing to push. Its end is the cloud brief's
+(`brief_tail`): decisions, house rules verbatim (with "Local automations"), description, notes.
 
 **Run log** — `RunLog.new(slug)` is `automations/<slug>.runs.jsonl`, one `{v: 1, at, event, …}`
 line per event, appended under a flock; a writer that decides from the fold (`enqueue_item`,
 `enqueue_cron`, `retry`, `waiting`) re-reads it and appends under that one flock, so a tick and a
 CLI or GUI write never both queue a key. Events:
-- `queued` (`run_id`, `key`, `item`, `flow`, `trigger`: `cron` | `guard` | `manual` | `retry`)
-- `started` (`run_id`, `session_id`, `tmux`, `item_slug`)
-- `waiting` (`run_id`, `reason`) — written only when the reason differs from the run's last one
-- `finished`, `timed_out`, `closed` (`run_id`); `failed` (`run_id`, `error`)
-- `retried` (`run_id`, `new_run_id`)
-- `guard_error` (`error`, `item` when one item was refused); `guard_ran` (`items`) — a guard run
-  that exited cleanly
-- `seen` (`keys`) — keys recorded without queuing (enable with "mark existing as seen")
-- `checked` — the tick handled a due cron minute; written only when the cron was due, so a tick
-  that finds nothing due appends nothing, and the next tick's window starts at this `at`
+- `queued` (`run_id`, `key`, `item`, `flow`, `trigger`: `cron` | `guard` | `manual` | `retry`);
+  `started` (`run_id`, `session_id`, `tmux`, `item_slug`); `waiting` (`run_id`, `reason`, only
+  when it changed); `finished`, `timed_out`, `closed` (`run_id`); `failed` (`run_id`, `error`);
+  `retried` (`run_id`, `new_run_id`)
+- `guard_error` (`error`, `item` when one item was refused); `guard_ran` (`items`, a clean run);
+  `seen` (`keys` recorded without queuing: "mark existing as seen"); `checked` (the tick handled
+  a due cron minute — only then, and the next tick's window starts at its `at`)
 
 A run id is 8 lowercase alphanumerics (safe in a tmux name). The fold, re-read after each write:
-- `queue` — runs queued and not yet started, failed or otherwise ended, oldest first (the same second: log order).
-- `live` — started runs not yet `finished`, `timed_out`, `closed` or `failed`.
-- `recent(limit: 20)` — every run that left the queue, newest start first, each with `status`
-  (`live`, `finished`, `timed_out`, `closed`, `failed`); a finished run closed later reads `closed`.
-- `run(id)`, `seen_keys` (every `queued` key plus every `seen` key), `cron_queued?`,
-  `last_guard_error` (the latest `guard_error` line, cleared by a later `guard_ran`),
-  `last_cron_check` (the latest `checked` time).
-
-Writers: `enqueue` (no dedupe), `enqueue_item` (nil when the key was seen), `enqueue_cron(due:)`
-(nil while a cron run is queued; key `cron:<due minute, UTC ISO>`, item nil), `retry(run_id)`
-(an ended run's key, item and flow as a new `retry` run, bypassing dedupe; refuses an unknown,
-queued or live run), `started`, `waiting`, `finished`, `timed_out`, `closed`, `failed`,
-`guard_error`, `guard_ran`, `mark_seen`, `checked`.
+`queue` (queued, not yet started or ended, oldest first, same second in log order); `live`
+(started, not `finished`, `timed_out`, `closed` or `failed`); `recent(limit: 20)` (every run
+that left the queue, newest start first, with `status` `live`, `finished`, `timed_out`, `closed`
+or `failed`); `run(id)`, `seen_keys` (every `queued` and `seen` key), `cron_queued?`,
+`last_guard_error` (the latest `guard_error`, cleared by a later `guard_ran`), `last_cron_check`.
+Writers: `enqueue` (no dedupe), `enqueue_item` (nil for a seen key), `enqueue_cron(due:)` (nil
+while a cron run is queued; key `cron:<due minute, UTC ISO>`, no item), `retry(run_id)` (an ended
+run's key, item and flow as a new `retry` run, past dedupe; refuses unknown, queued or live runs),
+and one per event.
 
 **Tick** — `AutomationTick#call(now:)` is one scheduler pass. It takes `automations/tick.lock`
 with a non-blocking flock (held: answers `{"locked" => true}` and does nothing), then:
@@ -139,41 +121,43 @@ with a non-blocking flock (held: answers `{"locked" => true}` and does nothing),
    max_running, problems}` (`AutomationTick.state` reads it, `{}` when missing).
 
 `call` answers `{queued, started, failed, finished, closed, timed_out, problems, paused, held,
-running, max_running}` (run lists as `[slug, run id]` pairs), or nil
-after an error (logged to `qm.log` as `automation-tick`). `dry_run(slug)` runs the guard and
-answers `items` (new, the flow takes them), `seen` (also a key repeated in the output) and `problems`, writing nothing; it raises for
-an automation without a guard and on a failing guard. `queue_guard(slug, trigger: "manual")` runs
-the guard now and queues its new items, returning their run ids.
+running, max_running}` (run lists as `[slug, run id]` pairs), or nil after an error (logged to
+`qm.log` as `automation-tick`). `dry_run(slug)` runs the guard and answers `items` (new, the flow
+takes them), `seen` (also a key repeated in the output) and `problems`, writing nothing; it raises
+for an automation without a guard and on a failing guard. `queue_guard(slug, trigger: "manual")`
+runs the guard now and queues its new items, returning their run ids.
 
-**Tick installer** — `TickInstaller` owns the one LaunchAgent that runs `qm automation tick`
-every 300 s. Its label is `com.quartermaster.automation-tick`; its plist lives at
-`~/Library/LaunchAgents/<label>.plist` (directory injectable). The plist (`plist`, written by
-hand, values XML-escaped) holds `ProgramArguments` = the realpath of the `quartermaster`
-launcher, `automation`, `tick`; `StartInterval` 300; `RunAtLoad` false; stdout and stderr both
-appended to `<root>/automations/tick.log`; and `EnvironmentVariables` with the installing
-process's `PATH` (launchd's own PATH has no asdf shims, Homebrew, tmux or claude) plus
-`QM_ROOT` when it is set. `install` creates the log's directory, writes the plist atomically,
-runs `launchctl bootout gui/<uid>/<label>` (its failure ignored, so a reinstall picks up a
-changed plist) and then `launchctl bootstrap gui/<uid> <plist>`; a failed bootstrap removes the
-plist and raises an `ArgumentError` carrying launchctl's message. `uninstall` boots the label
-out and removes the plist, whether or not launchd still held it. `installed?` is whether the
-plist exists.
+**Tick installer** — `TickInstaller` owns the LaunchAgent `com.quartermaster.automation-tick` at
+`~/Library/LaunchAgents/<label>.plist` (directory injectable). Its hand-written plist (values
+XML-escaped): `ProgramArguments` = the `quartermaster` launcher's realpath, `automation`, `tick`;
+`StartInterval` 300; `RunAtLoad` false; stdout and stderr appended to `<root>/automations/tick.log`;
+`EnvironmentVariables` = the installing process's `PATH` (launchd's has no asdf shims, Homebrew,
+tmux or claude) plus `QM_ROOT` when set. `install` writes the plist atomically, runs `launchctl
+bootout gui/<uid>/<label>` (failure ignored, so a reinstall picks up a changed plist), then
+`launchctl bootstrap gui/<uid> <plist>`; a failed bootstrap removes the plist and raises launchctl's
+message. `uninstall` boots out and removes the plist. `installed?` = the plist exists.
+
+**Service and CLI** — `Automations` hands every `runner: local` slug to `LocalAutomations` (no
+network), drops local rows from `overview`, and `push`/`pull`/`adopt` refuse them: "<slug> runs
+locally — nothing on claude.ai". `run` with a guard runs it now (`queue_guard`, trigger `manual`),
+else queues one item-less run keyed `manual:<UTC ISO>`; `pause`/`resume` move the item to
+`fridge`/`active` with a history note, `resume(skip_existing:)` first `mark_seen`s the guard's
+current keys; `retry` is `RunLog#retry`; `delete` refuses while a run is live ("stop or finish its
+runs first"), else removes files and run log and resolves the item. `CliLocalAutomation`: `list`,
+`show` and `runs SLUG` read run logs (`list` skips the routines call when automations are off and no
+row is cloud); `run` and `retry SLUG RUN_ID` then tick once and say why a run didn't start; `tick
+[--dry-run [SLUG]]` (silent when idle off a terminal, uncounted by `FeatureUse`; the dry run writes
+nothing); `install-tick [--print]` and `uninstall-tick` drive `TickInstaller`.
 
 ## Rules
 
 - Stdlib only and no `ENV["TZ"]` switching: the offset comes from `LocalSchedule.offset_minutes`.
-- Cron search is bounded: `due?` looks back at most 8 days, `next_after` at most nine years ahead,
-  each walking local days and only the hours and minutes the cron lists.
-- The run log is append-only: every write appends one line; readers skip lines that aren't JSON
-  objects, events they don't know and fields they don't know.
-- Never skip, dedupe at queue time: a key is consumed when queued and a failed or timed-out run is
-  never retried automatically; only `retry` queues a key again.
-- Cron runs coalesce to at most one queued cron run per automation; guard items queue one each, FIFO.
+- Cron search is bounded: 8 days back (`due?`), nine years ahead (`next_after`), by local days.
+- The run log is append-only; readers skip non-JSON lines and unknown events and fields.
+- Never skip, dedupe at queue time: a key is consumed when queued; only `retry` queues it again,
+  never automatically. Cron runs coalesce to one queued per automation; guard items queue FIFO.
 - `bypassPermissions` is refused for local automations at the store and again when a flow starts.
-- Only a `chat` run gets a `--run-` tmux session; a `pr-review` run lives in its Review item's own
-  chat and never opens a second one beside it.
-- Flows hand tmux the argv and env only through the `Tmux` wrapper; tests pass a `FakeTmux`.
-- Deleting an automation (`AutomationStore#delete_local`) removes its run log with its files.
+- Only a `chat` run gets a `--run-` tmux session; a `pr-review` run lives in its Review item's chat.
 - One tick at a time (the flock); a tick starts runs and never waits for them, and never raises
   out: one automation's error is recorded in `problems` and the others go on.
 - qm only ever kills a `--run-` tmux session (closing or timing out), never an item's own chat,
@@ -184,8 +168,7 @@ plist exists.
   a timeout still notifies.
 - Guards, `launchctl` and tmux go through the injected runner and `Tmux`; tests pass a
   `FakeRunner`, a `FakeTmux` and a temp LaunchAgents dir, never a real guard, claude, tmux or launchctl.
-- The LaunchAgent is installed or removed only on the user's explicit command or button, never
-  as a side effect; `installed?` reads only the plist file, never launchctl.
+- The LaunchAgent changes only on the user's command or button; `installed?` reads only the plist.
 
 ## Data
 

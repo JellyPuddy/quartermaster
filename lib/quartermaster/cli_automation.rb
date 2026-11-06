@@ -2,18 +2,23 @@
 
 module Quartermaster
   # `qm automation …`: the user's claude.ai routines through the Automations
-  # service. A RoutinesClient error (off, token expired, API changed) is an
-  # ArgumentError, so it ends the command with its message and exit 1.
+  # service, and the local ones (CliLocalAutomation). A RoutinesClient error
+  # (off, token expired, API changed) is an ArgumentError, so it ends the
+  # command with its message and exit 1.
   module CliAutomation
+    include CliLocalAutomation
+
     COMMANDS = { "automation" => :cmd_automation }.freeze
 
     AUTOMATION_USAGE = "usage: qm automation list | show SLUG | new TITLE --project P [--description TEXT] [--runner cloud|local] | " \
                        "edit SLUG | adopt TRIGGER_ID --project P [--slug S] | " \
-                       "push SLUG [--force | --recreate] | pull SLUG | pause SLUG | resume SLUG | run SLUG | delete SLUG [--yes]"
+                       "push SLUG [--force | --recreate] | pull SLUG | pause SLUG | resume SLUG [--skip-existing] | run SLUG | " \
+                       "delete SLUG [--yes] | runs SLUG | retry SLUG RUN_ID | tick [--dry-run [SLUG]] | install-tick [--print] | uninstall-tick"
     AUTOMATION_SUBCOMMANDS = { "list" => :automation_list, "show" => :automation_show, "new" => :automation_new,
                                "edit" => :automation_edit, "adopt" => :automation_adopt, "push" => :automation_push, "pull" => :automation_pull, "pause" => :automation_pause,
-                               "resume" => :automation_resume, "run" => :automation_run,
-                               "delete" => :automation_delete }.freeze
+                               "resume" => :automation_resume, "run" => :automation_run, "delete" => :automation_delete,
+                               "runs" => :automation_runs, "retry" => :automation_retry, "tick" => :automation_tick,
+                               "install-tick" => :automation_install_tick, "uninstall-tick" => :automation_uninstall_tick }.freeze
 
     private
 
@@ -22,20 +27,33 @@ module Quartermaster
       send(method, argv)
     end
 
-    def automations = Automations.new(client: RoutinesClient.new(runner: @runner || CommandRunner.new))
+    def automations
+      runner = @runner || CommandRunner.new
+      Automations.new(client: RoutinesClient.new(runner: runner), local: LocalAutomations.new(runner: runner))
+    end
 
     # The one word left once a command's flags are taken out.
     def automation_slug(argv) = argv.size == 1 ? argv.shift : abort(AUTOMATION_USAGE)
 
-    # The local files at once, then one list call for each routine's status
-    # and the routines qm doesn't manage yet.
+    # The local files at once, local runs from their run logs, then one list
+    # call for each routine's status and the routines qm doesn't manage yet;
+    # with automations off that call is skipped when only local rows exist.
     def automation_list(_argv)
       service = automations
       rows = service.local
       rows.each { |row| puts automation_row(row) }
       puts "no automations yet" if rows.empty?
+      locals, clouds = rows.partition { |row| LocalAutomations.local?(row["entry"]) }
+      locals.each { |row| puts local_automation_status(row, service) }
+      puts tick_status unless locals.empty?
       $stdout.flush
-      overview = service.overview(rows)
+      overview = begin
+        service.overview(clouds)
+      rescue RoutinesClient::NotEnabled
+        raise if clouds.any? || locals.empty?
+
+        return
+      end
       overview["rows"].each { |row| puts "#{row["slug"]}: #{automation_status(row)}" }
       return if overview["unmanaged"].empty?
 
@@ -48,8 +66,10 @@ module Quartermaster
     def automation_row(row)
       record = row["entry"].record
       item = row["item"]
-      [row["slug"], item&.project || "-", item&.state || "-", LocalSchedule.from_cron(record["cron"]).label,
-       record["enabled"] == false ? "paused" : "enabled"].join("  ")
+      local = LocalAutomations.local?(row["entry"])
+      schedule = local ? LocalAutomations.schedule_label(record["cron"]) : LocalSchedule.from_cron(record["cron"]).label
+      [row["slug"], item&.project || "-", item&.state || "-", schedule,
+       record["enabled"] == false ? "paused" : "enabled", local ? "local" : "cloud"].join("  ")
     end
 
     def automation_status(row)
@@ -66,6 +86,8 @@ module Quartermaster
     def automation_show(argv)
       service = automations
       detail = service.detail(automation_slug(argv))
+      return local_automation_show(detail, service) if LocalAutomations.local?(detail["entry"])
+
       record = detail["entry"].record
       item = detail["item"]
       puts record["name"]
@@ -112,7 +134,12 @@ module Quartermaster
 
     def automation_pause(argv) = automation_toggle(argv, :pause)
 
-    def automation_resume(argv) = automation_toggle(argv, :resume)
+    def automation_resume(argv)
+      skip = argv.delete("--skip-existing")
+      slug = automation_slug(argv)
+      marked = automations.resume(slug, skip_existing: !skip.nil?)
+      puts "#{slug}: resumed#{", #{marked} existing #{marked == 1 ? "item" : "items"} marked seen" if skip}"
+    end
 
     def automation_toggle(argv, action)
       slug = automation_slug(argv)
@@ -123,7 +150,9 @@ module Quartermaster
     def automation_run(argv)
       slug = automation_slug(argv)
       service = automations
-      service.run(slug)
+      ids = service.run(slug)
+      return local_automation_run(service, slug, ids) if LocalAutomations.local?(service.store.read(slug))
+
       puts "#{slug}: running — #{Automations.routine_url(service.store.read(slug).record["routine"])}"
     end
 
@@ -133,7 +162,8 @@ module Quartermaster
       service = automations
       entry = service.store.read(slug) or raise ArgumentError, "no automation '#{slug}'"
       unless yes
-        $stderr.print "Delete #{entry.record["name"] || slug} on claude.ai and resolve #{slug}? [y/N] "
+        where = LocalAutomations.local?(entry) ? "(its files and run log)" : "on claude.ai"
+        $stderr.print "Delete #{entry.record["name"] || slug} #{where} and resolve #{slug}? [y/N] "
         abort("qm automation: not deleted") unless $stdin.gets.to_s.strip.downcase.start_with?("y")
       end
       case service.delete(slug)

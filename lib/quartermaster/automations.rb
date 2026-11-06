@@ -20,11 +20,14 @@ module Quartermaster
     TOP_FIELDS = %w[name cron enabled connectors].freeze
     LIST_FIELDS = %w[sources allowed_tools connectors].freeze
 
-    attr_reader :store
+    attr_reader :store, :local_automations
 
-    def initialize(client: RoutinesClient.new, store: AutomationStore.new)
+    # `local` handles the `runner: local` ones (LocalAutomations); the
+    # claude.ai verbs refuse them.
+    def initialize(client: RoutinesClient.new, store: AutomationStore.new, local: nil)
       @client = client
       @store = store
+      @local_automations = local || LocalAutomations.new(store: store)
     end
 
     def self.routine_url(id) = RoutinesClient.routine_url(id)
@@ -37,11 +40,12 @@ module Quartermaster
 
     # The local rows merged with one list call: each row gains "remote" (the
     # routine, or nil when it isn't on claude.ai) and "drift" (the routine
-    # changed since the last sync); "unmanaged" are routines with no local files.
+    # changed since the last sync); "unmanaged" are routines with no local
+    # files. `runner: local` rows have no routine and are left out.
     def overview(rows = local)
       routines = @client.list
       by_id = routines.to_h { |r| [r["id"], r] }
-      rows = rows.map do |row|
+      rows = rows.reject { |row| LocalAutomations.local?(row["entry"]) }.map do |row|
         remote = by_id[row["entry"].record["routine"]]
         row.merge("remote" => remote, "drift" => drift?(row["entry"], remote))
       end
@@ -52,6 +56,8 @@ module Quartermaster
     # One automation with its routine and its last `limit` runs.
     def detail(slug, limit: 10)
       entry = entry!(slug)
+      return @local_automations.detail(slug) if LocalAutomations.local?(entry)
+
       id = entry.record["routine"]
       remote = id && @client.get(id)
       { "slug" => slug, "entry" => entry, "item" => item_or_nil(slug), "remote" => remote,
@@ -62,6 +68,7 @@ module Quartermaster
     # `kind: automation` item whose description is the routine's name and its
     # prompt's first paragraph.
     def adopt(id, project:, slug: nil)
+      refuse_local!(slug && @store.read(slug))
       raise ArgumentError, "#{id} is already managed by qm as '#{@store.find_by_routine(id).slug}'" if @store.find_by_routine(id)
 
       routine = @client.get(id)
@@ -88,6 +95,7 @@ module Quartermaster
     # claude.ai, and only then. Answers {"created" => bool, "changes" => [...]}.
     def push(slug, force: false, recreate: false)
       entry = entry!(slug)
+      refuse_local!(entry)
       id = entry.record["routine"]
       raise ArgumentError, "#{slug} has no routine yet: `qm automation push #{slug}` creates it" if recreate && !id
       return create(entry) unless id
@@ -112,6 +120,7 @@ module Quartermaster
     # The routine overwrites the local files (each kept as .bak).
     def pull(slug)
       entry = entry!(slug)
+      refuse_local!(entry)
       id = entry.record["routine"] or raise ArgumentError, "#{slug} has no routine yet: `qm automation push #{slug}` creates it"
 
       record, prompt = AutomationStore.from_routine(@client.get(id))
@@ -124,12 +133,21 @@ module Quartermaster
       changes
     end
 
-    def pause(slug) = set_enabled(slug, false)
+    def pause(slug) = local?(slug) ? @local_automations.pause(slug) : set_enabled(slug, false)
 
-    def resume(slug) = set_enabled(slug, true)
+    # `skip_existing` (local only): the guard's current items are marked seen.
+    def resume(slug, skip_existing: false)
+      return @local_automations.resume(slug, skip_existing: skip_existing) if local?(slug)
+      raise ArgumentError, "#{slug}: --skip-existing is for local automations (they have a guard)" if skip_existing
 
-    # Runs the routine now; answers the API's reply.
+      set_enabled(slug, true)
+    end
+
+    # Runs the routine now; answers the API's reply. A local automation
+    # queues a manual run instead and answers the queued run ids.
     def run(slug)
+      return @local_automations.run(slug) if local?(slug)
+
       id = entry!(slug).record["routine"] or raise ArgumentError, "#{slug} has no routine yet: `qm automation push #{slug}` creates it"
 
       @client.run(id)
@@ -137,9 +155,12 @@ module Quartermaster
 
     # Deletes the routine, or pauses it when the API has no delete; the item
     # is resolved either way. Answers :deleted (also when the routine was
-    # already gone), :paused or :local (never pushed).
+    # already gone), :paused or :local (never pushed). A local automation is
+    # LocalAutomations#delete: refused while a run is live.
     def delete(slug)
       entry = entry!(slug)
+      return @local_automations.delete(slug) if LocalAutomations.local?(entry)
+
       id = entry.record["routine"]
       outcome = if id.nil? then :local
                 elsif @client.delete(id) == :deleted then :deleted
@@ -157,6 +178,12 @@ module Quartermaster
     private
 
     def entry!(slug) = @store.read(slug) || raise(ArgumentError, "no automation '#{slug}'")
+
+    def local?(slug) = LocalAutomations.local?(entry!(slug))
+
+    def refuse_local!(entry)
+      raise ArgumentError, "#{entry.slug} runs locally — nothing on claude.ai" if LocalAutomations.local?(entry)
+    end
 
     def pause_for_delete(entry, id)
       updated = @client.update(id, { "enabled" => false }.merge(connectors_of(entry)))

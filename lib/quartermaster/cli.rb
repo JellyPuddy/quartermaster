@@ -51,7 +51,7 @@ module Quartermaster
 
     def run(argv)
       command = argv.shift
-      FeatureUse.new.command(command)
+      FeatureUse.new.command(command) unless command == "automation" && argv.first == "tick"
       case command
       when "hook-session-start" then guard_hook(command) do
         context = HookHandler.new.session_started(JSON.parse($stdin.read))

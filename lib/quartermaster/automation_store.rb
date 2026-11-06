@@ -19,6 +19,8 @@ module Quartermaster
 
     Entry = Data.define(:slug, :record, :prompt)
 
+    attr_reader :dir
+
     def initialize(dir = AUTOMATIONS_DIR)
       @dir = dir
     end

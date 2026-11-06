@@ -43,9 +43,9 @@ the `kind: automation` work item of the same slug (`routine:`, `runner: cloud` i
   pushed, only the files go. The item is resolved either way, its notes kept.
 
 **CLI** — `qm automation list | show | adopt | push | pull | pause | resume | run | delete`
-(`CliAutomation`). `list` prints the local rows (slug, project, state, local schedule,
-enabled) before its one list call, then a status line per row (last run, next run, drift) and
-the routines "Not managed by qm"; `push --recreate` re-creates a routine deleted on claude.ai; `show` adds repos, connectors, links and runs. `delete` asks
+(`CliAutomation`; `runner: local` ones branch to [local automations](local-automations.md)). `list` prints every row (slug, project, state, schedule, enabled, runner) before
+its one list call (cloud rows only), then a status line per routine (last run, next run, drift) and the routines "Not
+managed by qm"; `push --recreate` re-creates a routine deleted on claude.ai; `show` adds repos, connectors, links and runs. `delete` asks
 y/N on stdin unless `--yes`; without an API delete it prints "paused; delete it on claude.ai:
 <routine url>". A client error is an `ArgumentError`: its message, exit 1.
 

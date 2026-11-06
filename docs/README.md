@@ -59,7 +59,7 @@ goes in the commit message.
   brief their chats start with, or the GUI's Automations tab.
 - [local-automations](areas/local-automations.md) — read when you touch `runner: local`
   automations: their yml fields and validation, local-time cron (`LocalCron`), the run log
-  (`<slug>.runs.jsonl`, `RunLog`), and the launchd tick's installer.
+  (`<slug>.runs.jsonl`, `RunLog`), the tick, its launchd installer, and their CLI.
 - [cli](areas/cli.md) — read when you touch a `qm` command, the bare-`qm` fzf viewer or live
   sessions listing.
 

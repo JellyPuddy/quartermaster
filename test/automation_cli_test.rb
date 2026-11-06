@@ -349,7 +349,7 @@ class AutomationCliTest < Minitest::Test
     out, = qm("list")
 
     lines = out.lines.map(&:chomp)
-    assert_match(/\Adigest  MyApp  active  Mon, Thu (08|09):00  enabled\z/, lines[0])
+    assert_match(/\Adigest  MyApp  active  Mon, Thu (08|09):00  enabled  cloud\z/, lines[0])
     assert_equal "digest: last run succeeded 2026-11-05 07:10 UTC, next 2026-11-09 07:06 UTC, " \
                  "changed outside qm (pull or push --force)", lines[1]
     assert_includes out, "Not managed by qm"
