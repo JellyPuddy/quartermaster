@@ -105,6 +105,7 @@ module Quartermaster
 
       @jobs.background("automations", "listing routines") do
         fetch_routines
+        @lock.synchronize { @runs.each_key { |slug| @runs[slug] = stale(@runs[slug]) } }
         { "ok" => true, "quiet" => true, "automation" => nil }
       end
     end
@@ -126,11 +127,16 @@ module Quartermaster
       @lock.synchronize { @remote = { "state" => state, "message" => error.message } }
     end
 
+    # Runs shown until the page asks again: still listed, but idle, so the
+    # open detail reloads them.
+    def stale(runs) = { "state" => "idle", "runs" => runs && runs["runs"] }
+
     def load_runs(slug)
-      @store.read(slug) or raise ArgumentError, "no automation '#{slug}'"
+      entry = @store.read(slug) or raise ArgumentError, "no automation '#{slug}'"
+      id = entry.record["routine"]
       @jobs.background("automation-runs-#{slug}", "loading runs") do
-        found = @service.detail(slug)
-        @lock.synchronize { @runs[slug] = { "state" => "ok", "runs" => found["runs"] } }
+        runs = id ? @client.runs(id, limit: 10) : []
+        @lock.synchronize { @runs[slug] = { "state" => "ok", "runs" => runs } }
         { "ok" => true, "quiet" => true, "automation" => slug }
       rescue *UNREACHABLE => e
         unreachable(e)
@@ -169,7 +175,11 @@ module Quartermaster
     def act(verb, slug, request)
       entry = @store.read(slug) or raise ArgumentError, "no automation '#{slug}'"
       save_edits(entry, request) if verb == "apply"
-      job("automation-#{slug}", verb == "apply" ? "pushing" : verb) { [run_action(verb, slug, request), slug] }
+      job("automation-#{slug}", verb == "apply" ? "pushing" : verb) do
+        [run_action(verb, slug, request), slug]
+      ensure
+        @lock.synchronize { @runs[slug] = stale(@runs[slug]) if @runs.key?(slug) }
+      end
     end
 
     def run_action(verb, slug, request)

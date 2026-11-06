@@ -197,7 +197,33 @@ class GuiAutomationsTest < Minitest::Test
     assert_equal [true], settle.map { |j| j["quiet"] }
     detail = get("/api/automations/digest")
     assert_equal ["ok", ["https://claude.ai/code/cse_1"]], [detail["runsState"], detail["runs"].map { |r| r["url"] }]
-    assert_includes @client.calls, [:runs, ID, 10]
+    assert_equal [[:runs, ID, 10]], @client.calls, "runs alone, no GET of the routine"
+  end
+
+  def load_runs_then
+    post("/api/automations/runs", "slug" => "digest")
+    settle
+    assert_equal "ok", get("/api/automations/digest")["runsState"]
+    yield
+    settle
+    runs, state = get("/api/automations/digest").values_at("runs", "runsState")
+    [runs&.map { |r| r["id"] }, state]
+  end
+
+  def test_runs_go_back_to_idle_after_an_action_on_that_automation_so_the_page_asks_again
+    adopt
+    assert_equal [["cse_1"], "idle"], load_runs_then { post("/api/automations/run", "slug" => "digest") }
+  end
+
+  def test_runs_go_back_to_idle_after_a_refused_action_too
+    adopt
+    @client.touch(ID)
+    assert_equal [["cse_1"], "idle"], load_runs_then { post("/api/automations/apply", "slug" => "digest", "cron" => "30 6 * * 1") }
+  end
+
+  def test_a_refresh_sends_the_shown_runs_back_to_idle
+    adopt
+    assert_equal [["cse_1"], "idle"], load_runs_then { post("/api/automations/refresh") }
   end
 
   def test_the_detail_edits_the_items_description_through_the_describe_action

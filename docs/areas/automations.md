@@ -138,17 +138,19 @@ links) merged with the routines the last list call saw (last run, next run, drif
 gone from claude.ai), the routines "Not managed by qm", and `remote.state`: `idle`, `ok`, `off`
 (with the `qm config set` command), `expired` or `error`. `GET /api/automations/<slug>` adds the
 prompt, file paths, model, repos, connectors, the item's description and notes and its runs as
-last loaded. POSTs under `/api/automations/`: `refresh` (the one list call), `runs` (the last
-10), `apply` (a schedule as `days` + local `time` or a raw `cron`, and/or the `prompt`: saved
+last loaded, and `runsState` (`idle`, `ok`, `error`). POSTs under `/api/automations/`: `refresh`
+(the one list call), `runs` (the client's `runs(id, limit: 10)`, no GET of the routine), `apply` (a schedule as `days` + local `time` or a raw `cron`, and/or the `prompt`: saved
 locally at once, then pushed), `pause`, `resume`, `run`, `pull`, `push` (`force` overwrites a
 drifted routine), `delete`, `adopt` (`id`, `project`) and `new` (`title`, `project`: the item
 and empty files; the page then opens its chat with the `automation-chat` action, as Edit with
 Claude does). Every network call is a `GuiJobs` job (`automations`, `automation-<slug>`,
 `automation-runs-<slug>`, `automation-adopt-<id>`); each action ends with one list call, and the
 page reloads the tab when the state poll hands it the job's end. The page opens the tab with
-one refresh and loads runs once per automation shown; Apply is per automation. The detail's
-Description has an edit control that saves through the GUI's `describe` action (`/api/action`,
-as `qm describe` does): the item's text, local, never pushed.
+one refresh and asks for the shown automation's runs while its `runsState` is `idle`: the first
+time, and again after an action job on that slug ends (Run now, a refused push too) or a refresh
+ends, both of which set loaded runs back to `idle` (still listed until the new ones arrive);
+Apply is per automation. The detail's Description has an edit control that saves through the
+GUI's `describe` action (`/api/action`, as `qm describe` does): the item's text, local, never pushed.
 
 ## Rules
 
