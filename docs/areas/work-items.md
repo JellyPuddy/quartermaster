@@ -1,6 +1,6 @@
 # Work items
 
-**Code:** `lib/quartermaster/work_item.rb`, `lib/quartermaster/note.rb`, `lib/quartermaster/attention.rb`, `lib/quartermaster/item_deletion.rb`
+**Code:** `lib/quartermaster/work_item.rb`, `lib/quartermaster/atomic_file.rb`, `lib/quartermaster/note.rb`, `lib/quartermaster/attention.rb`, `lib/quartermaster/item_deletion.rb`
 **Tests:** `test/work_item_test.rb`, `test/item_deletion_test.rb`, `test/attention_test.rb`, `test/distill_test.rb`, `test/history_rotation_test.rb`
 **Depends on:** [capture](capture.md)
 
@@ -82,7 +82,12 @@ editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
 - **Every mutation runs under one global exclusive flock** (`work-items/.lock`,
   `WorkItem.with_lock` / `#locked`) spanning the whole read-modify-write, re-reading the file
   before applying; reentrant per thread so compound moves (`claim_session`) nest. Without it
-  a bulk distill's stale copy clobbered a concurrent note.
+  a bulk distill's stale copy clobbered a concurrent note. A caller's own `find` before the
+  mutation is only a handle: the mutator never writes from that copy.
+- **`save` replaces the file whole** (`AtomicFile.write`: temp file beside it, renamed over
+  it, keeping the file's mode), so readers that take no lock — the GUI, the viewer, `qm list`,
+  every mutator's first `find` — see the old or the new item, never a truncated one. A plain
+  `File.write` let concurrent `qm note`s fail with "malformed work item file".
 - **The stored note format is parsed and written only by `Note`** (`NOTE_LINE`). The kind
   marker is omitted for the default, so pre-kind notes and ordinary notes read identically —
   no migration was needed.

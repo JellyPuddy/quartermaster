@@ -160,6 +160,103 @@ class WorkItemTest < Minitest::Test
     assert_equal 0, status.exitstatus
     assert_includes Quartermaster::WorkItem.find("my-item").body, "Piped in.\nSecond line."
   end
+
+  # martijnpieters/quartermaster#2: a reader racing a save once saw a truncated
+  # file and failed with "malformed work item file", dropping that note.
+  def test_concurrent_qm_note_processes_all_land
+    Quartermaster::WorkItem.create("Shared", project: "MyApp", description: "long history\n" * 20_000)
+    env = { "QM_ROOT" => Quartermaster::ROOT, "QM_SKIP" => nil }
+    writers = (1..12).map do |i|
+      err_r, err_w = IO.pipe
+      pid = Process.spawn(env, RbConfig.ruby, QM_BIN, "note", "shared", "n#{i}", out: File::NULL, err: err_w)
+      err_w.close
+      [pid, err_r]
+    end
+
+    failures = writers.filter_map do |pid, err|
+      _, status = Process.wait2(pid)
+      message = err.read
+      err.close
+      message unless status.success?
+    end
+
+    assert_empty failures
+    texts = Quartermaster::WorkItem.find("shared").notes.map(&:text)
+    assert_equal (1..12).map { |i| "n#{i}" }.sort, texts.sort
+  end
+
+  # The lock-free readers (GUI, viewer, qm list, a mutator's first find) must
+  # never catch a save half-way.
+  def test_a_reader_racing_saves_never_sees_a_partial_file
+    item = Quartermaster::WorkItem.create("Busy", project: "MyApp", description: "long history\n" * 20_000)
+    reader = <<~RUBY
+      load #{QM_BIN.dump}
+      $stdout.puts("ready"); $stdout.flush
+      torn = 0
+      begin
+        torn += 1 if Quartermaster::WorkItem.find("busy").description.empty? while IO.select([$stdin], nil, nil, 0).nil?
+      rescue ArgumentError => e
+        abort(e.message)
+      end
+      abort("\#{torn} reads saw no description") unless torn.zero?
+    RUBY
+    Open3.popen3({ "QM_ROOT" => Quartermaster::ROOT }, RbConfig.ruby, "-e", reader) do |stdin, stdout, stderr, wait|
+      assert_equal "ready\n", stdout.gets
+      150.times { |i| item.add_note("n#{i}") }
+      stdin.close
+
+      assert wait.value.success?, "reader saw a partial work item: #{stderr.read}"
+    end
+  end
+
+  def test_save_never_leaves_a_temp_file_and_keeps_the_items_permissions
+    item = Quartermaster::WorkItem.create("Private", project: "MyApp")
+    path = Quartermaster::WorkItem.path_for("private")
+    File.chmod(0o600, path)
+
+    item.add_note("still private")
+
+    assert_equal 0o600, File.stat(path).mode & 0o777
+    assert_equal ["private.md"], Dir.children(Quartermaster::WORK_ITEMS_DIR) - [".lock"]
+    assert_equal ["still private"], Quartermaster::WorkItem.find("private").notes.map(&:text)
+  end
+end
+
+class AtomicFileTest < Minitest::Test
+  include QmTestHelpers
+
+  def test_writes_a_new_file_with_the_default_permissions
+    path = File.join(Dir.mktmpdir("qm-atomic"), "fresh.txt")
+
+    Quartermaster::AtomicFile.write(path, "hello\n")
+
+    assert_equal "hello\n", File.read(path)
+    assert_equal 0o666 & ~File.umask, File.stat(path).mode & 0o777
+    assert_equal ["fresh.txt"], Dir.children(File.dirname(path))
+  end
+
+  def test_replaces_an_existing_file_keeping_its_mode
+    path = File.join(Dir.mktmpdir("qm-atomic"), "kept.txt")
+    File.write(path, "old")
+    File.chmod(0o640, path)
+
+    Quartermaster::AtomicFile.write(path, "new")
+
+    assert_equal "new", File.read(path)
+    assert_equal 0o640, File.stat(path).mode & 0o777
+  end
+
+  def test_a_failed_write_leaves_the_original_and_no_temp_file
+    dir = Dir.mktmpdir("qm-atomic")
+    path = File.join(dir, "kept.txt")
+    File.write(path, "old")
+    content = Object.new
+    def content.to_s = raise(IOError, "disk full")
+
+    assert_raises(IOError) { Quartermaster::AtomicFile.write(path, content) }
+    assert_equal "old", File.read(path)
+    assert_equal ["kept.txt"], Dir.children(dir)
+  end
 end
 
 class ProjectMapTest < Minitest::Test

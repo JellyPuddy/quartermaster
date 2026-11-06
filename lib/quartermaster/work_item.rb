@@ -309,7 +309,7 @@ module Quartermaster
 
     def save
       Quartermaster.ensure_setup
-      File.write(self.class.path_for(slug), "#{Psych.dump(front)}---\n#{body}")
+      AtomicFile.write(self.class.path_for(slug), "#{Psych.dump(front)}---\n#{body}")
     end
 
     def move_to(project)
