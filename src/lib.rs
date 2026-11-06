@@ -27,6 +27,8 @@ pub mod note;
 pub mod outcome;
 pub mod pf;
 pub mod pane_follows_session;
+pub mod pr_prerequisites;
+pub mod pr_requires_command;
 pub mod pr_status;
 pub mod psych;
 pub mod sections;
