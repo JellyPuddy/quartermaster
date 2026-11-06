@@ -32,6 +32,71 @@ class AutomationChatTest < Minitest::Test
                  YAML.safe_load(File.read(File.join(dir, "shipped-digest.yml"))))
   end
 
+  def test_create_with_runner_local_makes_a_disabled_local_automation
+    Quartermaster::AutomationChat.create("Shipped digest", project: "MyApp", runner: "local")
+
+    found = Quartermaster::WorkItem.find("shipped-digest")
+    assert_equal %w[automation local in_progress], [found.kind, found.runner, found.state]
+    assert_equal({ "v" => 1, "runner" => "local", "name" => "Shipped digest", "enabled" => false },
+                 YAML.safe_load(File.read(File.join(dir, "shipped-digest.yml"))))
+  end
+
+  def test_create_refuses_an_unknown_runner
+    error = assert_raises(ArgumentError) { Quartermaster::AutomationChat.create("Shipped digest", project: "MyApp", runner: "moon") }
+    assert_equal "runner is cloud or local, got moon", error.message
+    assert_raises(ArgumentError) { Quartermaster::WorkItem.find("shipped-digest") }
+  end
+
+  # The local snapshot, hand-written: local cron, the dry-run loop, no push
+  # or RemoteTrigger, house rules verbatim.
+  def test_local_brief_snapshot
+    item = Quartermaster::AutomationChat.create("Shipped digest", project: "MyApp", description: "Draft what shipped.", runner: "local")
+    expected = <<~BRIEF
+      You are working on the qm automation "Shipped digest" (work item shipped-digest, project MyApp): a local automation, a Claude Code run that qm starts on this machine on a schedule. It runs unattended, with the user's own permissions. It was created disabled: its cron and guard don't run until it is enabled with `qm automation resume shipped-digest`.
+
+      ## Its files
+
+      - Prompt: #{dir}/shipped-digest.prompt.md (the run's prompt, nothing else; each guard item is appended to it as a final `## Item` section)
+      - Settings: #{dir}/shipped-digest.yml (name, cron in Europe/Amsterdam local time, enabled, when (the guard command), flow, cwd, model, allowed_tools, permission_mode, timeout_minutes, notify; keep `v:` and any key you don't know)
+
+      ## The loop
+
+      1. Edit the two files.
+      2. `qm automation tick --dry-run shipped-digest` runs the guard and prints the items a run would be queued for; it writes nothing.
+      3. `qm automation run shipped-digest` queues a run now; a tick starts it.
+      4. Read the run: `qm automation runs shipped-digest` lists its runs with their session ids; `qm show-session SESSION_ID` shows one, and its transcript is `~/.claude/projects/*/SESSION_ID.jsonl`.
+      5. Refine and repeat.
+
+      Nothing to push: qm reads the two files on every tick.
+      Record each decision as a note on the item: `qm note shipped-digest --kind decision "..."`.
+
+      ## House rules
+
+      #{HOUSE_RULES.strip}
+
+      ## Description
+
+      Draft what shipped.
+
+      ## Notes
+
+      _none yet_
+    BRIEF
+
+    assert_equal expected, Quartermaster::AutomationChat.brief(item)
+    refute_match(/RemoteTrigger|qm automation push/, Quartermaster::AutomationChat.brief(item))
+  end
+
+  def test_qm_automation_new_with_runner_local_creates_a_local_automation
+    with_no_gui do
+      out, = capture_io { Quartermaster::CLI.new(runner: FakeRunner.new).run(["automation", "new", "Shipped digest", "--project", "MyApp", "--runner", "local"]) }
+
+      assert_equal "local", Quartermaster::WorkItem.find("shipped-digest").runner
+      assert_equal false, store.read("shipped-digest").record["enabled"]
+      assert_includes out, "shipped-digest: created (MyApp, runs locally)"
+    end
+  end
+
   def test_create_refuses_a_slug_whose_files_already_exist
     store.write("shipped-digest", { "name" => "Old" }, "keep me")
 

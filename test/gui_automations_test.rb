@@ -325,6 +325,14 @@ class GuiAutomationsTest < Minitest::Test
     assert_empty @client.calls
   end
 
+  def test_new_with_runner_local_creates_a_disabled_local_automation
+    status, answer = post("/api/automations/new", "title" => "Weekly report", "project" => "MyApp", "runner" => "local")
+    assert_equal ["200 OK", "weekly-report"], [status, answer["slug"]]
+    assert_equal %w[local in_progress], [Quartermaster::WorkItem.find("weekly-report").runner, Quartermaster::WorkItem.find("weekly-report").state]
+    assert_equal [false, "local"], store.read("weekly-report").record.values_at("enabled", "runner")
+    assert_empty @client.calls
+  end
+
   def test_off_until_the_token_source_is_set_and_nothing_reaches_the_client
     File.write(Quartermaster::CONFIG_FILE, "")
     remote = get("/api/automations")["remote"]

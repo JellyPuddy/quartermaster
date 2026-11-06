@@ -115,7 +115,7 @@ module Quartermaster
         ["qm config path", "print config.yml's location"]
       ],
       "Automations (claude.ai routines; on with automations.token_source)" => [
-        ["qm automation new TITLE --project P", "create a claude.ai routine as a kind: automation item with empty local files, then open its chat with qm's brief (--description TEXT)"],
+        ["qm automation new TITLE --project P", "create a claude.ai routine as a kind: automation item with empty local files, then open its chat with qm's brief (--description TEXT; --runner local: one that runs on this machine, created disabled)"],
         ["qm automation edit SLUG", "open or resume the automation's chat with the brief; a running chat gets nothing typed, the brief is printed"],
         ["qm automation list", "local automations, then each routine's last and next run, drift, and routines not managed by qm"],
         ["qm automation show SLUG", "one automation: schedule, repos, connectors, links and its last 10 runs"],

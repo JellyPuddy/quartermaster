@@ -8,7 +8,7 @@
 
 Automations are the user's claude.ai cloud routines: scheduled Claude Code agents that run on
 claude.ai, not on this machine. qm reaches them through the same API the claude binary uses.
-Every automation records `runner: cloud`; the field leaves room for other runners.
+Each records its `runner`: `cloud` here, `local` for one qm runs → [local automations](local-automations.md).
 
 **Service** — `Automations` (the CLI's and the GUI's one entry point) pairs each store entry with
 the `kind: automation` work item of the same slug (`routine:`, `runner: cloud` in its frontmatter).
@@ -125,15 +125,15 @@ as `days` (0 = Sunday) plus a local `time` in Europe/Amsterdam, with the offset 
 moves its weekdays back a day in UTC; all seven days become `*`. Any other cron is `raw?`: no
 days or time, labelled as itself plus "UTC", and edited as raw cron.
 
-**New and edit** — `qm automation new TITLE --project P` (`AutomationChat.create`) makes a
-`kind: automation` item (`runner: cloud`, state `in_progress`, no `routine` until the first
-push) and its local files: an empty prompt and a yml with `name`, `runner` and `enabled: true`; a slug whose files
-already exist is refused. It then opens the item's chat, as `qm automation edit SLUG` does:
-through the running GUI's `automation-chat` action (a local action, so the CLI may post it
-without an Origin), then `ChatOpener` brings the GUI up on it; without a GUI it prints the
+**New and edit** — `qm automation new TITLE --project P [--runner cloud|local]` (`AutomationChat.create`;
+cloud by default, any other runner refused) makes a `kind: automation` item (its `runner`, state
+`in_progress`, no `routine` until the first push) and its local files: an empty prompt and a yml with
+`name`, `runner` and `enabled` (`true`; `false` for local); a slug whose files already exist is
+refused. It then opens the item's chat, as `qm automation edit SLUG` does: through the running
+GUI's `automation-chat` action (a local action, so the CLI may post it without an Origin), then `ChatOpener` brings the GUI up on it; without a GUI it prints the
 `cd … && QM_ITEM=… claude …` line to run. The chat starts fresh when the item has no session, else
 resumes its newest one, either way with the brief as claude's last argument
-(`AutomationChat#plan`). **The brief** (`AutomationChat.brief`) holds the item's title, slug,
+(`AutomationChat#plan`). **The brief** (`AutomationChat.brief`; a local one → its page) holds the item's title, slug,
 project and routine (or that the first push creates it), the absolute paths of both files, the
 loop (edit the files → `qm automation push` → `qm automation run` → read the run via its claude.ai
 link or RemoteTrigger `get_run_log` → refine), the rule never to call RemoteTrigger create/update
@@ -151,8 +151,8 @@ last loaded, and `runsState` (`idle`, `ok`, `error`). POSTs under `/api/automati
 (the one list call), `runs` (the client's `runs(id, limit: 10)`, no GET of the routine), `apply` (a schedule as `days` + local `time` or a raw `cron`, and/or the `prompt`: saved
 locally at once, then pushed), `pause`, `resume`, `run`, `pull`, `push` (`force` overwrites a
 drifted routine), `recreate` (the detail's **Re-create on claude.ai**, shown only while the
-row is `missing`), `delete`, `adopt` (`id`, `project`) and `new` (`title`, `project`: the item
-and empty files; the page then opens its chat with the `automation-chat` action, as Edit with
+row is `missing`), `delete`, `adopt` (`id`, `project`) and `new` (`title`, `project`, optional
+`runner`: the item and empty files; the page then opens its chat with the `automation-chat` action, as Edit with
 Claude does). Every network call is a `GuiJobs` job (`automations`, `automation-<slug>`,
 `automation-runs-<slug>`, `automation-adopt-<id>`); each action ends with one list call, and the
 page reloads the tab when the state poll hands it the job's end. The page opens the tab with

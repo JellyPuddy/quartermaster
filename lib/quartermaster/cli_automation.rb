@@ -7,7 +7,7 @@ module Quartermaster
   module CliAutomation
     COMMANDS = { "automation" => :cmd_automation }.freeze
 
-    AUTOMATION_USAGE = "usage: qm automation list | show SLUG | new TITLE --project P [--description TEXT] | " \
+    AUTOMATION_USAGE = "usage: qm automation list | show SLUG | new TITLE --project P [--description TEXT] [--runner cloud|local] | " \
                        "edit SLUG | adopt TRIGGER_ID --project P [--slug S] | " \
                        "push SLUG [--force | --recreate] | pull SLUG | pause SLUG | resume SLUG | run SLUG | delete SLUG [--yes]"
     AUTOMATION_SUBCOMMANDS = { "list" => :automation_list, "show" => :automation_show, "new" => :automation_new,
@@ -146,15 +146,17 @@ module Quartermaster
     # The item and its empty local files, then its chat with the brief.
     def automation_new(argv)
       project = description = nil
+      runner = "cloud"
       parser = OptionParser.new do |o|
         o.on("--project PROJECT") { |v| project = v }
         o.on("--description TEXT") { |v| description = v }
+        o.on("--runner RUNNER") { |v| runner = v }
       end
       rest = FreeTextArgs.parse(parser, argv)
       abort(AUTOMATION_USAGE) unless rest.size == 1 && project
 
-      item = AutomationChat.create(rest.first, project: project, description: description)
-      puts "#{item.slug}: created (#{project}), files in #{short_path(AUTOMATIONS_DIR)}"
+      item = AutomationChat.create(rest.first, project: project, description: description, runner: runner)
+      puts "#{item.slug}: created (#{project}#{", runs locally" if runner == "local"}), files in #{short_path(AUTOMATIONS_DIR)}"
       automation_chat("new", item.slug)
     rescue ArgumentError => e
       abort("qm automation new: #{e.message}")

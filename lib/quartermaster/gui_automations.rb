@@ -169,7 +169,8 @@ module Quartermaster
       raise ArgumentError, "an automation needs a title and a project" if title.empty? || project.empty?
 
       description = request["description"].to_s.strip
-      item = AutomationChat.create(title, project: project, description: description.empty? ? nil : description, store: @store)
+      item = AutomationChat.create(title, project: project, description: description.empty? ? nil : description,
+                                          runner: request["runner"].to_s.empty? ? "cloud" : request["runner"].to_s, store: @store)
       { "ok" => true, "slug" => item.slug }
     end
 

@@ -3,31 +3,37 @@
 module Quartermaster
   # An automation's chat (`qm automation new` / `edit`, the GUI's automation-chat
   # action): the item's ordinary tmux chat, started or resumed with a brief qm
-  # writes — the item, its two local files, the edit → push → run loop and the
-  # house rules — as claude's argument. A live chat is only shown again: the
+  # writes — the item, its two local files, its runner's edit → try → run loop
+  # and the house rules — as claude's argument. A live chat is only shown again: the
   # brief comes back for the caller to print, never typed into it.
   class AutomationChat
     HOUSE_RULES = File.expand_path("../../docs/automations-house-rules.md", __dir__)
     ROUTINE_URL = "https://claude.ai/code/routines/%s"
 
-    # A kind: automation item (runner cloud, no routine until the first push)
-    # and its empty local files, under the work-item lock.
-    def self.create(title, project:, description: nil, store: AutomationStore.new)
+    RUNNERS = %w[cloud local].freeze
+
+    # A kind: automation item and its empty local files, under the work-item
+    # lock: a cloud one enabled, with no routine until the first push; a local
+    # one disabled until the user enables it.
+    def self.create(title, project:, description: nil, runner: "cloud", store: AutomationStore.new)
+      raise ArgumentError, "runner is #{RUNNERS.join(" or ")}, got #{runner}" unless RUNNERS.include?(runner)
+
       slug = WorkItem.slugify(title)
       raise ArgumentError, "automation files for '#{slug}' already exist in #{AUTOMATIONS_DIR}" if store.exists?(slug)
 
       WorkItem.with_lock do
         item = WorkItem.create(title, project: project, description: description)
-        item.front.merge!("kind" => "automation", "runner" => "cloud")
+        item.front.merge!("kind" => "automation", "runner" => runner)
         item.save
-        store.write(item.slug, { "runner" => "cloud", "name" => title, "enabled" => true }, "")
+        store.write(item.slug, { "runner" => runner, "name" => title, "enabled" => runner == "cloud" }, "")
         item
       end
     end
 
     def self.brief(item, store: AutomationStore.new)
+      return local_brief(item, store) if item.runner == "local"
+
       routine = item.routine ? "Its routine is #{item.routine} (#{format(ROUTINE_URL, item.routine)})." : "It has no routine yet: the first push creates it."
-      notes = item.notes.reverse.map { |note| "- #{note.stamp} [#{note.kind}]: #{note.text}" }
       <<~BRIEF
         You are working on the qm automation "#{item.title}" (work item #{item.slug}, project #{item.project}): a claude.ai cloud routine that qm manages. #{routine}
 
@@ -45,6 +51,39 @@ module Quartermaster
         5. Refine and repeat.
 
         Never call RemoteTrigger create or update yourself: push is the only way a change reaches the routine.
+        #{brief_tail(item)}
+      BRIEF
+    end
+
+    # A local automation's brief: the same frame, its own loop — a dry-run
+    # tick, a run, its transcript — and nothing to push.
+    def self.local_brief(item, store)
+      <<~BRIEF
+        You are working on the qm automation "#{item.title}" (work item #{item.slug}, project #{item.project}): a local automation, a Claude Code run that qm starts on this machine on a schedule. It runs unattended, with the user's own permissions. It was created disabled: its cron and guard don't run until it is enabled with `qm automation resume #{item.slug}`.
+
+        ## Its files
+
+        - Prompt: #{store.prompt_path(item.slug)} (the run's prompt, nothing else; each guard item is appended to it as a final `## Item` section)
+        - Settings: #{store.yml_path(item.slug)} (name, cron in Europe/Amsterdam local time, enabled, when (the guard command), flow, cwd, model, allowed_tools, permission_mode, timeout_minutes, notify; keep `v:` and any key you don't know)
+
+        ## The loop
+
+        1. Edit the two files.
+        2. `qm automation tick --dry-run #{item.slug}` runs the guard and prints the items a run would be queued for; it writes nothing.
+        3. `qm automation run #{item.slug}` queues a run now; a tick starts it.
+        4. Read the run: `qm automation runs #{item.slug}` lists its runs with their session ids; `qm show-session SESSION_ID` shows one, and its transcript is `~/.claude/projects/*/SESSION_ID.jsonl`.
+        5. Refine and repeat.
+
+        Nothing to push: qm reads the two files on every tick.
+        #{brief_tail(item)}
+      BRIEF
+    end
+
+    # The brief's end, the same for every runner: how to record decisions,
+    # the house rules verbatim, the item's description and its notes.
+    def self.brief_tail(item)
+      notes = item.notes.reverse.map { |note| "- #{note.stamp} [#{note.kind}]: #{note.text}" }
+      <<~TAIL.chomp
         Record each decision as a note on the item: `qm note #{item.slug} --kind decision "..."`.
 
         ## House rules
@@ -58,7 +97,7 @@ module Quartermaster
         ## Notes
 
         #{notes.empty? ? "_none yet_" : notes.join("\n")}
-      BRIEF
+      TAIL
     end
 
     def initialize(tmux:, launcher: Launcher.new, store: AutomationStore.new)

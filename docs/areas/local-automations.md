@@ -21,6 +21,16 @@ ArgumentError naming every bad field — `permission_mode: bypassPermissions`, a
 the two values, a `flow` that isn't a non-empty string, a `timeout_minutes` that isn't a positive
 whole number, an `allowed_tools` that isn't a list of strings. Cloud records are never held to it.
 
+**New and its brief** — `qm automation new TITLE --project P --runner local` (the GUI's `new` with
+`runner: local`) makes the item with `runner: local` and a yml with `enabled: false`, so nothing
+runs until the user enables it. Its chat's brief (`AutomationChat.local_brief`) names both files
+(cron in local time, the local fields), and the loop: edit the files → `qm automation tick
+--dry-run SLUG` (the guard's items, nothing written) → `qm automation run SLUG` → read the run
+(`qm automation runs SLUG` for its session id, `qm show-session`, the transcript under
+`~/.claude/projects/`) → refine. Nothing to push; no RemoteTrigger wording. Its end — decisions as
+notes, the house rules verbatim (with their "Local automations" section on drafting, unattended
+runs and the guard's output), description and notes — is the cloud brief's (`brief_tail`).
+
 **Run log** — `RunLog.new(slug)` is `automations/<slug>.runs.jsonl`, one `{v: 1, at, event, …}`
 line per event, appended under a flock; a writer that decides from the fold (`enqueue_item`,
 `enqueue_cron`, `retry`, `waiting`) re-reads it and appends under that one flock, so a tick and a
