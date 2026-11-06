@@ -100,9 +100,9 @@ module Quartermaster
       TAIL
     end
 
-    def initialize(tmux:, launcher: Launcher.new, store: AutomationStore.new)
+    def initialize(tmux:, launcher: nil, store: AutomationStore.new)
       @tmux = tmux
-      @launcher = launcher
+      @launcher = launcher || Launcher.new(automations_dir: store.dir)
       @store = store
     end
 

@@ -156,13 +156,13 @@ module Quartermaster
       Shellwords.split(ENV.fetch("QM_CHAT_COMMAND", "claude"))
     end
 
+    private
+
     # The item's attached sessions that can be its chat: all of them, less a
     # local automation's runs, which are never live-checked or resumed.
     def chat_session_ids(item)
       item.sessions.map { |s| s["id"] } - RunLog.session_ids_for(item, @automations_dir)
     end
-
-    private
 
     # Where `claude --resume ID` can actually find the session. Claude Code
     # files a transcript under the project directory for the cwd it was
