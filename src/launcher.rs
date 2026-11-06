@@ -63,6 +63,43 @@ pub(crate) fn resume_cwd(session: &Session) -> Option<String> {
     Path::new(&cwd).is_dir().then_some(cwd)
 }
 
+/// What resuming an item lands on (`Launcher#resume_plan`).
+pub enum Resume {
+    Resume { session_id: String, cwd: String },
+    Live,
+    Rehydrate { cwd: String },
+}
+
+/// The newest attached session whose transcript and cwd both still exist; a live one is never resumed
+/// (that would fork it); with nothing resumable, a fresh session seeded through `QM_ITEM`.
+pub fn resume_plan(item: &WorkItem, session_id: Option<&str>) -> Resume {
+    let ids = item.session_ids();
+    let log = SessionLog::read();
+    let sessions = log.sessions();
+    let mut mine: Vec<&Session> = sessions.iter().filter(|s| ids.contains(&s.id) && session_id.is_none_or(|w| s.id == w)).collect();
+    mine.sort_by_key(|s| s.last_ts());
+    mine.reverse();
+    let resumable = mine.iter().find_map(|s| (s.tier() == "resumable").then(|| resume_cwd(s).map(|c| (s.id.clone(), c))).flatten());
+    match resumable {
+        Some((session_id, cwd)) => Resume::Resume { session_id, cwd },
+        None if mine.iter().any(|s| s.live) => Resume::Live,
+        None => Resume::Rehydrate { cwd: start_cwd(item) },
+    }
+}
+
+/// An unlinked session's plan: its surviving transcript in its own recorded cwd, or nothing (`Err(true)`
+/// when it runs right now, `Err(false)` when there is nothing to resume).
+pub fn session_resume_plan(session_id: &str) -> Result<String, bool> {
+    let Some(session) = SessionLog::read().session_for(session_id) else { return Err(false) };
+    if session.live {
+        return Err(true);
+    }
+    match (session.tier() == "resumable", resume_cwd(&session)) {
+        (true, Some(cwd)) => Ok(cwd),
+        _ => Err(false),
+    }
+}
+
 /// `Launcher#chat_plan`; `None` when `QM_CHAT_COMMAND` is quoted in a way only Ruby reads.
 pub fn chat_plan(item: &WorkItem, fresh: bool, session_id: Option<&str>, prompt: Option<&str>) -> Option<Plan> {
     let command = chat_command()?;
@@ -76,13 +113,9 @@ pub fn chat_plan(item: &WorkItem, fresh: bool, session_id: Option<&str>, prompt:
     if fresh {
         return Some(fresh_plan());
     }
-    let mut mine: Vec<&Session> = sessions.iter().filter(|s| ids.contains(&s.id) && session_id.is_none_or(|w| s.id == w)).collect();
-    mine.sort_by_key(|s| s.last_ts());
-    mine.reverse();
-    let resumable = mine.iter().find_map(|s| (s.tier() == "resumable").then(|| resume_cwd(s).map(|c| (s.id.clone(), c))).flatten());
-    match resumable {
-        Some((id, cwd)) => Some(Plan { mode: Mode::Resume, cwd, argv: command.iter().cloned().chain(["--resume".to_string(), id]).collect(), env: vec![] }),
-        None if mine.iter().any(|s| s.live) => Some(Plan { mode: Mode::Live, cwd: String::new(), argv: vec![], env: vec![] }),
-        None => Some(fresh_plan()),
+    match resume_plan(item, session_id) {
+        Resume::Resume { session_id: id, cwd } => Some(Plan { mode: Mode::Resume, cwd, argv: command.iter().cloned().chain(["--resume".to_string(), id]).collect(), env: vec![] }),
+        Resume::Live => Some(Plan { mode: Mode::Live, cwd: String::new(), argv: vec![], env: vec![] }),
+        Resume::Rehydrate { .. } => Some(fresh_plan()),
     }
 }

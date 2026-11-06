@@ -224,11 +224,11 @@ pub fn open_ide(item: &mut WorkItem, worktree: Option<&str>, branch: Option<&str
 }
 
 /// A new tab in Warp's active window (`WarpTab#open`): a tab config file, then `open warp://…`.
-fn warp_tab(cwd: &str, title: &str) -> Result<String, Failed> {
+pub fn warp_tab(cwd: &str, title: &str, command: Option<&str>) -> Result<String, Failed> {
     let dir = data_root::expand_path(&std::env::var("QM_WARP_TAB_CONFIGS").unwrap_or_else(|_| "~/.warp/tab_configs".into()));
     let toml = |text: &str| format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""));
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join("qm-launch.toml"), format!("name = {}\n\n[[panes]]\nid = \"main\"\ntype = \"terminal\"\ndirectory = {}\n\n", toml(title), toml(cwd))).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("qm-launch.toml"), format!("name = {}\n\n[[panes]]\nid = \"main\"\ntype = \"terminal\"\ndirectory = {}\n{}\n", toml(title), toml(cwd), command.map(|c| format!("commands = [{}]", toml(c))).unwrap_or_default())).map_err(|e| e.to_string())?;
     if !command_runner::call(&["open", "warp://tab_config/qm-launch"]).success {
         return Err("could not open a Warp tab (is Warp installed?)".into());
     }
@@ -241,7 +241,7 @@ pub fn open_terminal(item: &mut WorkItem, worktree: Option<&str>, branch: Option
     let target = materialize(item, worktree, branch)?;
     report(target, None, |steps, target| {
         let name = target.branch.clone().unwrap_or_else(|| Path::new(&target.path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
-        steps.push(warp_tab(&target.path, &format!("{slug} · {name}"))?);
+        steps.push(warp_tab(&target.path, &format!("{slug} · {name}"), None)?);
         Ok(())
     })
 }

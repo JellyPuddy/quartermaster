@@ -222,6 +222,25 @@ fn run(payload: &Value) -> R<Value> {
         "loose-promote" => loose_promote(&args),
         "loose-close" => loose_close(&args),
         "cleanup" => cleanup(&args),
+        "start" => {
+            let item = find(&slug)?;
+            open_session(&crate::branch_diff::start_cwd(&item), &["claude"], &[("QM_ITEM", &item.slug)], &format!("qm {}", item.slug))?;
+            // Ruby's `Launcher#start(item) && ok` is what `puts` returns: nil
+            Ok(Value::Null)
+        }
+        "resume" => resume(&slug, &args),
+        "resume-session" => resume_session(&args),
+        "pane-warp" => {
+            find(&slug)?;
+            let tmux = crate::tmux::Tmux::new();
+            if !tmux.live(&slug) {
+                return Err(fail(format!("{slug} has no chat pane to open")));
+            }
+            let words = ["tmux".to_string(), "-L".to_string(), tmux.socket(), "attach-session".to_string(), "-t".to_string(), format!("={slug}")];
+            let attach = words.iter().map(|w| crate::project_config::shell_escape(w)).collect::<Vec<_>>().join(" ");
+            open_warp(&crate::data_root::home(), &attach, &format!("qm {slug}"))?;
+            Ok(ok())
+        }
         "caffeinate" => caffeinate(&args),
         "adopt" => adopt(&slug, &args),
         "restack" => restack(&slug, &args),
@@ -387,6 +406,67 @@ fn loose_start(args: &Args) -> R<Value> {
     match crate::tmux::Tmux::new().open(&name, &cwd, &argv, &[("QM_LOOSE".to_string(), id.clone()), ("QM_ITEM".to_string(), String::new())]) {
         Ok(_) => Ok(json!({"ok": true, "name": name, "id": id})),
         Err(message) => Err(fail(message)),
+    }
+}
+
+/// `Launcher#open_warp_tab`: a Warp tab, or the abort Ruby's GUI reports as "operation aborted".
+fn open_warp(cwd: &str, command: &str, title: &str) -> R<()> {
+    match crate::workspace::warp_tab(cwd, title, Some(command)) {
+        Ok(opened) => {
+            println!("{opened}");
+            Ok(())
+        }
+        Err(m) => {
+            eprintln!("qm: {m}");
+            Err(fail("operation aborted"))
+        }
+    }
+}
+
+/// `Launcher#open_session` without `here`: the command in a new Warp tab.
+fn open_session(cwd: &str, argv: &[&str], env: &[(&str, &str)], title: &str) -> R<()> {
+    let cwd = if std::path::Path::new(cwd).is_dir() { cwd.to_string() } else { crate::data_root::home() };
+    let escape = crate::project_config::shell_escape;
+    let mut words: Vec<String> = env.iter().map(|(k, v)| format!("{k}={}", escape(v))).collect();
+    words.push(argv.iter().map(|a| escape(a)).collect::<Vec<_>>().join(" "));
+    open_warp(&cwd, &words.join(" "), title)
+}
+
+const RUNNING_NOW: &str = "that session is running right now — switch to its Warp tab";
+
+/// Resume for an item's chat in a Warp tab: the newest resumable session, else rehydrate.
+fn resume(slug: &str, args: &Args) -> R<Value> {
+    let item = find(slug)?;
+    // a given id, even an empty one, narrows the item's sessions to it
+    let wanted = match args.get("session")? {
+        Value::Null => None,
+        Value::String(s) => Some(s.clone()),
+        _ => return Err(Stop::Unported),
+    };
+    match crate::launcher::resume_plan(&item, wanted.as_deref()) {
+        crate::launcher::Resume::Live => Err(fail(RUNNING_NOW)),
+        crate::launcher::Resume::Resume { session_id, cwd } => {
+            open_session(&cwd, &["claude", "--resume", &session_id], &[], &format!("resume {slug}"))?;
+            Ok(ok())
+        }
+        crate::launcher::Resume::Rehydrate { cwd } => {
+            open_session(&cwd, &["claude"], &[("QM_ITEM", &item.slug)], &format!("qm {}", item.slug))?;
+            Ok(ok())
+        }
+    }
+}
+
+/// Resume for a session with no work item (the inbox's session sheet).
+fn resume_session(args: &Args) -> R<Value> {
+    let id = args.string("session")?;
+    match crate::launcher::session_resume_plan(&id) {
+        Err(true) => Err(fail(RUNNING_NOW)),
+        Err(false) => Err(fail("no surviving transcript to resume")),
+        Ok(cwd) => {
+            let short: String = id.chars().take(8).collect();
+            open_session(&cwd, &["claude", "--resume", &id], &[], &format!("resume {short}"))?;
+            Ok(ok())
+        }
     }
 }
 

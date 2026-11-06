@@ -2717,3 +2717,92 @@ fn caffeinate_holds_one_child_of_the_gui_and_ends_it() {
     assert_eq!((auto["caffeinate"]["on"].as_bool(), auto["caffeinate"]["mode"].as_str()), (Some(false), Some("auto")));
     mode("off");
 }
+
+#[test]
+fn the_warp_tab_actions_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let (base_a, base_b) = (base.path().join("a"), base.path().join("b"));
+    let (wa, wb) = (workspace_world(&base_a, false), workspace_world(&base_b, false));
+    let me = std::process::id();
+    let stamp = |secs: i64| (chrono::Utc::now() - chrono::Duration::seconds(secs)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    for (w, b) in [(&wa, &base_a), (&wb, &base_b)] {
+        let work = b.join("work-a");
+        fs::create_dir_all(&work).unwrap();
+        let mut log = fs::read_to_string(w.root.join("sessions.jsonl")).unwrap_or_default();
+        for (id, pid, transcript, age) in [("r-one", 999999u32, true, 500), ("r-old", 999999, true, 900), ("r-live", me, true, 200), ("r-gone", 999999, false, 300), ("r-loose-extra-long", 999999, true, 400)] {
+            let path = w.transcripts.join(format!("p/{id}.jsonl"));
+            if transcript {
+                fs::create_dir_all(path.parent().unwrap()).unwrap();
+                fs::write(&path, "{}\n").unwrap();
+            }
+            log += &format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"{id}\",\"cwd\":\"{}\",\"pid\":{pid},\"transcript_path\":\"{}\",\"ts\":\"{}\"}}\n", work.display(), path.display(), stamp(age));
+        }
+        fs::write(w.root.join("sessions.jsonl"), log).unwrap();
+        for (slug, sessions) in [("k-one", "- id: r-one\n- id: r-old\n"), ("k-live", "- id: r-live\n- id: r-one\n"), ("k-gone", "- id: r-gone\n"), ("k-empty", "")] {
+            let list = if sessions.is_empty() { String::new() } else { format!("sessions:\n{sessions}") };
+            fs::write(w.root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: {slug}\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\n{list}---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n")).unwrap();
+        }
+    }
+    let chat = base.path().join("fake-chat");
+    executable(&chat, "#!/bin/sh\nexec sleep 300\n");
+    let fail_dirs = [base_a.join("fail"), base_b.join("fail")];
+    let logs = [base_a.join("tool.log"), base_b.join("tool.log")];
+    for d in &fail_dirs {
+        fs::create_dir_all(d).unwrap();
+    }
+    let env_for = |w: &common::AttentionWorld, side: usize| -> Vec<(&'static str, String)> {
+        let base = if side == 0 { &base_a } else { &base_b };
+        vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("PATH", format!("{}:{}:{}", base.join("tools").display(), w.bin.display(), std::env::var("PATH").unwrap())), ("FAKE_FAIL", fail_dirs[side].display().to_string()), ("FAKE_TOOL_LOG", logs[side].display().to_string()), ("QM_WARP_TAB_CONFIGS", base.join("warp").display().to_string()), ("QM_TMUX_SOCKET", format!("qm-test-warp-{side}")), ("QM_CHAT_COMMAND", chat.display().to_string())]
+    };
+    for side in 0..2 {
+        tmux_on(&format!("qm-test-warp-{side}"), &["kill-server"]);
+    }
+    let ruby = start_env(false, &wa.root, &wa.home, &env_for(&wa, 0));
+    let rust = start_env(true, &wb.root, &wb.home, &env_for(&wb, 1));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let norm = |text: String, side: usize| text.replace(&(if side == 0 { &base_a } else { &base_b }).display().to_string(), "BASE").replace(&format!("qm-test-warp-{side}"), "SOCK");
+    let post = |server: &Server, body: &str| request(server.port, "POST", "/api/action", &origin, body, true);
+    let act = |cmd: &str, slug: &str, args: &str| format!("{{\"cmd\":\"{cmd}\",\"slug\":\"{slug}\",\"args\":{args}}}");
+    let step = |label: &str, body: &str| -> String {
+        let (a, b) = (post(&ruby, body), post(&rust, body));
+        let (ta, tb) = (norm(String::from_utf8_lossy(&a.body).into_owned(), 0), norm(String::from_utf8_lossy(&b.body).into_owned(), 1));
+        assert_eq!((a.status.as_str(), &ta), (b.status.as_str(), &tb), "{label}: reply to {body}");
+        let left = |side: usize| {
+            let base = if side == 0 { &base_a } else { &base_b };
+            norm(format!("{}\n== tools\n{}", fs::read_to_string(base.join("warp/qm-launch.toml")).unwrap_or_default(), fs::read_to_string(&logs[side]).unwrap_or_default()), side)
+        };
+        assert_eq!(left(0), left(1), "{label}: the tab asked for");
+        ta
+    };
+    step("start", &act("start", "k-empty", "{}"));
+    step("start in a worktree", &act("start", "w-exist", "{}"));
+    step("start for a missing item", &act("start", "nowhere", "{}"));
+    step("resume", &act("resume", "k-one", "{}"));
+    step("resume a chosen session", &act("resume", "k-one", r#"{"session":"r-old"}"#));
+    step("resume an unknown session", &act("resume", "k-one", r#"{"session":"nope"}"#));
+    step("resume with an empty session", &act("resume", "k-one", r#"{"session":""}"#));
+    step("resume with a live session", &act("resume", "k-live", "{}"));
+    step("resume rehydrates", &act("resume", "k-gone", "{}"));
+    step("resume without sessions", &act("resume", "k-empty", "{}"));
+    step("resume a missing item", &act("resume", "nowhere", "{}"));
+    step("resume a session of nobody", &act("resume-session", "", r#"{"session":"r-loose-extra-long"}"#));
+    step("resume-session, live", &act("resume-session", "", r#"{"session":"r-live"}"#));
+    step("resume-session, pruned", &act("resume-session", "", r#"{"session":"r-gone"}"#));
+    step("resume-session, unknown", &act("resume-session", "", r#"{"session":"zzz"}"#));
+    step("a pane's Warp tab, no pane", &act("pane-warp", "k-empty", "{}"));
+    step("open a pane", &act("pane-start", "k-empty", "{}"));
+    let tab = step("a pane's Warp tab", &act("pane-warp", "k-empty", "{}"));
+    assert!(tab.contains("\"ok\":true"), "{tab}");
+    assert!(fs::read_to_string(base_b.join("warp/qm-launch.toml")).unwrap().contains("attach-session -t \\\\=k-empty"), "{}", fs::read_to_string(base_b.join("warp/qm-launch.toml")).unwrap());
+    for d in &fail_dirs {
+        fs::write(d.join("open"), "").unwrap();
+    }
+    let aborted = step("Warp is not there", &act("pane-warp", "k-empty", "{}"));
+    assert!(aborted.contains("operation aborted"), "{aborted}");
+    step("start without Warp", &act("start", "k-empty", "{}"));
+    for side in 0..2 {
+        tmux_on(&format!("qm-test-warp-{side}"), &["kill-server"]);
+    }
+    let a = post(&rust, &act("resume", "k-one", r#"{"session":5}"#));
+    assert!(a.status.starts_with("501"), "{}", a.status);
+}

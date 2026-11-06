@@ -39,6 +39,10 @@ impl Tmux {
         }
     }
 
+    pub fn socket(&self) -> String {
+        self.socket.clone()
+    }
+
     pub fn sessions(&self) -> Vec<String> {
         match self.run(&["list-sessions", "-F", "#{session_name}"]) {
             (true, out) => out.split('\n').filter(|l| !l.is_empty()).map(String::from).collect(),
