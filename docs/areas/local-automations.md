@@ -1,8 +1,8 @@
 # Local automations
 
-**Code:** `lib/quartermaster/run_log.rb`, `lib/quartermaster/tick_installer.rb`, `lib/quartermaster/automation_flows.rb`, `lib/quartermaster/chat_flow.rb`, `lib/quartermaster/pr_review_flow.rb`
-**Tests:** `test/run_log_test.rb`, `test/automation_store_test.rb`, `test/tick_installer_test.rb`, `test/automation_flows_test.rb`
-**Depends on:** [automations](automations.md) (the store, the item, the GUI tab), [attention](attention.md) (a run's session state), [gui-shell](gui-shell.md) (`CommandRunner`), [chats](chats.md) (tmux, the chat env), [prs](prs.md) (`PrReviewStart`)
+**Code:** `lib/quartermaster/local_cron.rb`, `lib/quartermaster/run_log.rb`, `lib/quartermaster/tick_installer.rb`, `lib/quartermaster/automation_flows.rb`, `lib/quartermaster/chat_flow.rb`, `lib/quartermaster/pr_review_flow.rb`
+**Tests:** `test/local_cron_test.rb`, `test/run_log_test.rb`, `test/automation_store_test.rb`, `test/tick_installer_test.rb`, `test/automation_flows_test.rb`
+**Depends on:** [automations](automations.md) (the store, the item, the GUI tab; `LocalSchedule`'s DST rule), [attention](attention.md) (a run's session state), [gui-shell](gui-shell.md) (`CommandRunner`), [chats](chats.md) (tmux, the chat env), [prs](prs.md) (`PrReviewStart`)
 
 ## What it does
 
@@ -20,6 +20,24 @@ automation with `AutomationStore.validate_local` and writes nothing when it fail
 ArgumentError naming every bad field — `permission_mode: bypassPermissions`, a `notify` outside
 the two values, a `flow` that isn't a non-empty string, a `timeout_minutes` that isn't a positive
 whole number, an `allowed_tools` that isn't a list of strings. Cloud records are never held to it.
+
+**Schedule** — `LocalCron` reads a local automation's 5-field `cron` as wall-clock time in
+Europe/Amsterdam, not UTC as cloud crons are. Every field takes `*`, numbers, lists, ranges and
+steps (`*/n`, `a-b/n`, `a/n` = from a to the field's end); weekday is 0-7, 7 = Sunday. When
+day-of-month and weekday both start with something other than `*`, a day matches either;
+otherwise both must match (so `*/2` counts as a star).
+- `due?(cron, since:, now:)` — some scheduled minute lies in `(since, now]`; any number of
+  missed minutes count as one. `last_due` gives the latest such minute (UTC). A `since` older than
+  8 days before `now` counts from 8 days back, so a long-stopped scheduler fires once, not never.
+- `next_after(cron, t)` — the first scheduled minute after `t`, for display; nil when none falls
+  in nine years (`0 0 31 2 *`).
+- DST: a wall-clock minute in the spring-forward gap (02:00-02:59 on the last Sunday of March)
+  never happens; one in the fall-back hour (02:00-02:59 on the last Sunday of October) happens at
+  two UTC instants, so checks an hour apart both find it due.
+- `label` — "Mon, Thu 08:00" / "every day 08:00" for a simple `M H * * <weekdays>` cron (whose
+  `days` and `time` feed the schedule picker, and `to_cron(days:, time:)` writes back unshifted),
+  else the cron itself plus "Amsterdam time". `error(cron)` — nil, or what is wrong with a cron
+  (field count, a value outside the field, a backwards range, a zero step, anything else).
 
 **New and its brief** — `qm automation new TITLE --project P --runner local` (the GUI's `new` with
 `runner: local`) makes the item with `runner: local` and a yml with `enabled: false`, so nothing
@@ -97,6 +115,9 @@ plist exists.
 
 ## Rules
 
+- Stdlib only and no `ENV["TZ"]` switching: the offset comes from `LocalSchedule.offset_minutes`.
+- Cron search is bounded: `due?` looks back at most 8 days, `next_after` at most nine years ahead,
+  each walking local days and only the hours and minutes the cron lists.
 - The run log is append-only: every write appends one line; readers skip lines that aren't JSON
   objects, events they don't know and fields they don't know.
 - Never skip, dedupe at queue time: a key is consumed when queued and a failed or timed-out run is
