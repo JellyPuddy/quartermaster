@@ -123,6 +123,9 @@ pub fn golden(name: &str, actual: &str) {
         std::fs::write(&path, actual).unwrap();
     }
     let expected = std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("missing golden {name}"));
+    // a Ruby backtrace names the launcher's line, which moves whenever the launcher does
+    let frame = Regex::new(r"/quartermaster:\d+:in `<main>'").unwrap();
+    let (actual, expected) = (frame.replace_all(actual, "/quartermaster:LINE:in `<main>'"), frame.replace_all(&expected, "/quartermaster:LINE:in `<main>'"));
     assert_eq!(actual, expected, "golden {name} differs");
 }
 

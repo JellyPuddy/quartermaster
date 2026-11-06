@@ -18,7 +18,8 @@ pub fn launcher() -> PathBuf {
 
 /// Replaces this process with the Ruby qm, arguments and stdin untouched.
 pub fn exec_ruby<S: AsRef<OsStr>>(args: &[S]) -> ! {
-    let err = Command::new(launcher()).args(args).exec();
+    // QM_FROM_RUST tells the launcher this call comes from the Rust binary, so QM_USE_RUST does not bounce it back
+    let err = Command::new(launcher()).args(args).env("QM_FROM_RUST", "1").exec();
     eprintln!("qm: cannot run the Ruby launcher {}: {err}", launcher().display());
     std::process::exit(127);
 }
