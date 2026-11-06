@@ -1,7 +1,7 @@
 # Automations
 
-**Code:** `lib/quartermaster/automations.rb`, `lib/quartermaster/cli_automation.rb`, `lib/quartermaster/routines_client.rb`, `lib/quartermaster/automation_store.rb`, `lib/quartermaster/local_schedule.rb`, `lib/quartermaster/automation_chat.rb`
-**Tests:** `test/automation_cli_test.rb`, `test/routines_client_test.rb`, `test/automation_store_test.rb`, `test/local_schedule_test.rb`, `test/automation_chat_test.rb`
+**Code:** `lib/quartermaster/automations.rb`, `lib/quartermaster/cli_automation.rb`, `lib/quartermaster/routines_client.rb`, `lib/quartermaster/automation_store.rb`, `lib/quartermaster/local_schedule.rb`, `lib/quartermaster/automation_chat.rb`, `lib/quartermaster/gui_automations.rb`, `lib/quartermaster/gui/js/automations.js`, `lib/quartermaster/gui/js/automations-render.js`
+**Tests:** `test/automation_cli_test.rb`, `test/routines_client_test.rb`, `test/automation_store_test.rb`, `test/local_schedule_test.rb`, `test/automation_chat_test.rb`, `test/gui_automations_test.rb`
 **Depends on:** [work-items](work-items.md) (an automation is a work item), [settings](settings.md) (`automations.token_source`; writes the way `ConfigFile` does), [gui-shell](gui-shell.md) (`CommandRunner`), [chats](chats.md) (its chat is the item's pane)
 
 ## What it does
@@ -125,6 +125,23 @@ link or RemoteTrigger `get_run_log` → refine), the rule never to call RemoteTr
 itself, decisions recorded with `qm note SLUG --kind decision`, the house rules verbatim from
 `docs/automations-house-rules.md`, and the item's description and notes (oldest first, kind shown).
 
+**GUI tab** — the ⚙ area's Automations tab (`GuiAutomations` server side; `automations.js`,
+`automations-render.js`, `automations.css` in the page). `GET /api/automations` answers the
+local rows at once (name, project, state, the schedule read in local time, enabled, runner,
+links) merged with the routines the last list call saw (last run, next run, drift, a routine
+gone from claude.ai), the routines "Not managed by qm", and `remote.state`: `idle`, `ok`, `off`
+(with the `qm config set` command), `expired` or `error`. `GET /api/automations/<slug>` adds the
+prompt, file paths, model, repos, connectors, the item's description and notes and its runs as
+last loaded. POSTs under `/api/automations/`: `refresh` (the one list call), `runs` (the last
+10), `apply` (a schedule as `days` + local `time` or a raw `cron`, and/or the `prompt`: saved
+locally at once, then pushed), `pause`, `resume`, `run`, `pull`, `push` (`force` overwrites a
+drifted routine), `delete`, `adopt` (`id`, `project`) and `new` (`title`, `project`: the item
+and empty files; the page then opens its chat with the `automation-chat` action, as Edit with
+Claude does). Every network call is a `GuiJobs` job (`automations`, `automation-<slug>`,
+`automation-runs-<slug>`, `automation-adopt-<id>`); each action ends with one list call, and the
+page reloads the tab when the state poll hands it the job's end. The page opens the tab with
+one refresh and loads runs once per automation shown; Apply is per automation.
+
 ## Rules
 
 - Opt-in: until `automations.token_source` is `claude_code`, nothing touches the keychain.
@@ -147,6 +164,10 @@ itself, decisions recorded with `qm note SLUG --kind decision`, the house rules 
 - No automatic DST rewrites: a stored cron keeps its UTC time, so its local time moves with DST.
 - A chat that already runs gets nothing typed: `automation-chat` answers `attached` with the brief,
   which the CLI prints to paste by hand. The brief is claude's argument, never keystrokes.
+- Off and an expired token are states of the tab (`remote.state`), never an error toast; an
+  action that hits them answers quietly and the tab says what to do.
+- GUI network work runs on `GuiJobs` threads, never under the action mutex; `GET`s read only
+  the local files and what the last calls left in memory.
 - The house rules live only in `docs/automations-house-rules.md`; the brief reads it at runtime.
 
 ## Data
