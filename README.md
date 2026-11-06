@@ -169,6 +169,39 @@ Claude** create or change one through the item's chat. Off until
 (see [What qm does on your machine](#what-qm-does-on-your-machine)). Details:
 [docs/areas/automations.md](docs/areas/automations.md).
 
+### Local automations
+
+Scheduled Claude Code runs on your own Mac, managed by qm: a `runner: local` automation in the
+same ⚙ Automations tab (marked 💻, cloud ones ☁). They need no claude.ai login token, so they
+work with `automations.token_source` unset. Create one with `qm automation new TITLE --project P
+--runner local` (or **New** in the tab); it starts disabled, and its chat helps you write the
+prompt and the yml.
+
+- **The tick.** Nothing runs until you install the scheduler: `qm automation install-tick`
+  (or **Install tick** in the tab) writes a LaunchAgent that runs `qm automation tick` every
+  5 minutes; `--print` shows its plist without writing, `uninstall-tick` removes it. The tab
+  warns when local automations are enabled and no tick has run for 15 minutes.
+- **Schedule and guard.** `cron:` is a 5-field cron in Amsterdam local time. An optional
+  `when:` guard is a shell command run when the cron is due (in the automation's `cwd`, 60 s
+  limit). Each non-empty output line is one item to work on: a JSON object with a string
+  `key` (plus the fields its flow needs), or a plain line that is its own key. Each key runs
+  once, ever; a failing guard queues nothing and shows its error. Without a guard, a due cron
+  queues one run. Try it with `qm automation tick --dry-run SLUG`, which writes nothing.
+- **Flows.** `flow: chat` (the default) starts a tmux chat running `claude` with the prompt
+  file plus the item; you can open it from the tab and take it over. `flow: pr-review` takes
+  items with a `url` and starts that PR's Review chat, as the PRs view's Review button does.
+- **Limits.** At most 2 runs work at once (`automations.local_max_running`); starts hold
+  while your 5-hour usage is at 80% or the weekly at 90% (`local_hold_five_hour`,
+  `local_hold_seven_day`); `automations.local_paused` or the tab's pause toggle stops all new
+  work, and Pause stops one automation. A run still working after `timeout_minutes` (30) is
+  stopped and notified; a finished run's chat closes after an hour idle, unless you typed
+  into it. `notify: quiet` keeps its runs out of your attention list.
+- **Results are drafted, never posted.** The house rules tell a run to put its results in
+  qm (`qm draft add`, `qm note`) for you to review and send.
+- `qm automation run | runs | retry | pause | resume [--skip-existing] | delete` work on them
+  too; Enable in the tab can mark the guard's current items as seen, so only new ones run.
+  Details: [docs/areas/local-automations.md](docs/areas/local-automations.md).
+
 ### Other tools
 
 - **ripgrep** (`rg`): transcript search.
@@ -183,6 +216,7 @@ Claude** create or change one through the item's chat. Off until
 - Keeping the Mac awake while chats work (`qm caffeinate`): `/usr/bin/caffeinate`.
 - The status line runs under macOS's system Ruby, `/usr/bin/ruby`.
 - Automations read Claude Code's login from the keychain: `security`.
+- Local automations' scheduler is a LaunchAgent: `launchctl`.
 
 ## config.yml
 
@@ -231,6 +265,10 @@ loose_starters:                   # presets in the loose-chat dialog's "Start wi
 
 automations:
   token_source: claude_code       # turns on Automations: qm uses Claude Code's login token
+  # local_max_running: 2          # local automations: runs working at once
+  # local_hold_five_hour: 80      # hold local starts at this 5-hour usage %
+  # local_hold_seven_day: 90      # ... or this weekly usage %
+  # local_paused: true            # start no local runs, run no guards
 
 # prices:                         # per-model token price overrides (docs/areas/side-panel.md)
 # overview_artifact: <URL>        # the published phone page's artifact URL
@@ -259,6 +297,15 @@ Know this before you install it:
   organization id from `~/.claude.json`, on every call. The token is never stored, logged or
   refreshed; an expired one is yours to renew by opening Claude Code. The routines it manages
   run in the cloud on their schedule, with the connectors listed in each automation's file.
+- **With [local automations](#local-automations), qm runs `claude` unattended.**
+  `qm automation install-tick` (only that command or the tab's Install tick button) writes
+  `~/Library/LaunchAgents/com.quartermaster.automation-tick.plist`, carrying your shell's
+  `PATH`, and loads it with `launchctl bootstrap`; `uninstall-tick` runs `launchctl bootout`
+  and deletes it. Every 5 minutes it runs `qm automation tick`, which runs each enabled local
+  automation's `when:` guard command when its schedule is due, as you, in its working
+  directory, and starts `claude` sessions in tmux with the automation's prompt and your normal
+  Claude Code permissions (`bypassPermissions` is refused). They use your Claude usage, and qm
+  kills a run's tmux session on timeout or an hour after it finished.
 - **qm sends nothing itself, except to `api.anthropic.com` with Automations on**: the routines
   API, called directly with that token, only while you use the Automations tab or
   `qm automation`.
