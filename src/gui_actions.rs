@@ -218,6 +218,8 @@ fn run(payload: &Value) -> R<Value> {
             Ok(ok())
         }
         "aside-open" | "aside-reopen" | "aside-close" | "aside-promote" => aside(&cmd, &slug, &args),
+        "loose-start" => loose_start(&args),
+        "loose-promote" => loose_promote(&args),
         "pane-start" | "pane-resume" => pane(&slug, cmd == "pane-start", &args),
         "pf-mode" => {
             let mut item = find(&slug)?;
@@ -273,15 +275,11 @@ fn new_item(args: &Args) -> R<Value> {
     Ok(json!({"ok": true, "slug": item.slug}))
 }
 
-/// `WorkItem.from_session`: an item for a session, on its start event's project and branch.
-fn item_from_session(args: &Args) -> R<Value> {
-    let title = strip(&args.text("title")?).to_string();
-    if title.is_empty() {
-        return Err(fail("title is required"));
-    }
-    let session = args.string("session")?;
+/// `WorkItem.from_session`: an item for a session, on its start event's project and branch, the
+/// session claimed from every other item. Returns the item and the slugs it left.
+fn from_session(session: &str, title: &str) -> R<(WorkItem, Vec<String>)> {
     let log = crate::session_log::SessionLog::read();
-    let Some(start) = log.last_start_for(Some(&session)) else { return Err(fail(format!("unknown session {session}"))) };
+    let Some(start) = log.last_start_for(Some(session)) else { return Err(fail(format!("unknown session {session}"))) };
     let text_of = |key: &str| match start.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) => Ok(Some(s.clone())),
@@ -289,8 +287,18 @@ fn item_from_session(args: &Args) -> R<Value> {
     };
     let branch = text_of("branch")?.filter(|b| !["main", "master", "develop"].contains(&b.as_str()));
     let project = text_of("project")?.unwrap_or_else(|| "No project".to_string());
-    let item = WorkItem::create(&title, &project, branch.as_deref(), Some(&session), None, None).map_err(error)?;
-    let vacated = WorkItem::detach_session_elsewhere(&session, &item.slug).map_err(error)?;
+    let item = WorkItem::create(title, &project, branch.as_deref(), Some(session), None, None).map_err(error)?;
+    let vacated = WorkItem::detach_session_elsewhere(session, &item.slug).map_err(error)?;
+    Ok((item, vacated))
+}
+
+fn item_from_session(args: &Args) -> R<Value> {
+    let title = strip(&args.text("title")?).to_string();
+    if title.is_empty() {
+        return Err(fail("title is required"));
+    }
+    let session = args.string("session")?;
+    let (item, vacated) = from_session(&session, &title)?;
     Ok(followed(json!({"ok": true, "slug": item.slug, "detached": vacated}), &session, &vacated, &item.slug))
 }
 
@@ -333,6 +341,65 @@ fn aside(cmd: &str, slug: &str, args: &Args) -> R<Value> {
             Ok(json!({"ok": true, "note": note}))
         }
     }
+}
+
+/// `String#strip`, and nil when nothing is left (`presence` in the loose actions).
+fn presence_of(args: &Args, key: &str) -> R<Option<String>> {
+    let text = strip(&args.text(key)?).to_string();
+    Ok((!text.is_empty()).then_some(text))
+}
+
+/// `loose-start`: a chat that belongs to no item, in its own tmux session `loose--<id>` under `QM_LOOSE`.
+fn loose_start(args: &Args) -> R<Value> {
+    let model = presence_of(args, "model")?;
+    if let Some(m) = &model {
+        if !["sonnet", "opus", "haiku"].contains(&m.as_str()) {
+            let shown = crate::ruby_text::inspect_ascii(m).ok_or(Stop::Unported)?;
+            return Err(fail(format!("unknown model {shown} (sonnet, opus, haiku)")));
+        }
+    }
+    if presence_of(args, "starter")?.is_some() {
+        return Err(Stop::Unported); // starters come from config.yml
+    }
+    let prompt = presence_of(args, "prompt")?;
+    let project = presence_of(args, "project")?.unwrap_or_else(|| "No project".to_string());
+    let command = crate::launcher::chat_command().ok_or(Stop::Unported)?;
+    let id = crate::gui_draft_actions::random_hex(4);
+    let root = crate::project_map::root_for(Some(&project)).filter(|r| std::path::Path::new(r).is_dir());
+    let cwd = root.unwrap_or_else(crate::data_root::home);
+    let mut argv = command;
+    if let Some(m) = model {
+        argv.extend(["--model".to_string(), m]);
+    }
+    argv.extend(prompt);
+    let name = format!("loose--{id}");
+    match crate::tmux::Tmux::new().open(&name, &cwd, &argv, &[("QM_LOOSE".to_string(), id.clone()), ("QM_ITEM".to_string(), String::new())]) {
+        Ok(_) => Ok(json!({"ok": true, "name": name, "id": id})),
+        Err(message) => Err(fail(message)),
+    }
+}
+
+/// `loose-promote`: an item from the chat's newest session, the tmux session renamed to its slug.
+/// "Tell the chat" types into the chat and stays Ruby's.
+fn loose_promote(args: &Args) -> R<Value> {
+    if matches!(args.get("tell")?, Value::Bool(true)) {
+        return Err(Stop::Unported);
+    }
+    let id = args.text("id")?;
+    let title = strip(&args.text("title")?).to_string();
+    if title.is_empty() {
+        return Err(fail("title is required"));
+    }
+    let log = crate::session_log::SessionLog::read();
+    let Some(session) = crate::gui_state::loose_session(&log, &id) else { return Err(fail("the loose chat has no captured session yet — give it a moment")) };
+    let (item, _) = from_session(&session.id, &title)?;
+    let chat = format!("loose--{id}");
+    let renamed = crate::tmux::Tmux::new().rename(&chat, &item.slug);
+    let mut reply = json!({"ok": true, "slug": item.slug});
+    if !renamed {
+        reply["warning"] = json!(format!("{} is created, but its chat stays under {chat}: a chat named {} already runs", item.slug, item.slug));
+    }
+    Ok(reply)
 }
 
 /// `gui_pane`: the item's chat in a tmux session of its own — already running is `attached`, a live

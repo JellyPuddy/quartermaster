@@ -257,12 +257,16 @@ pub(crate) fn put(slug: &str, raw: &Map<String, Value>) -> R<Value> {
     Ok(merged("draft", stored))
 }
 
-/// `SecureRandom.hex(6)`.
-fn random_id() -> String {
+/// `SecureRandom.hex(n)`.
+pub(crate) fn random_hex(n: usize) -> String {
     use std::io::Read;
-    let mut bytes = [0u8; 6];
+    let mut bytes = vec![0u8; n];
     let _ = std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut bytes));
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn random_id() -> String {
+    random_hex(6)
 }
 
 fn merged(key: &str, v: Value) -> Value {

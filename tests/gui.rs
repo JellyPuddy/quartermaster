@@ -1012,7 +1012,32 @@ fn the_state_matches_ruby_over_a_richer_world() {
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     richer_state_world(&w, base.path());
-    let env: Vec<(&str, String)> = vec![
+    // loose chats: two open in tmux (one with a session, one without), one closed and left in the inbox
+    let socket = "qm-test-state-loose";
+    tmux_on(socket, &["kill-server"]);
+    let (stamp, me) = ((chrono::Utc::now() - chrono::Duration::seconds(90)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true), std::process::id());
+    let long_prompt = "a long first prompt that goes past sixty characters so the title is cut short with an ellipsis";
+    let mut log = fs::read_to_string(w.root.join("sessions.jsonl")).unwrap();
+    let later = (chrono::Utc::now() - chrono::Duration::seconds(30)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let (p61, p60) = ("x".repeat(61), "y".repeat(60));
+    for (id, loose, pid, prompt, cwd, ts) in [
+        ("s-loose-a", "ab12", me, long_prompt, w.home.join("proj").display().to_string(), stamp.clone()),
+        ("s-loose-b", "ab12", 999999, "a newer session of the same chat, no longer running", "/srv/app".to_string(), later.clone()),
+        ("s-loose-closed", "zz99", 999999, "a chat that was closed", "/srv/app".to_string(), stamp.clone()),
+        ("s-loose-61", "ef56", 999999, p61.as_str(), "/srv/app".to_string(), stamp.clone()),
+        ("s-loose-60", "gh78", 999999, p60.as_str(), "/srv/app".to_string(), stamp.clone()),
+    ] {
+        let path = w.transcripts.join(format!("p/{id}.jsonl"));
+        fs::write(&path, format!("{}\n", serde_json::json!({"type": "user", "message": {"role": "user", "content": prompt}}))).unwrap();
+        log += &format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"{id}\",\"cwd\":\"{cwd}\",\"pid\":{pid},\"project\":\"demo\",\"loose\":\"{loose}\",\"transcript_path\":\"{}\",\"ts\":\"{ts}\"}}\n", path.display());
+    }
+    fs::write(w.root.join("sessions.jsonl"), log).unwrap();
+    let events = fs::read_to_string(w.root.join("events.jsonl")).unwrap_or_default();
+    fs::write(w.root.join("events.jsonl"), events + &format!("{{\"v\":1,\"ts\":\"{stamp}\",\"event\":\"UserPromptSubmit\",\"session_id\":\"s-loose-a\",\"tool\":\"Edit\"}}\n")).unwrap();
+    for name in ["loose--ab12", "loose--cd34", "loose--ef56", "loose--gh78"] {
+        tmux_on(socket, &["new-session", "-d", "-s", name, "sleep 300"]);
+    }
+    let env: Vec<(&str, String)> = vec![("QM_TMUX_SOCKET", socket.to_string()),
         ("HOME", w.home.display().to_string()),
         ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()),
         ("PATH", format!("{}:{}", w.bin.display(), std::env::var("PATH").unwrap())),
@@ -1022,7 +1047,7 @@ fn the_state_matches_ruby_over_a_richer_world() {
     let root2 = base.path().join("root2");
     copy_dir(&w.root, &root2);
     let mut env_rust = env.clone();
-    env_rust[4].1 = base.path().join("gh-rust.log").display().to_string();
+    env_rust[5].1 = base.path().join("gh-rust.log").display().to_string();
     let ruby = start_env(false, &w.root, &w.home, &env);
     let rust = start_env(true, &root2, &w.home, &env_rust);
     for s in [&ruby, &rust] {
@@ -1030,10 +1055,11 @@ fn the_state_matches_ruby_over_a_richer_world() {
     }
     std::thread::sleep(std::time::Duration::from_millis(800));
     let first = compare_state(&ruby, &rust, "first build");
-    for needle in ["\"rich-item\"", "\"asideCount\":2", "\"rateLimits\":{", "\"wt-branch\"", "\"claude-haiku-5-5\":68", "inbox prompt one", "\"state\":\"working\"", "\"lowerBound\":true", "\"snoozed\":true", "23h ago", "10d ago", "3d ago", "just now", "10m ago", "5h ago"] {
+    for needle in ["\"rich-item\"", "\"asideCount\":2", "\"rateLimits\":{", "\"wt-branch\"", "\"claude-haiku-5-5\":68", "inbox prompt one", "\"state\":\"working\"", "\"lowerBound\":true", "\"snoozed\":true", "\"name\":\"loose--ab12\"", "a long first prompt that goes past sixty characters so the …", "\"title\":\"New loose chat\"", "a chat that was closed", "\"cwd\":\"~/proj\"", "23h ago", "10d ago", "3d ago", "just now", "10m ago", "5h ago"] {
         assert!(first.contains(needle), "the world should reach {needle}");
     }
     compare_state(&ruby, &rust, "second build");
+    tmux_on(socket, &["kill-server"]);
 }
 
 /// What the data actions leave behind: the item files and the error log, without its stamps.
@@ -1563,9 +1589,14 @@ fn tmux_on(socket: &str, args: &[&str]) -> String {
 
 /// What a pane opened by an action left in tmux: sessions, what each runs and how big, the server options.
 fn tmux_picture(socket: &str) -> String {
-    let mut sessions: Vec<String> = tmux_on(socket, &["list-sessions", "-F", "#{session_name}"]).lines().map(String::from).collect();
+    tmux_picture_with(socket, &|s| s)
+}
+
+/// The same, with names and commands passed through `norm` before sorting (random ids made stable).
+fn tmux_picture_with(socket: &str, norm: &dyn Fn(String) -> String) -> String {
+    let mut sessions: Vec<String> = tmux_on(socket, &["list-sessions", "-F", "#{session_name}"]).lines().map(|l| norm(l.to_string())).collect();
     sessions.sort();
-    let mut panes: Vec<String> = tmux_on(socket, &["list-panes", "-a", "-F", "#{session_name}|#{window_name}|#{pane_start_command}|#{window_width}x#{window_height}"]).lines().map(String::from).collect();
+    let mut panes: Vec<String> = tmux_on(socket, &["list-panes", "-a", "-F", "#{session_name}|#{window_name}|#{pane_start_command}|#{window_width}x#{window_height}"]).lines().map(|l| norm(l.to_string())).collect();
     panes.sort();
     let options: String = ["status", "mouse", "escape-time", "prefix", "history-limit", "window-size"].iter().map(|o| tmux_on(socket, &["show-options", "-g", o])).collect();
     format!("{sessions:?}\n{}\n{options}{}", panes.join("\n"), tmux_on(socket, &["show-options", "-g", "terminal-features"]))
@@ -1956,4 +1987,108 @@ fn the_aside_actions_match_ruby() {
 
 fn rust_dir(p: &Path) -> PathBuf {
     p.to_path_buf()
+}
+
+#[test]
+fn the_loose_chat_actions_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let config = fs::read_to_string(w.root.join("config.yml")).unwrap();
+    fs::write(w.root.join("config.yml"), config + "  gone: /nonexistent/project/root\n").unwrap();
+    let chat = base.path().join("fake-chat");
+    // the stand-in chat records how it was started and registers a session, as the SessionStart hook would
+    fs::write(&chat, "#!/bin/sh\n{ echo \"cwd: $(pwd)\"; echo \"args: $*\"; echo \"QM_LOOSE=${QM_LOOSE-unset}\"; echo \"QM_ITEM=[${QM_ITEM-unset}]\"; } > \"$FAKE_REC/.tmp-$$\"\nmv \"$FAKE_REC/.tmp-$$\" \"$FAKE_REC/rec-$$\"\nprintf '{\"v\":1,\"event\":\"start\",\"session_id\":\"sess-%s\",\"cwd\":\"%s\",\"pid\":%s,\"project\":\"demo\",\"loose\":\"%s\",\"ts\":\"%s\"}\\n' \"$QM_LOOSE\" \"$(pwd)\" \"$$\" \"$QM_LOOSE\" \"$(date -u +%FT%TZ)\" >> \"$QM_ROOT/sessions.jsonl\"\nexec sleep 300\n").unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&chat, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let (rec_ruby, rec_rust) = (base.path().join("rec-ruby"), base.path().join("rec-rust"));
+    for d in [&rec_ruby, &rec_rust] {
+        fs::create_dir_all(d).unwrap();
+    }
+    let (sock_ruby, sock_rust) = ("qm-test-loose-ruby", "qm-test-loose-rust");
+    for (s, root, rec) in [(sock_ruby, &w.root, &rec_ruby), (sock_rust, &base.path().join("root2"), &rec_rust)] {
+        tmux_on(s, &["kill-server"]);
+        // the tmux server keeps the environment it was started with, and the chats inherit it: start it as the GUI would
+        let start = |args: &[&str]| Command::new("tmux").args(["-L", s]).args(args).env_remove("TMUX").env("QM_ROOT", root).env("FAKE_REC", rec).output().unwrap();
+        // a server that was just killed may still be winding down: ask until the session is there
+        for _ in 0..50 {
+            start(&["new-session", "-d", "-s", "warn-me", "-n", "warn-me", "sleep 300"]);
+            if tmux_on(s, &["list-sessions", "-F", "#{session_name}"]).contains("warn-me") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+    let env_for = |sock: &str, rec: &Path| -> Vec<(&'static str, String)> {
+        vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("QM_TMUX_SOCKET", sock.to_string()), ("QM_CHAT_COMMAND", format!("{} --flag", chat.display())), ("FAKE_REC", rec.display().to_string())]
+    };
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let ruby = start_env(false, &w.root, &w.home, &env_for(sock_ruby, &rec_ruby));
+    let rust = start_env(true, &root2, &w.home, &env_for(sock_rust, &rec_rust));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let (mut ruby_ids, mut rust_ids): (Vec<String>, Vec<String>) = (vec![], vec![]);
+    let id_pattern = regex::Regex::new(r#""id":"([0-9a-f]{8})""#).unwrap();
+    let mut step = |label: &str, body: &str| -> String {
+        let fill = |ids: &Vec<String>| (0..8).fold(body.to_string(), |b, i| b.replace(&format!("{{ID{i}}}"), ids.get(i).map(String::as_str).unwrap_or("")));
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, &fill(&ruby_ids), true), request(rust.port, "POST", "/api/action", &origin, &fill(&rust_ids), true));
+        let norm = |text: String, ids: &Vec<String>| ids.iter().enumerate().fold(text, |t, (i, id)| t.replace(id.as_str(), &format!("ID{i}")));
+        let (ta, tb) = (String::from_utf8_lossy(&a.body).into_owned(), String::from_utf8_lossy(&b.body).into_owned());
+        for (ids, text) in [(&mut ruby_ids, &ta), (&mut rust_ids, &tb)] {
+            if let Some(c) = id_pattern.captures(text) {
+                ids.push(c[1].to_string());
+            }
+        }
+        assert_eq!(norm(shown(&a, ruby.port), &ruby_ids), norm(shown(&b, rust.port), &rust_ids), "{label}: reply to {body}");
+        let started = ruby_ids.len();
+        // the chats register themselves; wait for the newest one in both roots
+        for _ in 0..100 {
+            let have = |root: &Path, ids: &Vec<String>| ids.last().is_none_or(|id| fs::read_to_string(root.join("sessions.jsonl")).unwrap_or_default().contains(&format!("sess-{id}")));
+            if have(&w.root, &ruby_ids) && have(&root2, &rust_ids) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let recs = |dir: &Path, ids: &Vec<String>| {
+            let mut all: Vec<String> = records(dir).into_iter().map(|r| norm(r, ids)).collect();
+            all.sort();
+            all
+        };
+        assert_eq!(recs(&rec_ruby, &ruby_ids), recs(&rec_rust, &rust_ids), "{label}: what the chats were started with, after {body} ({started} started)");
+        let picture = |sock: &str, ids: &Vec<String>| tmux_picture_with(sock, &|t| norm(t, ids));
+        assert_eq!(picture(sock_ruby, &ruby_ids), picture(sock_rust, &rust_ids), "{label}: tmux after {body}");
+        assert_eq!(norm(action_traces(&w.root, &root2), &ruby_ids), norm(action_traces(&root2, &w.root), &rust_ids), "{label}: files after {body}");
+        norm(shown(&a, ruby.port), &ruby_ids)
+    };
+    let act = |cmd: &str, args: &str| format!("{{\"cmd\":\"{cmd}\",\"slug\":null,\"args\":{args}}}");
+    step("start", &act("loose-start", "{}"));
+    step("start in a project", &act("loose-start", r#"{"project":"demo","model":"opus","prompt":"  what is this?  "}"#));
+    step("start for a project that is not there", &act("loose-start", r#"{"project":"ghost","model":" ","prompt":"  "}"#));
+    step("start for a project whose root is gone", &act("loose-start", r#"{"project":"gone"}"#));
+    step("start on haiku", &act("loose-start", r#"{"model":"haiku"}"#));
+    step("start on sonnet", &act("loose-start", r#"{"model":"sonnet"}"#));
+    step("start with a bad model", &act("loose-start", r#"{"model":"gpt"}"#));
+    step("start with a quoted model", &act("loose-start", r#"{"model":"a \"b\" \\c"}"#));
+    step("start with a numeric project", &act("loose-start", r#"{"project":5,"prompt":7}"#));
+    step("start blank", &act("loose-start", r#"{"project":"  ","starter":"  ","prompt":null}"#));
+    let promoted = step("promote", &act("loose-promote", r#"{"id":"{ID1}","title":"  Promoted chat  "}"#));
+    assert!(promoted.contains("\"slug\":\"promoted-chat\"") && !promoted.contains("warning"), "{promoted}");
+    step("promote the same title", &act("loose-promote", r#"{"id":"{ID2}","title":"Promoted chat"}"#));
+    let warned = step("promote onto a running chat", &act("loose-promote", r#"{"id":"{ID2}","title":"Warn me"}"#));
+    assert!(warned.contains("\"warning\":\"warn-me is created, but its chat stays under loose--ID2: a chat named warn-me already runs\""), "{warned}");
+    step("promote without a title", &act("loose-promote", r#"{"id":"{ID0}","title":"   "}"#));
+    step("promote an unknown chat", &act("loose-promote", r#"{"id":"deadbeef","title":"Never"}"#));
+    step("promote nothing", &act("loose-promote", "{}"));
+    step("promote an old id", &act("loose-promote", r#"{"id":"{ID1}","title":"Again"}"#));
+    for s in [sock_ruby, sock_rust] {
+        tmux_on(s, &["kill-server"]);
+    }
+    // what is not read as Ruby does, and typing into the chat, stay Ruby's: nothing is written
+    let before = action_traces(&root2, &w.root);
+    for body in [act("loose-promote", r#"{"id":"x","title":"y","tell":true}"#), act("loose-start", r#"{"starter":"dev"}"#), act("loose-start", r#"{"model":"é"}"#), act("loose-close", r#"{"id":"x"}"#)] {
+        let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
+        assert!(a.status.starts_with("501"), "{body}: {}", a.status);
+    }
+    assert_eq!(before, action_traces(&root2, &w.root));
 }

@@ -331,7 +331,7 @@ fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R
 }
 
 /// What a state build can't reproduce from the data alone: gates for the parts not ported.
-fn gates(items: &[WorkItem], log: &SessionLog, panes: &[String]) -> R<()> {
+fn gates(items: &[WorkItem], log: &SessionLog) -> R<()> {
     let raw = config_raw();
     if raw.get("loose_starters").is_some_and(|v| !matches!(v, Value::Null)) {
         return Err(Unported);
@@ -340,9 +340,6 @@ fn gates(items: &[WorkItem], log: &SessionLog, panes: &[String]) -> R<()> {
         if projects.values().any(|p| p.as_object().is_some_and(|m| m.contains_key("benchmark"))) {
             return Err(Unported);
         }
-    }
-    if panes.iter().any(|p| p.starts_with("loose--")) {
-        return Err(Unported);
     }
     let runs = std::fs::read_dir(data_root::root().join("benchmarks")).map(|d| d.filter_map(|e| e.ok()).any(|e| e.path().join("meta.json").exists())).unwrap_or(false);
     if runs {
@@ -362,6 +359,57 @@ fn gates(items: &[WorkItem], log: &SessionLog, panes: &[String]) -> R<()> {
         }
     }
     Ok(())
+}
+
+/// `TurnNotifier.unlinked_title`: the first prompt, shortened, else the fallback.
+pub(crate) fn unlinked_title(session: Option<&Session>, fallback: &str) -> String {
+    let prompt = session.and_then(|s| s.first_prompt()).unwrap_or_default();
+    let prompt = crate::ruby_text::strip(&prompt);
+    if prompt.is_empty() {
+        return fallback.to_string();
+    }
+    if prompt.chars().count() > 60 {
+        format!("{}…", prompt.chars().take(59).collect::<String>())
+    } else {
+        prompt.to_string()
+    }
+}
+
+/// `LooseChat#session_of`: the chat's live session, else its newest (a /clear restarts it under the same id).
+pub(crate) fn loose_session(log: &SessionLog, id: &str) -> Option<Session> {
+    let mine: Vec<Session> = log.sessions().into_iter().filter(|s| s.loose_id().as_deref() == Some(id)).collect();
+    let newest = |list: Vec<&Session>| -> Option<Session> {
+        let mut best: Option<&Session> = None;
+        for s in list {
+            if best.is_none_or(|b| s.started_ts() > b.started_ts()) {
+                best = Some(s);
+            }
+        }
+        best.cloned()
+    };
+    newest(mine.iter().filter(|s| s.live).collect()).or_else(|| newest(mine.iter().collect()))
+}
+
+/// `LooseChat#chats`: the live loose chats among the tmux sessions, titled by their first prompt.
+fn loose_payload(panes: &[String], log: &SessionLog) -> Vec<Value> {
+    let mut attention = ChatAttention::new();
+    panes
+        .iter()
+        .filter_map(|name| {
+            let id = name.strip_prefix("loose--")?;
+            let session = loose_session(log, id);
+            let turn = session.as_ref().map(|s| attention.turn_for(s));
+            Some(json!({
+                "name": name, "id": id, "session": session.as_ref().map(|s| s.id.clone()),
+                "title": unlinked_title(session.as_ref(), "New loose chat"),
+                "project": session.as_ref().and_then(|s| s.project()),
+                "cwd": session.as_ref().and_then(|s| s.cwd()).map(|c| short_path(Some(&c))),
+                "state": turn.as_ref().map(|t| t.state.clone()).unwrap_or_else(|| "none".into()),
+                "since": turn.as_ref().and_then(|t| t.since).map(iso),
+                "tool": turn.as_ref().and_then(|t| t.tool.clone())
+            }))
+        })
+        .collect()
 }
 
 fn chat_attention() -> R<Vec<Value>> {
@@ -404,7 +452,7 @@ pub fn build(token: &str) -> R<Value> {
         }
     }
     let mut work_items = WorkItem::all().map_err(|_| Unported)?;
-    gates(&work_items, &log, &panes)?;
+    gates(&work_items, &log)?;
     let context = Context { log: &log, attention: &attention, live_ids, pf: &status, panes: &panes, prices: &prices, aside_counts };
     let mut guard = LEDGER.lock().unwrap();
     let ledger = guard.get_or_insert_with(UsageLedger::new);
@@ -428,7 +476,8 @@ pub fn build(token: &str) -> R<Value> {
     };
     let default_project = if names.contains(&default_project.as_str()) { json!(default_project) } else { json!(names.first()) };
 
-    let mut inbox_sessions: Vec<Session> = log.inbox().map_err(|_| Unported)?;
+    let open_loose: Vec<&str> = panes.iter().filter_map(|n| n.strip_prefix("loose--")).collect();
+    let mut inbox_sessions: Vec<Session> = log.inbox().map_err(|_| Unported)?.into_iter().filter(|s| !s.loose_id().is_some_and(|id| open_loose.contains(&id.as_str()))).collect();
     inbox_sessions.sort_by_key(|s| s.last_ts());
     inbox_sessions.reverse();
     let mut inbox = vec![];
@@ -444,7 +493,7 @@ pub fn build(token: &str) -> R<Value> {
         ("defaultProject", default_project),
         ("looseStarters", json!([])),
         ("attention", Value::Array(attention_rows)),
-        ("loose", json!([])),
+        ("loose", Value::Array(loose_payload(&panes, &log))),
         ("pulse", json!(pulse_now)),
         ("refreshing", json!(crate::pr_status::refreshing())),
         ("distilling", json!([])),
