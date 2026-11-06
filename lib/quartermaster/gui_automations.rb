@@ -13,10 +13,13 @@ module Quartermaster
     ACTIONS = %w[apply pause resume run pull push recreate delete].freeze
     UNREACHABLE = [RoutinesClient::NotEnabled, RoutinesClient::TokenExpired].freeze
 
-    def initialize(jobs:, client:, store: AutomationStore.new)
+    # runner and tmux reach the local automations (GuiLocalAutomations):
+    # guards, the tick's launchctl, run chats.
+    def initialize(jobs:, client:, store: AutomationStore.new, runner: CommandRunner.new, tmux: Tmux.new, installer: nil)
       @jobs = jobs
       @client = client
-      @service = Automations.new(client: client, store: store)
+      @locals = GuiLocalAutomations.new(jobs: jobs, store: store, runner: runner, tmux: tmux, installer: installer)
+      @service = Automations.new(client: client, store: store, local: @locals.local)
       @store = store
       @lock = Mutex.new
       @remote = { "state" => "idle" }
@@ -36,7 +39,9 @@ module Quartermaster
       when "runs" then ok(load_runs(request["slug"].to_s))
       when "adopt" then ok(adopt(request))
       when "new" then ok(create(request))
-      when *ACTIONS then ok(act(verb, request["slug"].to_s, request))
+      when "install-tick", "uninstall-tick" then ok(@locals.install_tick(verb == "install-tick"))
+      when "local-pause" then ok(@locals.set_paused(request["paused"]))
+      when *ACTIONS, *GuiLocalAutomations::ACTIONS then ok(act(verb, request["slug"].to_s, request))
       end
     rescue ArgumentError => e
       answer("422 Unprocessable Content", "ok" => false, "error" => e.message)
@@ -44,18 +49,26 @@ module Quartermaster
 
     def list
       remote = remote_state
-      rows = @service.local.map { |row| row_payload(row["entry"], row["item"], remote["routines"]) }
+      local = @service.local
+      rows = local.map do |row|
+        next @locals.row(row["entry"], row["item"]) if LocalAutomations.local?(row["entry"])
+
+        row_payload(row["entry"], row["item"], remote["routines"])
+      end
       managed = rows.filter_map { |r| r["routine"] }
       unmanaged = (remote["routines"] || {}).values.reject { |r| managed.include?(r["id"]) }.map do |r|
         { "id" => r["id"], "name" => r["name"], "cron" => r["cron_expression"], "enabled" => r["enabled"] != false,
           "schedule" => schedule(r["cron_expression"]), "routineUrl" => Automations.routine_url(r["id"]) }
       end
-      { "remote" => remote.except("routines"), "rows" => rows, "unmanaged" => unmanaged }
+      { "remote" => remote.except("routines"), "local" => @locals.header(local.map { |row| row["entry"] }),
+        "rows" => rows, "unmanaged" => unmanaged }
     end
 
     def detail(slug)
       entry = @store.read(slug) or raise ArgumentError, "no automation '#{slug}'"
       item = @service.local.find { |row| row["slug"] == slug }&.dig("item")
+      return @locals.detail(entry, item).merge("item" => item_payload(item)) if LocalAutomations.local?(entry)
+
       record = entry.record
       runs = @lock.synchronize { @runs[slug] } || { "state" => "idle" }
       row_payload(entry, item, remote_state["routines"]).merge(
@@ -63,13 +76,16 @@ module Quartermaster
         "ymlPath" => @store.yml_path(slug),
         "repos" => Array(record["sources"]).filter_map { |s| s.dig("git_repository", "url") || s["url"] if s.is_a?(Hash) },
         "connectors" => Array(record["connectors"]).filter_map { |c| c["name"] if c.is_a?(Hash) },
-        "item" => item && { "title" => item.title, "project" => item.project, "state" => item.state,
-                            "description" => item.description, "notes" => item.notes.map(&:to_h) },
-        "runs" => runs["runs"], "runsState" => runs["state"], "runsError" => runs["error"]
+        "item" => item_payload(item), "runs" => runs["runs"], "runsState" => runs["state"], "runsError" => runs["error"]
       )
     end
 
     private
+
+    def item_payload(item)
+      item && { "title" => item.title, "project" => item.project, "state" => item.state,
+                "description" => item.description, "notes" => item.notes.map(&:to_h) }
+    end
 
     def enabled? = RoutinesClient::TOKEN_SOURCES.include?(ProjectConfig.current.automations_token_source)
 
@@ -176,6 +192,13 @@ module Quartermaster
 
     def act(verb, slug, request)
       entry = @store.read(slug) or raise ArgumentError, "no automation '#{slug}'"
+      if LocalAutomations.local?(entry)
+        raise ArgumentError, "#{slug} runs locally — nothing on claude.ai" unless GuiLocalAutomations::ACTIONS.include?(verb)
+
+        return @locals.act(verb, slug, request)
+      end
+      raise ArgumentError, "#{verb} is for local automations" unless ACTIONS.include?(verb)
+
       save_edits(entry, request) if verb == "apply"
       job("automation-#{slug}", verb == "apply" ? "pushing" : verb) do
         [run_action(verb, slug, request), slug]

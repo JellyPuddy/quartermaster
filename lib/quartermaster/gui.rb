@@ -36,7 +36,7 @@ module Quartermaster
       @state = GuiState.new(runner: runner, tmux: tmux, caffeinate: caffeinate, jobs: @jobs,
                             terminal_token: @terminal_token, notifier: @notifier, pf_off: fence&.reason, benchmarks: benchmarks)
       @settings = GuiSettings.new(state: @state, probe: settings_probe)
-      @automations = GuiAutomations.new(jobs: @jobs, client: routines || RoutinesClient.new(runner: runner))
+      @automations = GuiAutomations.new(jobs: @jobs, client: routines || RoutinesClient.new(runner: runner), runner: runner, tmux: tmux)
       @pr_items = PrItems.new
       @actions = GuiActions.new(runner: runner, tmux: tmux, caffeinate: caffeinate, jobs: @jobs, state: @state,
                                 pr_items: @pr_items)

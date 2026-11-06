@@ -42,6 +42,17 @@ module Quartermaster
       { item_slug: automation.slug, tmux: name }
     end
 
+    # An ended run's session again (the tab's Resume): `--resume` in a tmux
+    # of the run's own name; answers that name.
+    def resume(automation, run)
+      name = self.class.tmux_name(automation.slug, run.id)
+      argv = [*launcher.chat_command, "--resume", run.session_id]
+      opened = @tmux.open(name, cwd: cwd(automation), argv: argv, env: { "QM_ITEM" => automation.slug })
+      raise ArgumentError, "run #{run.id}'s chat is already open" unless opened
+
+      name
+    end
+
     # The yml's cwd, else the automation's project root, else home.
     def cwd(automation)
       set = automation.record["cwd"].to_s

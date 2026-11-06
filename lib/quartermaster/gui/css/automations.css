@@ -75,5 +75,11 @@ body[data-mode="settings"][data-st-tab="automations"] .legend .settings-only { d
 .au-notes li { display: block; }
 .au-desc { white-space: pre-wrap; font-size: 12.5px; }
 .au-empty { font-size: 12px; color: var(--faint); }
+.au-tickbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0 0; padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); font-size: 12.5px; }
+.au-tickbar .btn { padding: 3px 10px; font-size: 12px; }
+.au-tickbar .au-toggle { margin-left: auto; }
+.au-check { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: var(--muted); }
+.au-run-error { flex-basis: 100%; font: 11px var(--mono); color: var(--crit); overflow-wrap: anywhere; }
+.au-runs li { flex-wrap: wrap; }
 
 @media (max-width: 900px) { .au-panes { grid-template-columns: 1fr; } }

@@ -374,3 +374,237 @@ class GuiAutomationsTest < Minitest::Test
     assert_includes page, "if (automationJobFinished(r)) return;"
   end
 end
+
+# The tab's `runner: local` part: rows, detail and actions from the store and
+# run logs, never the routines client. Runs open in a FakeTmux, guards and
+# launchctl answer from a FakeRunner, the LaunchAgents directory is a temp dir.
+class GuiLocalAutomationsTest < Minitest::Test
+  include QmTestHelpers
+
+  NoNetwork = Class.new { def method_missing(name, *) = raise("no #{name} call expected") }
+
+  def setup
+    super
+    Quartermaster.ensure_setup
+    File.write(Quartermaster::CONFIG_FILE, GuiAutomationsTest::ON)
+    @tmux = FakeTmux.new
+    @runner = FakeRunner.new(["curl"] => ["", "", false], %w[pf status] => ["", "", false],
+                             ["sh", "-c", "list-things"] => ["a\nb\n", "", true])
+    @agents = Dir.mktmpdir("qm-agents")
+  end
+
+  def teardown
+    FileUtils.rm_rf(@agents)
+    super
+  end
+
+  # The GUI, its TickInstaller pointed at the temp LaunchAgents dir and the FakeRunner.
+  def gui
+    @gui ||= begin
+      original = Quartermaster::TickInstaller.method(:new)
+      runner = @runner
+      agents = @agents
+      Quartermaster::TickInstaller.define_singleton_method(:new) { |**kw| original.call(**kw, runner: runner, agents_dir: agents) }
+      Quartermaster::Gui.new(port: 4567, runner: @runner, tmux: @tmux, routines: NoNetwork.new)
+    ensure
+      Quartermaster::TickInstaller.define_singleton_method(:new, original)
+    end
+  end
+
+  def ok_host = { "host" => "127.0.0.1:4567", "origin" => "http://127.0.0.1:4567" }
+
+  def get(route)
+    status, _type, body = gui.respond("GET", route, ok_host, "")
+    assert_equal "200 OK", status, body
+    JSON.parse(body)
+  end
+
+  def post(route, payload = {}, headers = ok_host)
+    status, _type, body = gui.respond("POST", route, headers, JSON.generate(payload))
+    [status, (JSON.parse(body) rescue body)]
+  end
+
+  def settle
+    Timeout.timeout(10) { sleep 0.02 until gui.jobs.running.empty? }
+    gui.jobs.take_finished
+  end
+
+  def store = Quartermaster::AutomationStore.new
+
+  def log = Quartermaster::RunLog.new("nightly")
+
+  def local_automation(**record)
+    Quartermaster::WorkItem.create("Nightly", project: "MyApp", slug: "nightly", front: { "kind" => "automation", "runner" => "local" })
+    base = { "runner" => "local", "name" => "Nightly", "cron" => "0 8 * * 1,4", "enabled" => true, "cwd" => Dir.home }
+    store.write("nightly", base.merge(record), "Do the thing.\n")
+  end
+
+  # A run that started (session sess-<id>) in its own --run- chat.
+  def started_run(key: "a", item: { "key" => "a", "title" => "Thing A" })
+    id = log.enqueue(key: key, item: item, flow: "chat", trigger: "guard")
+    log.started(id, session_id: "sess-#{id}", tmux: Quartermaster::ChatFlow.tmux_name("nightly", id), item_slug: "nightly")
+    id
+  end
+
+  def test_a_local_row_reads_its_cron_in_local_time_and_its_last_run_from_the_run_log
+    local_automation
+    id = started_run
+    log.finished(id)
+    list = get("/api/automations")
+    row = list["rows"].first
+    assert_equal ["local", "Mon, Thu 08:00", [1, 4], "08:00", false], [row["runner"], *row["schedule"].values_at("label", "days", "time", "raw")]
+    assert_equal "finished", row["lastRun"]["status"]
+    assert_match(/T0[67]:00:00Z\z/, row["nextRunAt"], "08:00 Amsterdam is 06:00 or 07:00 UTC")
+    header = list["local"]
+    assert_equal [1, false, nil, true, false], header.values_at("count", "installed", "lastTickAt", "stale", "paused")
+  end
+
+  def test_the_local_detail_has_its_guard_queue_runs_and_last_guard_error
+    local_automation("when" => "list-things")
+    live = started_run
+    @tmux.open(Quartermaster::ChatFlow.tmux_name("nightly", live), cwd: Dir.home, argv: ["claude"])
+    ended = started_run(key: "b", item: { "key" => "b" })
+    log.failed(ended, error: "boom")
+    waiting = log.enqueue(key: "c", item: { "key" => "c" }, flow: "chat", trigger: "guard")
+    log.waiting(waiting, reason: "Review chat for o/r#1 is open")
+    log.guard_error(error: "guard failed: exit 2")
+
+    d = get("/api/automations/nightly")
+    assert_equal ["list-things", "chat", "attention", 30, "ok"], d.values_at("guard", "flow", "notify", "timeoutMinutes", "runsState")
+    assert_equal "guard failed: exit 2", d["guardError"]["error"]
+    assert_equal [[waiting, "c", "Review chat for o/r#1 is open"]], d["queue"].map { |q| q.values_at("id", "subject", "waiting") }
+    runs = d["runs"].to_h { |r| [r["id"], r] }
+    assert_equal ["live", "Thing A", "nightly--run-#{live}", false, false],
+                 runs[live].values_at("status", "subject", "chat", "resumable", "retryable")
+    assert_equal ["failed", "boom", nil, true, true], runs[ended].values_at("status", "error", "chat", "resumable", "retryable")
+    assert_equal "Nightly", d["item"]["title"]
+  end
+
+  def test_apply_saves_a_local_cron_unshifted_and_pushes_nothing
+    local_automation
+    status, answer = post("/api/automations/apply", "slug" => "nightly", "days" => [1, 4], "time" => "06:30", "prompt" => "New.\n")
+    assert_equal ["200 OK", true, nil], [status, answer["ok"], answer["background"]]
+    assert_equal ["30 6 * * 1,4", "New.\n"], [store.read("nightly").record["cron"], store.read("nightly").prompt]
+
+    status, answer = post("/api/automations/apply", "slug" => "nightly", "cron" => "61 * * * *")
+    assert_equal "422 Unprocessable Content", status
+    assert_match(/minute/, answer["error"])
+    assert_equal "30 6 * * 1,4", store.read("nightly").record["cron"]
+  end
+
+  def test_claude_ai_verbs_are_refused_for_a_local_automation
+    local_automation
+    %w[push pull recreate].each do |verb|
+      status, answer = post("/api/automations/#{verb}", "slug" => "nightly")
+      assert_equal ["422 Unprocessable Content", "nightly runs locally — nothing on claude.ai"], [status, answer["error"]]
+    end
+    assert_empty gui.jobs.running
+  end
+
+  def test_run_now_queues_a_manual_run_and_one_tick_starts_it_in_its_own_chat
+    local_automation
+    _status, answer = post("/api/automations/run", "slug" => "nightly")
+    assert answer["background"]
+    job = settle.first
+    assert_equal [true, "nightly: started 1 run", "automation-nightly"], job.values_at("ok", "message", "key")
+    run = log.recent.first
+    assert_equal ["manual", "live"], [run.trigger, run.status]
+    assert_equal ["nightly--run-#{run.id}"], @tmux.opened.map { |o| o[:name] }
+  end
+
+  # A tick whose flow kept the run queued says so in the run log (as a
+  # pr-review run does while its Review chat is open); Run now says why.
+  def test_run_now_names_the_flows_waiting_reason_when_the_run_stays_queued
+    local_automation
+    waiting_tick = Object.new
+    run_log = log
+    waiting_tick.define_singleton_method(:call) do |**|
+      run_log.queue.each { |run| run_log.waiting(run.id, reason: "Review chat for o/r#1 is open") }
+      { "started" => [], "running" => 0, "max_running" => 2 }
+    end
+    gui.instance_variable_get(:@automations).instance_variable_get(:@locals).local.instance_variable_set(:@tick, waiting_tick)
+    post("/api/automations/run", "slug" => "nightly")
+    assert_equal "nightly: queued 1 (waiting: Review chat for o/r#1 is open)", settle.first["message"]
+  end
+
+  def test_enable_with_mark_existing_as_seen_records_the_guards_keys_without_queuing
+    local_automation("when" => "list-things", "enabled" => false)
+    post("/api/automations/resume", "slug" => "nightly", "skipExisting" => true)
+    job = settle.first
+    assert_equal "nightly: enabled, 2 existing items marked seen", job["message"]
+    assert_equal [true, Set["a", "b"], []], [store.read("nightly").record["enabled"], log.seen_keys, log.queue]
+    assert_equal "active", Quartermaster::WorkItem.find("nightly").state
+
+    _status, answer = post("/api/automations/pause", "slug" => "nightly")
+    assert_equal [true, "nightly: paused"], answer.values_at("ok", "message")
+    assert_equal [false, "fridge"], [store.read("nightly").record["enabled"], Quartermaster::WorkItem.find("nightly").state]
+  end
+
+  def test_retry_queues_an_ended_runs_item_again_and_resume_reopens_its_session
+    local_automation
+    id = started_run
+    log.closed(id)
+    post("/api/automations/retry", "slug" => "nightly", "run" => id)
+    assert_equal "nightly: started 1 retry", settle.first["message"]
+    retried = log.run(id).retried_as
+    assert_equal [{ "key" => "a", "title" => "Thing A" }, "retry"], [log.run(retried).item, log.run(retried).trigger]
+
+    _status, answer = post("/api/automations/resume-run", "slug" => "nightly", "run" => id)
+    assert_equal [true, "nightly--run-#{id}"], answer.values_at("ok", "name")
+    opened = @tmux.opened.last
+    assert_equal [["--resume", "sess-#{id}"], { "QM_ITEM" => "nightly" }], [opened[:argv].last(2), opened[:env]]
+  end
+
+  def test_install_and_uninstall_tick_drive_launchctl_as_jobs
+    local_automation
+    _status, answer = post("/api/automations/install-tick")
+    assert answer["background"]
+    assert settle.first["ok"]
+    plist = File.join(@agents, "#{Quartermaster::TickInstaller::LABEL}.plist")
+    assert_includes @runner.argvs, ["launchctl", "bootstrap", "gui/#{Process.uid}", plist]
+    assert_equal true, get("/api/automations")["local"]["installed"]
+
+    post("/api/automations/uninstall-tick")
+    assert settle.first["ok"]
+    refute File.exist?(plist)
+    assert_includes @runner.argvs, ["launchctl", "bootout", "gui/#{Process.uid}/#{Quartermaster::TickInstaller::LABEL}"]
+  end
+
+  def test_the_pause_toggle_writes_config_and_refuses_a_foreign_origin
+    local_automation
+    status, = post("/api/automations/local-pause", { "paused" => true }, { "host" => "127.0.0.1:4567", "origin" => "http://evil.example" })
+    assert_equal "403 Forbidden", status
+    _status, answer = post("/api/automations/local-pause", "paused" => true)
+    assert_equal [true, true], answer.values_at("ok", "paused")
+    assert_equal true, get("/api/automations")["local"]["paused"]
+    assert_includes File.read(Quartermaster::CONFIG_FILE), "local_paused: true"
+  end
+
+  def test_a_live_run_chat_is_listed_with_the_loose_chats
+    local_automation
+    id = started_run
+    chats = Quartermaster::RunChats.new.chats(["nightly--run-#{id}", "loose--abcd1234", "nightly", "gone--run-x"])
+    assert_equal [["nightly--run-#{id}", { "slug" => "nightly", "id" => id, "quiet" => false }, "Nightly · Thing A", "none"]],
+                 chats.map { |c| c.values_at("name", "run", "title", "state") }
+  end
+
+  def test_a_quiet_automations_run_chat_is_listed_but_left_out_of_the_title_count
+    local_automation("notify" => "quiet")
+    id = started_run
+    assert_equal [true], Quartermaster::RunChats.new.chats(["nightly--run-#{id}"]).map { |c| c["run"]["quiet"] }
+    assert_includes served_page(gui, ok_host), "...looseChats.filter(lc => !(lc.run && lc.run.quiet))"
+  end
+
+  def test_the_page_has_the_local_controls_and_lists_run_chats
+    page = served_page(gui, ok_host)
+    assert_includes page, "automationsTickBar(a.list.local)"
+    assert_includes page, %(case "install-tick": automationJob("install-tick", {}, "automation-tick"))
+    assert_includes page, %(data-au="local-pause")
+    assert_includes page, %(data-au="mark-seen")
+    assert_includes page, %(if (d.runner === "local") return automationLocalDetail(d);)
+    assert_includes page, %(case "resume-run": resumeRun(slug, node.dataset.run))
+    assert_includes page, %(id="au-new-runner")
+    assert_includes page, %(renderLooseRows(list, "Runs ", looseChats.filter(lc => lc.run)))
+    assert_includes page, "showAutomation(lc.run.slug)"
+  end
+end

@@ -296,7 +296,7 @@ class LooseChatGuiTest < Minitest::Test
     ['id="loose-new"', "renderLooseGroup(list);", "if (lc) { renderLooseMain(lc, headSlot, wrap);",
      'act("loose-close", { args: { id: lc.id } })', "args: { id: lc.id, title, tell: tellBox.checked }",
      'localStorage.setItem("qm-loose-model", model)',
-     "[...attention, ...looseChats].filter"].each { |seam| assert_includes html, seam }
+     "[...attention, ...looseChats.filter(lc => !(lc.run && lc.run.quiet))].filter"].each { |seam| assert_includes html, seam }
   end
 
   def test_promote_onto_a_slug_whose_chat_runs_warns_and_keeps_the_loose_pane

@@ -1,7 +1,7 @@
 # Local automations
 
-**Code:** `lib/quartermaster/local_cron.rb`, `lib/quartermaster/run_log.rb`, `lib/quartermaster/automation_flows.rb`, `lib/quartermaster/chat_flow.rb`, `lib/quartermaster/pr_review_flow.rb`, `lib/quartermaster/automation_tick.rb`, `lib/quartermaster/automation_guard.rb`, `lib/quartermaster/run_lifecycle.rb`, `lib/quartermaster/tick_installer.rb`, `lib/quartermaster/local_automations.rb`, `lib/quartermaster/cli_local_automation.rb`
-**Tests:** `test/local_cron_test.rb`, `test/run_log_test.rb`, `test/automation_store_test.rb`, `test/automation_flows_test.rb`, `test/automation_tick_test.rb`, `test/automation_run_lifecycle_test.rb`, `test/tick_installer_test.rb`, `test/local_automation_cli_test.rb`
+**Code:** `lib/quartermaster/local_cron.rb`, `lib/quartermaster/run_log.rb`, `lib/quartermaster/automation_flows.rb`, `lib/quartermaster/chat_flow.rb`, `lib/quartermaster/pr_review_flow.rb`, `lib/quartermaster/automation_tick.rb`, `lib/quartermaster/automation_guard.rb`, `lib/quartermaster/run_lifecycle.rb`, `lib/quartermaster/tick_installer.rb`, `lib/quartermaster/local_automations.rb`, `lib/quartermaster/cli_local_automation.rb`, `lib/quartermaster/gui_local_automations.rb`, `lib/quartermaster/run_chats.rb`
+**Tests:** `test/local_cron_test.rb`, `test/run_log_test.rb`, `test/automation_store_test.rb`, `test/automation_flows_test.rb`, `test/automation_tick_test.rb`, `test/automation_run_lifecycle_test.rb`, `test/tick_installer_test.rb`, `test/local_automation_cli_test.rb`, `test/gui_automations_test.rb`
 **Depends on:** [automations](automations.md) (the store, the item, the GUI tab; `LocalSchedule`'s DST rule), [attention](attention.md) (a run's session state), [chats](chats.md) (tmux, the chat env), [prs](prs.md) (`PrReviewStart`), [gui-shell](gui-shell.md) (`CommandRunner`)
 
 ## What it does
@@ -149,6 +149,23 @@ row is cloud); `run` and `retry SLUG RUN_ID` then tick once and say why a run di
 [--dry-run [SLUG]]` (silent when idle off a terminal, uncounted by `FeatureUse`; the dry run writes
 nothing); `install-tick [--print]` and `uninstall-tick` drive `TickInstaller`.
 
+**GUI** — `GuiLocalAutomations` is the Automations tab's local part ([automations](automations.md)
+owns the tab), never the network. A row: the schedule from `LocalCron` (`days`/`time` for the
+picker, else `raw`), next run, queued and live counts, last run. The list's `local` header:
+`installed` (the plist), `lastTickAt` and `held` from tick.json, `stale` when an enabled local
+automation has gone 15 minutes without a tick, `paused` (config). The detail adds guard, flow, cwd,
+notify, timeout, flags, the last guard error, the queue (subject, trigger, waiting reason) and
+recent runs (subject, status, error; `chat` = its live `--run-` tmux or a pr-review run's Review
+item; `resumable`, `retryable`). Verbs: `apply` saves only (weekdays + time become an unshifted
+local cron; a raw cron must pass `LocalCron.error`); `pause`, `delete` answer at once; `resume`
+(`skipExisting` = mark existing as seen), `run` and `retry` are `automation-<slug>` jobs, the last
+two ticking once after queuing; `resume-run` is `ChatFlow#resume` (`--resume <session id>` under the
+run's own tmux name); `install-tick`/`uninstall-tick` the `automation-tick` job; `local-pause`
+writes `automations.local_paused` through `ConfigFile`. The claude.ai verbs refuse a local slug.
+`RunChats` hands live run chats out with the loose chats (a `run` field, `quiet` for a `notify:
+quiet` automation, left out of the title count; [loose-chats](loose-chats.md)), so "open chat"
+and a run notification's `qm open-chat` reach the chat pane.
+
 ## Rules
 
 - Stdlib only and no `ENV["TZ"]` switching: the offset comes from `LocalSchedule.offset_minutes`.
@@ -169,6 +186,8 @@ nothing); `install-tick [--print]` and `uninstall-tick` drive `TickInstaller`.
 - Guards, `launchctl` and tmux go through the injected runner and `Tmux`; tests pass a
   `FakeRunner`, a `FakeTmux` and a temp LaunchAgents dir, never a real guard, claude, tmux or launchctl.
 - The LaunchAgent changes only on the user's command or button; `installed?` reads only the plist.
+- The tab's local part never calls the routines client; guards, ticks and launchctl run on
+  `GuiJobs` threads, and a run chat starts only on a click (Run now, Retry, Resume).
 
 ## Data
 
