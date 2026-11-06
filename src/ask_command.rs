@@ -86,16 +86,19 @@ fn shown(v: Option<&Value>) -> Option<String> {
     }
 }
 
-pub fn ask(args: &[String]) -> Outcome {
-    let query = args.join(" ");
-    if strip(&query).is_empty() {
-        return abort("usage: qm ask QUERY");
+/// Why a search did not produce hits: `Ruby`'s `ArgumentError` message, or something only Ruby words exactly.
+pub enum Fail {
+    Message(String),
+    Ruby,
+}
+
+/// `AskSearch#call`: the matching items, best first, each with the model's reason.
+pub fn search(query: &str) -> Result<Vec<(String, String)>, Fail> {
+    let query = strip(query);
+    if query.is_empty() {
+        return Err(Fail::Message("query is empty".into()));
     }
-    let items = match WorkItem::all() {
-        Ok(i) => i,
-        Err(e) => return abort(&format!("qm: {}", e.message)),
-    };
-    let query = strip(&query);
+    let items = WorkItem::all().map_err(|e| Fail::Message(e.message))?;
     let index = items.iter().map(entry).collect::<Vec<_>>().join("\n\n");
     let spawned = Command::new("claude")
         .args(["-p", &prompt(query), "--model", "sonnet", "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--output-format", "json", "--json-schema", ANSWER_SCHEMA])
@@ -104,30 +107,30 @@ pub fn ask(args: &[String]) -> Outcome {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn();
-    let Ok(mut child) = spawned else { return Outcome::Delegate };
+    let Ok(mut child) = spawned else { return Err(Fail::Ruby) };
     let mut stdin = child.stdin.take().unwrap();
     let writer = std::thread::spawn(move || {
         let _ = stdin.write_all(index.as_bytes());
     });
-    let Ok(output) = child.wait_with_output() else { return Outcome::Delegate };
+    let Ok(output) = child.wait_with_output() else { return Err(Fail::Ruby) };
     let _ = writer.join();
     let (out, err) = (String::from_utf8_lossy(&output.stdout).into_owned(), String::from_utf8_lossy(&output.stderr).into_owned());
     if !output.status.success() {
         let why = if strip(&err).is_empty() { strip(&out) } else { strip(&err) };
-        return abort(&format!("qm: claude -p failed: {why}"));
+        return Err(Fail::Message(format!("claude -p failed: {why}")));
     }
     let head = |s: &str| strip(s).chars().take(200).collect::<String>();
     let answer = match serde_json::from_str::<Value>(&out) {
         Ok(Value::Object(o)) => o,
-        Ok(_) => return Outcome::Delegate,
-        Err(_) => return abort(&format!("qm: unparseable answer from claude: {}", head(&out))),
+        Ok(_) => return Err(Fail::Ruby),
+        Err(_) => return Err(Fail::Message(format!("unparseable answer from claude: {}", head(&out)))),
     };
     let hits = match answer.get("structured_output") {
         None | Some(Value::Null) => None,
         Some(Value::Object(s)) => s.get("hits"),
-        Some(_) => return Outcome::Delegate,
+        Some(_) => return Err(Fail::Ruby),
     };
-    let Some(Value::Array(hits)) = hits else { return abort(&format!("qm: unexpected answer from claude: {}", head(&out))) };
+    let Some(Value::Array(hits)) = hits else { return Err(Fail::Message(format!("unexpected answer from claude: {}", head(&out)))) };
     let mut found: Vec<(String, String)> = vec![];
     for hit in hits {
         let Value::Object(h) = hit else { continue };
@@ -135,12 +138,22 @@ pub fn ask(args: &[String]) -> Outcome {
         if !items.iter().any(|i| &i.slug == slug) || found.iter().any(|(s, _)| s == slug) {
             continue;
         }
-        let Some(why) = shown(h.get("why")) else { return Outcome::Delegate };
+        let Some(why) = shown(h.get("why")) else { return Err(Fail::Ruby) };
         found.push((slug.clone(), why));
     }
     found.truncate(LIMIT);
-    if found.is_empty() {
-        return done("No work item matches.\n".into());
+    Ok(found)
+}
+
+pub fn ask(args: &[String]) -> Outcome {
+    let query = args.join(" ");
+    if strip(&query).is_empty() {
+        return abort("usage: qm ask QUERY");
     }
-    done(found.iter().map(|(slug, why)| puts(&format!("{slug}\n    {why}"))).collect())
+    match search(&query) {
+        Ok(found) if found.is_empty() => done("No work item matches.\n".into()),
+        Ok(found) => done(found.iter().map(|(slug, why)| puts(&format!("{slug}\n    {why}"))).collect()),
+        Err(Fail::Message(m)) => abort(&format!("qm: {m}")),
+        Err(Fail::Ruby) => Outcome::Delegate,
+    }
 }

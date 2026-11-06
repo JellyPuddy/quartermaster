@@ -2864,3 +2864,59 @@ fn the_transcript_search_route_matches_ruby() {
         assert!(seen.contains(needle), "the world should reach {needle}");
     }
 }
+
+#[test]
+fn the_ask_route_matches_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let (root, home, bin, rec) = (base.path().join("root"), base.path().join("home"), base.path().join("bin"), base.path().join("rec"));
+    fs::create_dir_all(root.join("work-items")).unwrap();
+    for d in [&home, &rec] {
+        fs::create_dir_all(d).unwrap();
+    }
+    for i in 0..12 {
+        fs::write(root.join(format!("work-items/item-{i}.md")), format!("---\nv: 1\ntitle: Item {i}\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\n---\n\n## Description\n\nthing number {i}\n\n## Notes\n\n- 2026-02-01: note {i}\n\n## Snapshots\n")).unwrap();
+    }
+    executable(&bin.join("claude"), "#!/bin/sh\ncat > /dev/null\n[ -f \"$FAKE_CLAUDE_DIR/err\" ] && cat \"$FAKE_CLAUDE_DIR/err\" >&2\n[ -f \"$FAKE_CLAUDE_DIR/out\" ] && cat \"$FAKE_CLAUDE_DIR/out\"\n[ -f \"$FAKE_CLAUDE_DIR/fail\" ] && exit 3\nexit 0\n");
+    let env: Vec<(&str, String)> = vec![("PATH", format!("{}:{}", bin.display(), std::env::var("PATH").unwrap())), ("FAKE_CLAUDE_DIR", rec.display().to_string())];
+    let ruby = start_env(false, &root, &home, &env);
+    let rust = start_env(true, &root, &home, &env);
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let answer = |v: serde_json::Value| serde_json::json!({"type": "result", "structured_output": v}).to_string();
+    let many: Vec<serde_json::Value> = (0..11).map(|i| serde_json::json!({"slug": format!("item-{i}"), "why": format!("reason {i}")})).collect();
+    let cases: Vec<(&str, Option<String>, Option<&str>, bool, serde_json::Value)> = vec![
+        ("ranked", Some(answer(serde_json::json!({"hits": [{"slug": "item-3", "why": "the one"}, {"slug": "ghost", "why": "invented"}, {"slug": "item-3", "why": "again"}, "junk", {"slug": 5, "why": "n"}, {"slug": "item-1"}, {"slug": "item-2", "why": 7}]}))), None, false, serde_json::json!({"query": "the one with the thing"})),
+        ("more than eight", Some(answer(serde_json::json!({"hits": many}))), None, false, serde_json::json!({"query": "everything"})),
+        ("nothing matches", Some(answer(serde_json::json!({"hits": []}))), None, false, serde_json::json!({"query": "nothing"})),
+        ("stderr says why it failed", None, Some("rate limited\n"), true, serde_json::json!({"query": "x"})),
+        ("stdout says why it failed", Some("quota exceeded\n".into()), None, true, serde_json::json!({"query": "x"})),
+        ("an unparseable answer", Some("not json at all, and long enough to be cut".into()), None, false, serde_json::json!({"query": "x"})),
+        ("no structured output", Some("{\"type\":\"result\"}".into()), None, false, serde_json::json!({"query": "x"})),
+        ("hits that are no list", Some(answer(serde_json::json!({"hits": "none"}))), None, false, serde_json::json!({"query": "x"})),
+        ("an empty query", Some(answer(serde_json::json!({"hits": []}))), None, false, serde_json::json!({"query": "   "})),
+        ("no query", Some(answer(serde_json::json!({"hits": []}))), None, false, serde_json::json!({})),
+        ("a numeric query", Some(answer(serde_json::json!({"hits": [{"slug": "item-0", "why": "w"}]}))), None, false, serde_json::json!({"query": 42})),
+    ];
+    let mut seen = String::new();
+    for (label, out, err, fail, body) in cases {
+        for f in ["out", "err", "fail"] {
+            let _ = fs::remove_file(rec.join(f));
+        }
+        if let Some(o) = out {
+            fs::write(rec.join("out"), o).unwrap();
+        }
+        if let Some(e) = err {
+            fs::write(rec.join("err"), e).unwrap();
+        }
+        if fail {
+            fs::write(rec.join("fail"), "").unwrap();
+        }
+        let text = body.to_string();
+        let (a, b) = (request(ruby.port, "POST", "/api/ask", &origin, &text, true), request(rust.port, "POST", "/api/ask", &origin, &text, true));
+        assert_eq!(shown(&a, ruby.port), shown(&b, rust.port), "{label}");
+        seen += &String::from_utf8_lossy(&a.body);
+    }
+    for needle in ["\"slug\":\"item-3\"", "claude -p failed: rate limited", "claude -p failed: quota exceeded", "unparseable answer from claude", "unexpected answer from claude", "query is empty", "\"why\":\"7\"", "\"why\":\"\""] {
+        assert!(seen.contains(needle), "the world should reach {needle}: {seen}");
+    }
+    assert!(!seen.contains("\"slug\":\"ghost\"") && !seen.contains("item-9"), "invented slugs and a ninth hit are dropped");
+}

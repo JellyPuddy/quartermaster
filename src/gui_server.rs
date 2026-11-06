@@ -326,6 +326,23 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
             return json_reply(diff_file_payload(slug, query));
         }
     }
+    if method == "POST" && route == "/api/ask" {
+        let payload = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+        let query = match payload.get("query") {
+            None | Some(Value::Null) => Some(String::new()),
+            Some(Value::String(s)) => Some(s.clone()),
+            Some(Value::Number(n)) if n.is_i64() || n.is_u64() => Some(n.to_string()),
+            _ => None,
+        };
+        return match (payload.is_object(), query) {
+            (true, Some(q)) => match crate::ask_command::search(&q) {
+                Ok(found) => json_reply(json!({"ok": true, "hits": found.iter().map(|(slug, why)| json!({"slug": slug, "why": why})).collect::<Vec<_>>()})),
+                Err(crate::ask_command::Fail::Message(m)) => json_reply(json!({"ok": false, "error": m})),
+                Err(crate::ask_command::Fail::Ruby) => text_reply("501 Not Implemented", "not ported yet: this question"),
+            },
+            _ => text_reply("501 Not Implemented", "not ported yet: this question"),
+        };
+    }
     if method == "POST" && route == "/api/grep" {
         let payload = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
         let query = match payload.get("query") {
