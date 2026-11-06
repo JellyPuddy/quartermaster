@@ -1,7 +1,7 @@
 # CLI and viewer
 
-**Code:** `lib/quartermaster/cli.rb`, `lib/quartermaster/cli_format.rb`, `lib/quartermaster/cli_viewer.rb`, `lib/quartermaster/cli_attention.rb`, `lib/quartermaster/cli_chats.rb`, `lib/quartermaster/cli_prs.rb`, `lib/quartermaster/cli_cleanup.rb`, `lib/quartermaster/cli_workspace.rb`, `lib/quartermaster/cli_setup.rb`, `lib/quartermaster/viewer.rb`, `lib/quartermaster/feature_use.rb`, `lib/quartermaster/ruby_pin.rb`, `lib/quartermaster/ruby_floor.rb`, `lib/quartermaster/doctor.rb`, `quartermaster`
-**Tests:** `test/viewer_test.rb`, `test/feature_use_test.rb`, `test/ruby_pin_test.rb`, `test/doctor_test.rb`
+**Code:** `lib/quartermaster/cli.rb`, `lib/quartermaster/cli_format.rb`, `lib/quartermaster/cli_viewer.rb`, `lib/quartermaster/cli_attention.rb`, `lib/quartermaster/cli_chats.rb`, `lib/quartermaster/cli_prs.rb`, `lib/quartermaster/cli_cleanup.rb`, `lib/quartermaster/cli_workspace.rb`, `lib/quartermaster/cli_setup.rb`, `lib/quartermaster/free_text_args.rb`, `lib/quartermaster/viewer.rb`, `lib/quartermaster/feature_use.rb`, `lib/quartermaster/ruby_pin.rb`, `lib/quartermaster/ruby_floor.rb`, `lib/quartermaster/doctor.rb`, `quartermaster`
+**Tests:** `test/viewer_test.rb`, `test/free_text_args_test.rb`, `test/feature_use_test.rb`, `test/ruby_pin_test.rb`, `test/doctor_test.rb`
 **Depends on:** [work-items](work-items.md), [linking](linking.md), [gui-shell](gui-shell.md)
 
 ## What it does
@@ -30,7 +30,7 @@ else (see [capture](capture.md)), then requires `lib/quartermaster` through its 
 **Work items**
 - `qm new TITLE` — create an item, print its slug (`--project`, `--branch`, `--session`, `--description`, `--pf-mode`).
 - `qm attach SLUG --session ID` / `qm detach SLUG --session ID` — link or unlink a session; attach moves it off any other item.
-- `qm note SLUG TEXT [--kind open|decision|history]` / `qm retag SLUG POSITION KIND` — add a note, change a note's kind.
+- `qm note SLUG [--kind open|decision|history] TEXT` / `qm retag SLUG POSITION KIND` — add a note, change a note's kind.
 - `qm state SLUG STATE` — in_progress | fridge | resolved.
 - `qm link-branch SLUG [BRANCH] [--temp]` / `qm unlink-branch SLUG BRANCH` — branch links (default: current branch; `--temp` marks a scratch branch cleanup may delete).
 - `qm board SLUG [URL|clear] [--answers-dir DIR]` / `qm board-rows SLUG [--json]` / `qm board-answer SLUG ROW TEXT` — status board URL, mirrored rows, answering a blocked row.
@@ -128,7 +128,8 @@ refused ("switch to its Warp tab"): it would fork the conversation.
 - The feature-use log holds a kind and a name only — never a slug, argument, path or session id — is only appended to, and recording is best-effort: a failed write goes to `qm.log` and never fails the command or request.
 - `FeatureUse.known_names` reads `CLI.commands`, plus `when "…" then` branches and `method == … && route …` conditions; a dispatcher reshaped away from that loses its names from the never-used lists (the known-names test pins a few).
 - `qm doctor` writes nothing, not even a feature-use line, so a missing data root stays missing and fails its check: `events.jsonl` is read from its tail through `EventLog#last_ts`, never folded, so not even `events-fold.json` changes.
-- `ArgumentError` from any command becomes `qm: <message>` and exit 1, never a backtrace.
+- `ArgumentError` or `OptionParser::ParseError` (a bad flag) from any command becomes `qm: <message>` and exit 1, never a backtrace.
+- Free text may start with a dash: for `new`, `note` and `loose` (`FreeTextArgs.parse`) an argument that starts with `-` and holds whitespace (`qm note SLUG "- a bullet"`) is text, never an option or an abbreviation of one (`"-d does stuff"` is not `--description`), unless it is an inline `--flag=value`; right after a flag that takes a value it is that value; `--` ends options there and is dropped before the text of `retitle`, `describe`, `board-answer`, `ask` and `grep` (`FreeTextArgs.words`). A one-word dash text needs the `--`: `qm new -- -x`.
 
 ## Data
 

@@ -140,12 +140,13 @@ module Quartermaster
     # (--starter NAME: that config.yml loose starter's kickoff ending in it).
     def cmd_loose(argv)
       project = model = starter = nil
-      rest = OptionParser.new do |o|
+      parser = OptionParser.new do |o|
         o.on("--project PROJECT") { |v| project = v }
         o.on("--model MODEL") { |v| model = v }
         o.on("--starter NAME") { |v| starter = v }
-      end.parse(argv)
-      abort(%(usage: qm loose [--project P] [--model #{Aside::MODELS.join("|")}] [--starter NAME] ["first prompt"])) if rest.size > 1
+      end
+      rest = FreeTextArgs.parse(parser, argv)
+      abort(%(usage: qm loose [--project P] [--model #{Aside::MODELS.join("|")}] [--starter NAME] [--] ["first prompt"])) if rest.size > 1
       abort("qm loose: unknown model #{model.inspect} (#{Aside::MODELS.join(", ")})") if model && !Aside::MODELS.include?(model)
       begin
         LooseChat.kickoff(starter, nil)

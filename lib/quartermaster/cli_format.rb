@@ -46,7 +46,7 @@ module Quartermaster
         ["qm new TITLE [flags]", "create a work item, prints its slug (--project P, --branch B, --session ID, --description TEXT, --pf-mode MODE)"],
         ["qm attach SLUG --session ID", "attach a session to a work item (detaches it from any other item)"],
         ["qm detach SLUG --session ID", "detach a session, leaving it unlinked"],
-        ["qm note SLUG TEXT", "append a dated progress note (--kind #{NOTE_KINDS.join("|")}, default #{DEFAULT_NOTE_KIND})"],
+        ["qm note SLUG TEXT", "append a dated progress note (--kind #{NOTE_KINDS.join("|")}, default #{DEFAULT_NOTE_KIND}); text may start with \"- \", or follow --"],
         ["qm retag SLUG POSITION KIND", "change a note's kind (POSITION is the number qm show prints)"],
         ["qm state SLUG STATE", "set the state: #{STATES.join(" | ")}"],
         ["qm link-branch SLUG [BRANCH]", "add a branch to the item (stacks welcome; default: the current branch; --temp: a scratch branch cleanup may delete)"],

@@ -81,7 +81,7 @@ module Quartermaster
         usage
         exit 1
       end
-    rescue ArgumentError => e
+    rescue ArgumentError, OptionParser::ParseError => e
       abort("qm: #{e.message}")
     end
 
@@ -105,9 +105,9 @@ module Quartermaster
         o.on("--description TEXT") { |v| options[:description] = v }
         o.on("--pf-mode MODE") { |v| options[:pf_mode] = v }
       end
-      title = parser.parse(argv).join(" ").strip
+      title = FreeTextArgs.parse(parser, argv).join(" ").strip
       if title.empty?
-        abort("usage: qm new TITLE [--project P] [--branch B] [--session ID] [--description TEXT] [--pf-mode MODE]")
+        abort("usage: qm new [--project P] [--branch B] [--session ID] [--description TEXT] [--pf-mode MODE] [--] TITLE")
       end
 
       item = WorkItem.create(
@@ -151,8 +151,8 @@ module Quartermaster
       kind = DEFAULT_NOTE_KIND
       parser = OptionParser.new { |o| o.on("--kind KIND") { |v| kind = v } }
       slug = argv.shift
-      text = parser.parse(argv).join(" ").strip
-      abort("usage: qm note SLUG [--kind #{NOTE_KINDS.join("|")}] TEXT") if slug.nil? || text.empty?
+      text = FreeTextArgs.parse(parser, argv).join(" ").strip
+      abort("usage: qm note SLUG [--kind #{NOTE_KINDS.join("|")}] [--] TEXT") if slug.nil? || text.empty?
 
       item = WorkItem.find(slug)
       item.add_note(text, kind: kind)
@@ -286,6 +286,7 @@ module Quartermaster
       slug, doc_id, *words = argv
       abort("usage: qm board-answer SLUG ROW_ID TEXT  ('-' or no TEXT reads stdin)") unless slug && doc_id
 
+      words = FreeTextArgs.words(words)
       text = words.empty? || words == ["-"] ? $stdin.read : words.join(" ")
       puts BoardMirror.new.answer(WorkItem.find(slug), doc_id, text)
     end
@@ -300,8 +301,8 @@ module Quartermaster
 
     def cmd_retitle(argv)
       slug = argv.shift
-      title = argv.join(" ").strip
-      abort("usage: qm retitle SLUG NEW_TITLE  (the slug never changes)") if slug.nil? || title.empty?
+      title = FreeTextArgs.words(argv).join(" ").strip
+      abort("usage: qm retitle SLUG [--] NEW_TITLE  (the slug never changes)") if slug.nil? || title.empty?
 
       WorkItem.find(slug).retitle(title)
       puts "#{slug}: #{title}"
@@ -309,9 +310,9 @@ module Quartermaster
 
     def cmd_describe(argv)
       slug = argv.shift
-      text = argv.join(" ").strip
+      text = FreeTextArgs.words(argv).join(" ").strip
       text = $stdin.read.strip if text.empty? || text == "-"
-      abort("usage: qm describe SLUG TEXT  (or pipe the text on stdin)") if slug.nil? || text.empty?
+      abort("usage: qm describe SLUG [--] TEXT  (or pipe the text on stdin)") if slug.nil? || text.empty?
 
       WorkItem.find(slug).describe(text)
     end
@@ -355,7 +356,7 @@ module Quartermaster
     end
 
     def cmd_ask(argv)
-      query = argv.join(" ")
+      query = FreeTextArgs.words(argv).join(" ")
       abort("usage: qm ask QUERY") if query.strip.empty?
 
       hits = AskSearch.new.call(query)
@@ -365,7 +366,7 @@ module Quartermaster
     end
 
     def cmd_grep(argv)
-      query = argv.join(" ")
+      query = FreeTextArgs.words(argv).join(" ")
       abort("usage: qm grep PHRASE") if query.strip.empty?
 
       result = TranscriptSearch.new.call(query)
