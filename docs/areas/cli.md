@@ -72,9 +72,10 @@ settings snippet) — see [capture](capture.md).
   on every event `qm install-hooks` gives it) in `$QM_CLAUDE_SETTINGS` (default
   `~/.claude/settings.json`) and pointing at existing files; the Ruby pin (`!` when absent, `✗`
   when below the floor or not installed); the running Ruby against `RubyFloor::FLOOR`; the data
-  root present and writable (doctor never creates it); unseen `qm.log` errors (`!` with the newest, counted by `ErrorLog`: header
-  lines that are neither `transient` nor `recovered`, newer than `errors-seen-at` or else the
-  last day, from the log's last 256 KB; [capture](capture.md) owns it); and capture (`!` when neither `sessions.jsonl` nor
+  root present and writable (doctor never creates it); unseen `qm.log` errors (`!` with the
+  newest, counted by `ErrorLog`: header lines that are neither `transient` nor `recovered`,
+  newer than `errors-seen-at` or else the last day, from the log's last 256 KB;
+  [capture](capture.md) owns it); and capture (`!` when neither `sessions.jsonl` nor
   `events.jsonl`'s tail has an event from the last day).
 
 Internal, called by the viewer's fzf bindings: `viewer-rows`, `sessions-view`, `inbox-view`,
@@ -101,8 +102,8 @@ item from session, `^D` dismiss), `^S` state, `^P` project, `^O` PR, `^T` distil
 `^Z` snooze, `^R` reload. The viewer stays open while actions run.
 
 **Feature use** (`FeatureUse`). Every `qm` command (by its word; not hooks, not `qm doctor`
-(`FeatureUse::UNRECORDED`, also left out of the never-used list), not `QM_SKIP` runs), every GUI action (by `cmd`; other POST routes by route) and every GUI `/api/` read
-except the `/api/state` and `/api/pulse` polls (by route, cut to `/api/<word>`) appends one
+(`FeatureUse::UNRECORDED`, also left out of the never-used list), not `QM_SKIP` runs), every
+GUI action (by `cmd`; other POST routes by route) and every GUI `/api/` read except the `/api/state` and `/api/pulse` polls (by route, cut to `/api/<word>`) appends one
 `{v, at, kind, name}` line to `feature-use.jsonl`: the evidence for deleting unused features.
 `qm feature-use` reads it back. Its never-used lists come from the dispatchers themselves —
 `GuiActions#dispatch` and `Gui#respond`'s other POST routes, `Gui#respond`'s `/api/` GET routes,
