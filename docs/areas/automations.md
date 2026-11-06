@@ -1,13 +1,55 @@
 # Automations
 
-**Code:** `lib/quartermaster/automation_store.rb`, `lib/quartermaster/local_schedule.rb`
-**Tests:** `test/automation_store_test.rb`, `test/local_schedule_test.rb`
-**Depends on:** [work-items](work-items.md) (an automation is a work item), [settings](settings.md) (writes the way `ConfigFile` does)
+**Code:** `lib/quartermaster/routines_client.rb`, `lib/quartermaster/automation_store.rb`, `lib/quartermaster/local_schedule.rb`
+**Tests:** `test/routines_client_test.rb`, `test/automation_store_test.rb`, `test/local_schedule_test.rb`
+**Depends on:** [work-items](work-items.md) (an automation is a work item), [settings](settings.md) (`automations.token_source`; writes the way `ConfigFile` does), [gui-shell](gui-shell.md) (`CommandRunner`)
 
 ## What it does
 
-An automation is a claude.ai cloud routine (a scheduled Claude Code agent) that qm manages.
+Automations are the user's claude.ai cloud routines: scheduled Claude Code agents that run on
+claude.ai, not on this machine. qm reaches them through the same API the claude binary uses.
 Every automation records `runner: cloud`; the field leaves room for other runners.
+
+**Turning it on** — `automations.token_source` in `config.yml` (enum, one value: `claude_code`).
+Unset, automations are off: nothing reads the keychain, and every call fails with `NotEnabled`,
+whose message names `qm config set automations.token_source claude_code`. The key sits in the
+Settings view's General card (a select: `(off)` or `claude_code`).
+
+**API** — `RoutinesClient` calls `https://api.anthropic.com` with `Net::HTTP` through an
+injectable transport (`#call(method, url, headers, body) → [status, body]`; tests pass a stub).
+Headers: `Authorization: Bearer <token>`, `anthropic-version`, the `ccr-triggers-*`
+`anthropic-beta` (its exact value is in `RoutinesClient::HEADERS`), `x-organization-uuid` and
+`content-type: application/json`; without the beta and organization headers the API answers 404.
+- `list` — `GET /v1/code/triggers`, the `data` routines as the API gives them.
+- `get(id)`, `create(fields)` (`POST /v1/code/triggers`), `update(id, fields)` (`POST
+  /v1/code/triggers/{id}`, partial), `run(id)` (`POST …/{id}/run`).
+- `runs(id, limit:)` — `GET /v1/code/sessions?trigger_id=…&limit=…`, at most `limit` runs as
+  `{id, title, status, created_at, updated_at, url}`; fields the API leaves out are nil.
+- `delete(id)` — tries `DELETE /v1/code/triggers/{id}`; answers `:deleted`, or `:unsupported`
+  on 404/405. The client only reports it; the caller decides what to do instead.
+- Links: `routine_url(id)` (`https://claude.ai/code/routines/<id>`), `run_url(session id)`
+  (`https://claude.ai/code/<id>`).
+
+**Shapes** — `RoutinesClient.fields(routine)` reads a remote routine into the local shape: `id,
+name, cron` (UTC, as the API holds it), `enabled, prompt` (the first job event's message, else
+`derived_state.prompt`), `model, sources, allowed_tools, environment_id, connectors` (the
+`mcp_connections` as given) and `updated_at`. `RoutinesClient.request_body(fields)` builds create
+and update bodies: only the fields given (a partial update stays partial); any of prompt / model /
+sources / allowed_tools / environment_id sends the whole `job_config.ccr` (environment, one
+user-message event carrying the prompt, session context).
+
+**Token** — per call: `security find-generic-password -s "Claude Code-credentials" -w` through
+the runner, JSON `claudeAiOauth.accessToken`; the organization from `~/.claude.json`
+`oauthAccount.organizationUuid` (path injectable). A token whose `expiresAt` has passed fails
+before any request.
+
+**Errors** — every failure is a `RoutinesClient::Error` (an `ArgumentError`, qm's user-facing
+channel), its message for the user: `NotEnabled`; `TokenExpired` on a 401, an expired, missing
+or unreadable login, or no organization ("Claude Code's login token expired — open any Claude
+Code session, then refresh"); `ApiChanged` on a 404 ("routines API changed — check the
+`ccr-triggers-*` beta in the claude binary"); `BadShape` for an answer that isn't JSON or lacks
+the expected fields; `Network` when the request doesn't complete; a plain `Error` naming any
+other status and the API's error message.
 
 **Local store** — `AutomationStore` keeps each automation as two files under
 `automations/`: `<slug>.yml` and `<slug>.prompt.md` (the prompt, nothing else). The yml holds
@@ -24,11 +66,9 @@ or anyone's) survive, and returns the stored entry. A slug is `[a-z0-9-]`, refus
 returns it into `[record, prompt]`: the prompt is `job_config.ccr.events[0].data.message.content`
 (falling back to `derived_state.prompt`), the model `job_config.ccr.session_context.model`
 (falling back to `derived_state.model`); a value that isn't a routine with an id is an
-`ArgumentError`. `AutomationStore.routine_body(record, prompt)` is the one place a create or
-update request body is built: `name`, `cron_expression`, `enabled`, the whole `job_config.ccr`
-(`environment_id`, one user-message event holding the prompt with a fresh uuid,
-`session_context` {`allowed_tools`, `model`, `sources`}) and `mcp_connections`; unset values are
-left out. A routine mapped and built back gives its own `job_config`.
+`ArgumentError`. `AutomationStore.routine_body(record, prompt)` builds the full body from a
+record: `name`, `cron_expression`, `enabled`, the whole `job_config.ccr` and `mcp_connections`;
+unset values are left out. A routine mapped and built back gives its own `job_config`.
 
 **Schedule** (`LocalSchedule`): a routine's cron is UTC, as the API holds it. `from_cron(cron, on:)`
 reads `M H * * <weekdays or *>` (one minute, one hour; weekdays as numbers, ranges, 7 = Sunday)
@@ -41,10 +81,17 @@ days or time, labelled as itself plus "UTC", and edited as raw cron.
 
 ## Rules
 
+- Opt-in: until `automations.token_source` is `claude_code`, nothing touches the keychain.
+- The token is read per call and dropped: never stored, cached on disk, logged (`qm.log`
+  included) or put in a message; messages built from outside text are scrubbed of it.
+- Never refresh the token: a refresh rotates Claude Code's refresh token and can log it out.
+  An expired token is the user's to renew by opening Claude Code.
+- Request bodies are built only in `RoutinesClient.request_body` and
+  `AutomationStore.routine_body`, so a changed API shape is fixed there.
+- Tests stub the keychain (`FakeRunner`) and the transport; no test reaches the network.
 - The local files are the source of truth; a remote routine only changes through push.
 - A write is atomic per file (`AtomicFile`) and keeps each replaced file as `<file>.bak`.
 - Keys qm doesn't know survive every write; the yml carries `v:`, bumped only on a breaking change.
-- Request bodies are built only in `routine_body`, so a change in the API's shape is fixed in one place.
 - Schedule: stdlib only, and no `ENV["TZ"]` switching (process-wide, races GUI threads): the EU rule
   is built in — CEST from the last Sunday of March 01:00 UTC to the last Sunday of October 01:00 UTC.
 - No automatic DST rewrites: a stored cron keeps its UTC time, so its local time moves with DST.

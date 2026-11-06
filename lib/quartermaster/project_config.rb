@@ -37,6 +37,10 @@ module Quartermaster
     # The published phone page's claude.ai URL, nil while unset.
     attr_reader :overview_artifact
 
+    # Where RoutinesClient gets a claude.ai login (`claude_code`); nil while
+    # automations are off.
+    attr_reader :automations_token_source
+
     def initialize(data)
       config = ConfigReader.new(data)
       @projects = config.section("projects").entries.to_h { |name, project| [name, ProjectSettings.new(name, project)] }
@@ -46,6 +50,7 @@ module Quartermaster
       @ide = Ide.parse(config["ide_command"], config["ide_label"])
       @prices = parse_prices(config.section("prices"))
       @overview_artifact = string(config["overview_artifact"])
+      @automations_token_source = string(config.section("automations")["token_source"])
     end
 
     # The IDE a project's "Open in …" launches: its own ide_command, else the

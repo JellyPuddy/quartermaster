@@ -10,7 +10,7 @@ module Quartermaster
   # its root). ConfigFile validates and writes against this; the GUI draws
   # its form from #payload.
   module ConfigSchema
-    Key = Struct.new(:path, :type, :help, :section, :collapsed, :inherits, :default, :options_from,
+    Key = Struct.new(:path, :type, :help, :section, :collapsed, :inherits, :default, :options_from, :options,
                      keyword_init: true) do
       def to_h = super.compact
     end
@@ -18,7 +18,7 @@ module Quartermaster
     # string/path/text: a String (path monospace, text multi-line); bool;
     # number; string_list: a list of names; argv: a command array holding
     # PATH; enum: one of the values options_from names (a sibling list, or
-    # the keys of a map).
+    # the keys of a map), or of its fixed options.
     TYPES = %w[string path text bool number string_list argv enum].freeze
 
     # kind :map (any key → child "<path>.*") or :object (only listed keys).
@@ -30,11 +30,13 @@ module Quartermaster
       "loose_starters" => { kind: :map },
       "loose_starters.*" => { kind: :object },
       "prices" => { kind: :map },
-      "prices.*" => { kind: :object }
+      "prices.*" => { kind: :object },
+      "automations" => { kind: :object }
     }.freeze
 
     # Top-level keys in the order a written file lists them.
-    TOP_LEVEL = %w[projects default_project ide_command ide_label loose_starters overview_artifact prices].freeze
+    TOP_LEVEL = %w[projects default_project ide_command ide_label loose_starters overview_artifact prices
+                   automations].freeze
 
     def self.key(path, type, help, section, collapsed: false, **rest)
       Key.new(path: path, type: type, help: help, section: section, collapsed: collapsed, **rest).freeze
@@ -91,7 +93,11 @@ module Quartermaster
           "The opening prompt; it ends mid-sentence (\"… Then give a one-line count of them and\").",
           "starters", collapsed: true),
       key("overview_artifact", "string", "The published phone page's URL.", "phone", collapsed: true),
-      *PriceTable::FIELDS.map { |f| key("prices.*.#{f}", "number", PRICE_HELP.fetch(f), "prices", collapsed: true) }
+      *PriceTable::FIELDS.map { |f| key("prices.*.#{f}", "number", PRICE_HELP.fetch(f), "prices", collapsed: true) },
+      key("automations.token_source", "enum",
+          "Where the Automations tab gets a claude.ai login: `claude_code` reads Claude Code's own token from " \
+          "the keychain on each call (never stored or refreshed). Unset: automations are off.",
+          "general", options: %w[claude_code])
     ].freeze
 
     BY_PATH = KEYS.to_h { |k| [k.path, k] }.freeze

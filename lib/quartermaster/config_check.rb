@@ -103,7 +103,9 @@ module Quartermaster
            when "string_list" then value.is_a?(String) || (value.is_a?(Array) && value.all? { |v| scalar?(v) })
            when "argv" then value.is_a?(Array) && value.all? { |v| scalar?(v) }
            end
-      error(path, TYPE_MESSAGES.fetch(key.type)) unless ok
+      return error(path, TYPE_MESSAGES.fetch(key.type)) unless ok
+
+      error(path, "must be one of: #{key.options.join(", ")}") if key.options && !key.options.include?(value.strip)
     end
 
     def scalar?(value) = value.is_a?(String) || value.is_a?(Numeric) || value.is_a?(Symbol)

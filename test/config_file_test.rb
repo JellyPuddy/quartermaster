@@ -34,6 +34,7 @@ class ConfigFileTest < Minitest::Test
     # my own comment
     my_notes:
       keep: [1, 2]
+    automations: { token_source: claude_code }
     prices:
       claude-opus-5-5: { output: 30, input: 5 }
     overview_artifact: https://claude.ai/artifact/abc
@@ -98,6 +99,8 @@ class ConfigFileTest < Minitest::Test
         claude-opus-5-5:
           input: 5
           output: 30
+      automations:
+        token_source: claude_code
       my_notes:
         keep: [1, 2]
     YAML
@@ -156,7 +159,8 @@ class ConfigFileTest < Minitest::Test
       "projects: { App: /code/app }\ndefault_project: Web" => ["default_project", /must name a project \(App\)/],
       "projects: {}\nloose_starters: { a: { label: A } }" => ["loose_starters.a.prompt", /needs a prompt/],
       "projects: {}\nprices: { claude-x: { input: cheap } }" => ["prices.claude-x.input", /must be a number/],
-      "projects: {}\noverview_artifact: [a]" => ["overview_artifact", /must be text/]
+      "projects: {}\noverview_artifact: [a]" => ["overview_artifact", /must be text/],
+      "projects: {}\nautomations: { token_source: api_key }" => ["automations.token_source", /one of: claude_code/]
     }.each do |yaml, (path, message)|
       found = issues(yaml)
       assert_equal [["error", path]], found.map { |i| [i[:level], i[:path]] }, yaml

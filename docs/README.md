@@ -54,8 +54,8 @@ goes in the commit message.
 - [settings](areas/settings.md) — read when you touch config.yml's key list (`ConfigSchema`), its
   validation, or how qm edits and writes the file.
 - [automations](areas/automations.md) — read when you touch claude.ai routines managed by qm:
-  their local files, mapping to and from the routines API, or their schedule (UTC cron ↔ local
-  weekdays and time).
+  `RoutinesClient` and its token (`automations.token_source`), the local files, mapping to and
+  from the routines API, API errors, or their schedule (UTC cron ↔ local weekdays and time).
 - [cli](areas/cli.md) — read when you touch a `qm` command, the bare-`qm` fzf viewer or live
   sessions listing.
 
