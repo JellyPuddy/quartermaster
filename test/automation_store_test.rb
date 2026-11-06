@@ -112,10 +112,13 @@ class AutomationStoreTest < Minitest::Test
     )
   end
 
-  def test_takes_the_prompt_from_derived_state_when_the_job_config_has_no_event
-    routine = DIGEST.merge("job_config" => { "ccr" => {} }, "derived_state" => { "prompt" => "from derived" })
+  def test_takes_prompt_and_model_from_derived_state_when_the_job_config_lacks_them
+    routine = DIGEST.merge("job_config" => { "ccr" => {} },
+                           "derived_state" => { "prompt" => "from derived", "model" => "claude-derived" })
+    record, prompt = Quartermaster::AutomationStore.from_routine(routine)
 
-    assert_equal "from derived", Quartermaster::AutomationStore.from_routine(routine).last
+    assert_equal "from derived", prompt
+    assert_equal "claude-derived", record["model"]
   end
 
   def test_refuses_to_map_something_that_is_not_a_routine
@@ -123,29 +126,10 @@ class AutomationStoreTest < Minitest::Test
     assert_raises(ArgumentError) { Quartermaster::AutomationStore.from_routine({ "name" => "no id" }) }
   end
 
-  def test_builds_the_routine_body_from_a_record_and_prompt
-    body = Quartermaster::AutomationStore.routine_body(record, "Do it.", uuid: "u-1")
-
-    assert_equal(
-      {
-        "name" => "Digest", "cron_expression" => "0 7 * * 1,4", "enabled" => true,
-        "job_config" => { "ccr" => {
-          "environment_id" => "env_1",
-          "events" => [{ "data" => { "message" => { "content" => "Do it.", "role" => "user" }, "parent_tool_use_id" => nil,
-                                     "session_id" => "", "type" => "user", "uuid" => "u-1" } }],
-          "session_context" => { "allowed_tools" => %w[Bash Read], "model" => "claude-sonnet-5-5",
-                                 "sources" => [{ "git_repository" => { "url" => "https://github.com/o/r" } }] }
-        } },
-        "mcp_connections" => [{ "name" => "Slack", "url" => "https://mcp.slack.com/mcp" }]
-      },
-      body
-    )
-  end
-
   def test_a_fixture_routine_maps_back_to_its_own_job_config
     record, prompt = Quartermaster::AutomationStore.from_routine(DIGEST)
     uuid = DIGEST.dig("job_config", "ccr", "events", 0, "data", "uuid")
-    body = Quartermaster::AutomationStore.routine_body(record, prompt, uuid: uuid)
+    body = Quartermaster::RoutinesClient.request_body(record.merge("prompt" => prompt), uuid: uuid)
 
     assert_equal DIGEST["job_config"], body["job_config"]
     assert_equal DIGEST["mcp_connections"], body["mcp_connections"]

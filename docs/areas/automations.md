@@ -62,8 +62,8 @@ Headers: `Authorization: Bearer <token>`, `anthropic-version`, the `ccr-triggers
 
 **Shapes** — `RoutinesClient.fields(routine)` reads a remote routine into the local shape: `id,
 name, cron` (UTC, as the API holds it), `enabled, prompt` (the first job event's message, else
-`derived_state.prompt`), `model, sources, allowed_tools, environment_id, connectors` (the
-`mcp_connections` as given) and `updated_at`. `RoutinesClient.request_body(fields)` builds create
+`derived_state.prompt`), `model` (else `derived_state.model`), `sources, allowed_tools,
+environment_id, connectors` (the `mcp_connections` as given) and `updated_at`. `RoutinesClient.request_body(fields)` builds create
 and update bodies: only the fields given (a partial update stays partial); any of prompt / model /
 sources / allowed_tools / environment_id sends the whole `job_config.ccr` (environment, one
 user-message event carrying the prompt, session context).
@@ -93,12 +93,13 @@ record, prompt)` merges the record onto the stored keys, so keys a caller doesn'
 or anyone's) survive, and returns the stored entry. A slug is `[a-z0-9-]`, refused otherwise.
 
 **Mapping** — `AutomationStore.from_routine(routine)` turns a routine as the routines API
-returns it into `[record, prompt]`: the prompt is `job_config.ccr.events[0].data.message.content`
-(falling back to `derived_state.prompt`), the model `job_config.ccr.session_context.model`
-(falling back to `derived_state.model`); a value that isn't a routine with an id is an
-`ArgumentError`. `AutomationStore.routine_body(record, prompt)` builds the full body from a
-record: `name`, `cron_expression`, `enabled`, the whole `job_config.ccr` and `mcp_connections`;
-unset values are left out. A routine mapped and built back gives its own `job_config`.
+returns it into `[record, prompt]` through `RoutinesClient.fields`, the one remote-to-local
+mapping: the prompt is `job_config.ccr.events[0].data.message.content` (falling back to
+`derived_state.prompt`), the model `job_config.ccr.session_context.model` (falling back to
+`derived_state.model`); list fields the routine lacks stay unset, which drift and push treat
+as empty. A value that isn't a routine with an id is a `BadShape` error. A record plus its
+prompt is already `RoutinesClient.request_body`'s field shape, so a routine mapped and built
+back gives its own `job_config`.
 
 **Schedule** (`LocalSchedule`): a routine's cron is UTC, as the API holds it. `from_cron(cron, on:)`
 reads `M H * * <weekdays or *>` (one minute, one hour; weekdays as numbers, ranges, 7 = Sunday)
@@ -131,8 +132,8 @@ itself, decisions recorded with `qm note SLUG --kind decision`, the house rules 
   included) or put in a message; messages built from outside text are scrubbed of it.
 - Never refresh the token: a refresh rotates Claude Code's refresh token and can log it out.
   An expired token is the user's to renew by opening Claude Code.
-- Request bodies are built only in `RoutinesClient.request_body` and
-  `AutomationStore.routine_body`, so a changed API shape is fixed there.
+- Request bodies are built only in `RoutinesClient.request_body`, so a changed API shape is
+  fixed there.
 - Tests stub the keychain (`FakeRunner`) and the transport; no test reaches the network.
 - The local files are the source of truth; a remote routine only changes through
   `Automations#push` (pause and resume included), which refuses a drifted routine unless forced.

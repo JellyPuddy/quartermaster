@@ -7,9 +7,8 @@ module Quartermaster
   # onto the stored keys, so keys qm doesn't know survive, keeps each replaced
   # file as `<file>.bak` and replaces files through AtomicFile.
   #
-  # `from_routine` and `routine_body` map between a claude.ai routine as the
-  # routines API returns it and a record + prompt; `routine_body` is the one
-  # place a create/update request body is built.
+  # `from_routine` turns a claude.ai routine as the routines API returns it
+  # into a record + prompt; request bodies are RoutinesClient's to build.
   class AutomationStore
     VERSION = 1
     FIELDS = %w[routine runner name cron model sources connectors allowed_tools environment_id enabled remote_updated_at].freeze
@@ -59,34 +58,14 @@ module Quartermaster
 
     def prompt_path(slug) = File.join(@dir, "#{checked(slug)}.prompt.md")
 
-    # A routine from the API as `[record, prompt]`.
+    # A routine from the API as `[record, prompt]`, read through
+    # RoutinesClient.fields.
     def self.from_routine(routine)
-      raise ArgumentError, "not a routine: #{routine.class}" unless routine.is_a?(Hash) && routine["id"].is_a?(String)
-
-      ccr = routine.dig("job_config", "ccr") || {}
-      context = ccr["session_context"] || {}
-      record = {
-        "routine" => routine["id"], "runner" => "cloud", "name" => routine["name"], "cron" => routine["cron_expression"],
-        "model" => context["model"] || routine.dig("derived_state", "model"), "sources" => context["sources"] || [],
-        "connectors" => routine["mcp_connections"] || [], "allowed_tools" => context["allowed_tools"] || [],
-        "environment_id" => ccr["environment_id"], "enabled" => routine["enabled"], "remote_updated_at" => routine["updated_at"]
-      }
-      prompt = ccr.dig("events", 0, "data", "message", "content") || routine.dig("derived_state", "prompt") || ""
-      [record, prompt]
-    end
-
-    # The create/update request body for a record + prompt: the whole
-    # job_config, since updating the prompt means sending it again. Unset
-    # values are left out.
-    def self.routine_body(record, prompt, uuid: SecureRandom.uuid)
-      message = { "content" => prompt, "role" => "user" }
-      event = { "data" => { "message" => message, "parent_tool_use_id" => nil, "session_id" => "", "type" => "user", "uuid" => uuid } }
-      context = { "allowed_tools" => record["allowed_tools"], "model" => record["model"], "sources" => record["sources"] }.compact
-      ccr = { "environment_id" => record["environment_id"], "events" => [event], "session_context" => context }.compact
-      {
-        "name" => record["name"], "cron_expression" => record["cron"], "enabled" => record["enabled"],
-        "job_config" => { "ccr" => ccr }, "mcp_connections" => record["connectors"]
-      }.compact
+      fields = RoutinesClient.fields(routine)
+      record = { "routine" => fields["id"], "runner" => "cloud" }
+               .merge(fields.slice(*%w[name cron model sources connectors allowed_tools environment_id enabled]))
+               .merge("remote_updated_at" => fields["updated_at"])
+      [record, fields["prompt"].to_s]
     end
 
     private

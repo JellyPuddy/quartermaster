@@ -60,7 +60,8 @@ module Quartermaster
 
     # A remote routine in the local shape: name, cron (UTC), enabled, prompt,
     # model, sources, allowed_tools, environment_id, connectors (its
-    # mcp_connections as given) and updated_at.
+    # mcp_connections as given) and updated_at. The one remote-to-local
+    # mapping: prompt and model fall back to derived_state.
     def self.fields(routine)
       raise BadShape, "routines API answered a routine without an id" unless routine.is_a?(Hash) && routine["id"].is_a?(String)
 
@@ -71,7 +72,7 @@ module Quartermaster
       prompt = event.dig("data", "message", "content") if event.is_a?(Hash)
       prompt = routine.dig("derived_state", "prompt") unless prompt.is_a?(String)
       { "id" => routine["id"], "name" => routine["name"], "cron" => routine["cron_expression"],
-        "enabled" => routine["enabled"], "prompt" => prompt, "model" => context["model"],
+        "enabled" => routine["enabled"], "prompt" => prompt, "model" => context["model"] || routine.dig("derived_state", "model"),
         "sources" => context["sources"], "allowed_tools" => context["allowed_tools"],
         "environment_id" => ccr["environment_id"], "connectors" => routine["mcp_connections"],
         "updated_at" => routine["updated_at"] }
@@ -79,16 +80,16 @@ module Quartermaster
 
     # The create/update body for local fields; only the fields given, so a
     # partial update stays partial. Any job field sends the whole job_config.
-    def self.request_body(fields)
+    def self.request_body(fields, uuid: SecureRandom.uuid)
       body = BODY_KEYS.filter_map { |local, api| [api, fields[local]] if fields.key?(local) }.to_h
-      body["job_config"] = job_config(fields) if JOB_FIELDS.any? { |f| fields.key?(f) }
+      body["job_config"] = job_config(fields, uuid) if JOB_FIELDS.any? { |f| fields.key?(f) }
       body
     end
 
-    def self.job_config(fields)
+    def self.job_config(fields, uuid)
       message = { "content" => fields["prompt"].to_s, "role" => "user" }
       event = { "data" => { "message" => message, "parent_tool_use_id" => nil, "session_id" => "", "type" => "user",
-                            "uuid" => SecureRandom.uuid } }
+                            "uuid" => uuid } }
       context = { "allowed_tools" => fields["allowed_tools"] || [], "model" => fields["model"],
                   "sources" => fields["sources"] || [] }.compact
       { "ccr" => { "environment_id" => fields["environment_id"], "events" => [event], "session_context" => context } }
