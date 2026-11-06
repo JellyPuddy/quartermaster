@@ -56,7 +56,7 @@ goes in the commit message.
 - [automations](areas/automations.md) — read when you touch claude.ai routines managed by qm:
   `RoutinesClient` and its token (`automations.token_source`), the local files, mapping to and
   from the routines API, API errors, their schedule (UTC cron ↔ local weekdays and time), the
-  brief their chats start with.
+  brief their chats start with, or the GUI's Automations tab.
 - [cli](areas/cli.md) — read when you touch a `qm` command, the bare-`qm` fzf viewer or live
   sessions listing.
 
