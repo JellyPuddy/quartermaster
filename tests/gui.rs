@@ -928,3 +928,110 @@ fn the_state_matches_ruby() {
     assert!(first.contains("\"items\":[{"));
     compare_state(&ruby, &rust, "second build");
 }
+
+/// Everything the attention world leaves out: usage transcripts, events, notes of every kind,
+/// rotations, an aside, inbox sessions, drafts, issues, rate limits and a linked worktree.
+fn richer_state_world(w: &common::AttentionWorld, base: &Path) {
+    let now = std::time::SystemTime::now();
+    let stamp = |secs: u64| -> String {
+        let t: chrono::DateTime<chrono::Utc> = (now - std::time::Duration::from_secs(secs)).into();
+        t.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+    };
+    let me = std::process::id();
+    let put = |path: PathBuf, text: String| {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    };
+    let user = |secs: u64, text: &str| format!("{}\n", serde_json::json!({"type": "user", "timestamp": stamp(secs), "message": {"role": "user", "content": text}}));
+    let assistant = |secs: u64, model: &str, input: u64, out: u64, read: u64| {
+        format!("{}\n", serde_json::json!({"type": "assistant", "timestamp": stamp(secs), "message": {"model": model, "usage": {"input_tokens": input, "output_tokens": out, "cache_read_input_tokens": read, "cache_creation_input_tokens": 50}}}))
+    };
+    let tpath = |id: &str| w.transcripts.join(format!("p/{id}.jsonl"));
+    // usage: a priced model, an unpriced one, and a very large session
+    put(tpath("d-fresh"), user(300, "first prompt of the fresh session") + &assistant(280, "claude-opus-5-5", 1000, 2000, 30_000) + &assistant(200, "claude-opus-5-5", 1500, 900, 40_000));
+    put(tpath("d-live"), user(250, "live prompt") + &assistant(240, "mystery-model-9", 10, 20, 30) + &assistant(100, "claude-sonnet-5-5", 700_000, 400_000, 0));
+    put(tpath("q-recent"), user(86_000, "quiet one") + &assistant(85_000, "claude-haiku-5-5", 5, 6, 7));
+    // asides and inbox sessions, an extra live session for events
+    let mut log = fs::read_to_string(w.root.join("sessions.jsonl")).unwrap();
+    let start = |id: &str, extra: &str, pid: u32, secs: u64| format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"{id}\",\"cwd\":\"/srv/app\",\"pid\":{pid},\"transcript_path\":\"{}\"{extra},\"ts\":\"{}\"}}\n", tpath(id).display(), stamp(secs).replace(".000", ""));
+    log += &start("a-one", ",\"aside\":\"degrade\"", 999999, 5000);
+    log += &start("a-two", ",\"aside\":\"degrade\"", 999999, 4000);
+    log += &start("a-stale", ",\"aside\":\"stale\"", 999999, 4000);
+    log += &start("i-one", "", 999999, 900);
+    log += &start("i-two", "", 999999, 7200);
+    log += &start("i-none", "", 999999, 90_000);
+    log += &start("w-live", "", me, 600);
+    // sessions whose last activity sits in each relative-time bucket
+    for (id, age) in [("r-sec", 20u64), ("r-min", 600), ("r-hour", 18_000), ("r-edge", 86_200), ("r-day", 3 * 86_400), ("r-ten", 10 * 86_400 + 43_200), ("r-eleven", 11 * 86_400 + 43_200), ("r-old", 12 * 86_400)] {
+        log += &start(id, "", 999999, age + 5);
+        put(tpath(id), user(age, "relative"));
+        let t = now - std::time::Duration::from_secs(age);
+        fs::File::options().write(true).open(tpath(id)).unwrap().set_modified(t).unwrap();
+    }
+    log += &start("s-snz", "", me, 800);
+    put(tpath("s-snz"), user(790, "snoozed turn") + &assistant(700, "claude-opus-5-5", 5, 5, 5));
+    put(w.root.join("sessions.jsonl"), log);
+    put(tpath("a-one"), user(4900, "aside question") + &assistant(4800, "claude-opus-5-5", 3, 4, 5));
+    put(tpath("a-two"), user(3900, "second aside") + &assistant(3800, "claude-opus-5-5", 3, 4, 5));
+    put(tpath("a-stale"), user(3900, "stale aside"));
+    put(tpath("i-one"), user(800, "inbox prompt one\nwith a second line"));
+    put(tpath("i-two"), user(7100, "x".repeat(300).as_str()));
+    put(tpath("w-live"), user(500, "working prompt") + &assistant(450, "claude-opus-5-5", 12345, 6789, 4321));
+    // events: a working chat and a blocked one
+    let ev = |secs: u64, name: &str, id: &str, tool: &str| format!("{{\"v\":1,\"ts\":\"{}\",\"event\":\"{name}\",\"session_id\":\"{id}\",\"tool\":\"{tool}\"}}\n", stamp(secs).replace(".000", ""));
+    let snoozed_at = stamp(100).replace(".000", "").replace('Z', "+00:00");
+    put(w.root.join("work-items/snoozed-chat.md"), format!("---\nv: 1\ntitle: Snoozed chat\nstate: in_progress\nproject: demo\ncreated: '2026-02-03'\nsnooze_until: '2099-01-01'\nturn_snoozed_at: '{}'\nsessions:\n- id: s-snz\n---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n", snoozed_at));
+    put(w.root.join("events.jsonl"), ev(600, "Stop", "s-snz", "") + &ev(400, "UserPromptSubmit", "w-live", "Edit") + &ev(120, "PermissionRequest", "d-live", "Bash") + &ev(60, "UserPromptSubmit", "d-fresh", "Read"));
+    // an item with every note kind, rotations, snapshots and a session of each sort
+    let item = format!(
+        "---\nv: 1\ntitle: Rich item\nstate: in_progress\nproject: demo\ncreated: '2026-02-03'\nrotations:\n- at: '2026-01-01T00:00:00+00:00'\n  from: s0\n  carried: [1, 2]\n- at: '2026-01-05T00:00:00+00:00'\n  from: s1\nsessions:\n- id: w-live\n- id: i-none\n- id: r-sec\n- id: r-min\n- id: r-hour\n- id: r-edge\n- id: r-day\n- id: r-ten\n- id: r-eleven\n- id: r-old\n---\n\n## Description\n\nrich\n\n## Notes\n\n- 2026-01-02 [history]: opened\n- 2026-01-03: a decision\n- 2026-01-04 [open]: what about this?\n- 2026-01-05 [open]: and that?\n- 2026-01-06 [bogus]: odd marker\n\n## Snapshots\n\n### 2026-01-02 — session s0\n\ntext\n"
+    );
+    put(w.root.join("work-items/rich-item.md"), item);
+    // a linked worktree with a checked-out branch
+    git(&w.repo, &["branch", "wt-branch"]);
+    let wt = base.join("wt-checkout");
+    git(&w.repo, &["worktree", "add", wt.to_str().unwrap(), "wt-branch"]);
+    let wt_item = "---\nv: 1\ntitle: In a worktree\nstate: in_progress\nproject: demo\ncreated: '2026-02-03'\nbranches:\n- wt-branch\n- main\n---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n";
+    put(w.root.join("work-items/in-worktree.md"), wt_item.to_string());
+    // drafts and issues
+    let entries = serde_json::json!([
+        {"id": "d1", "kind": "diff-comment", "comment": "first", "rev": 1, "path": "a.txt", "side": "new", "line": 3},
+        {"id": "d2", "kind": "page-annotation", "comment": "second", "rev": 2}
+    ]);
+    put(w.root.join("drafts/rich-item.json"), serde_json::to_string_pretty(&serde_json::json!({"v": 1, "entries": entries})).unwrap());
+    put(w.root.join("drafts/degrade.json"), "{\"v\":1,\"entries\":[]}".to_string());
+    put(w.root.join("issues/rich-item/01-bug.md"), "---\nv: 1\ntitle: A bug\nkind: bug\n---\n\nbody\n".to_string());
+    put(w.root.join("issues/rich-item/02-feature.md"), "---\nv: 1\ntitle: A feature\nkind: feature\n---\n\nbody two\n".to_string());
+    put(w.root.join("issues/stale/.hidden.md"), "---\nv: 1\ntitle: Hidden\nkind: bug\n---\n".to_string());
+    // the status line's snapshot
+    put(w.root.join("rate-limits.json"), format!("{{\"captured_at\":{},\"five_hour\":{{\"used_percentage\":41.5,\"resets_at\":{}}},\"seven_day\":{{\"used_percentage\":12,\"resets_at\":\"2026-12-01T00:00:00Z\"}}}}", now.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() - 30, now.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + 3600));
+}
+
+#[test]
+fn the_state_matches_ruby_over_a_richer_world() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    richer_state_world(&w, base.path());
+    let env: Vec<(&str, String)> = vec![
+        ("HOME", w.home.display().to_string()),
+        ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()),
+        ("PATH", format!("{}:{}", w.bin.display(), std::env::var("PATH").unwrap())),
+        ("FAKE_GH_DATA", w.gh_data.display().to_string()),
+        ("FAKE_GH_LOG", base.path().join("gh.log").display().to_string()),
+    ];
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let mut env_rust = env.clone();
+    env_rust[4].1 = base.path().join("gh-rust.log").display().to_string();
+    let ruby = start_env(false, &w.root, &w.home, &env);
+    let rust = start_env(true, &root2, &w.home, &env_rust);
+    for s in [&ruby, &rust] {
+        request(s.port, "GET", "/api/state", &[], "", true);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    let first = compare_state(&ruby, &rust, "first build");
+    for needle in ["\"rich-item\"", "\"asideCount\":2", "\"rateLimits\":{", "\"wt-branch\"", "\"claude-haiku-5-5\":68", "inbox prompt one", "\"state\":\"working\"", "\"lowerBound\":true", "\"snoozed\":true", "23h ago", "10d ago", "3d ago", "just now", "10m ago", "5h ago"] {
+        assert!(first.contains(needle), "the world should reach {needle}");
+    }
+    compare_state(&ruby, &rust, "second build");
+}
