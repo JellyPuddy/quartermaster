@@ -1167,7 +1167,7 @@ fn the_data_actions_match_ruby() {
     }
     // what is not ported answers 501 before anything happens, with the files untouched
     let before = action_traces(&root2, &w.root);
-    for body in [act("pr-chat", "stale", "{}"), act("start", "stale", "{}"), act("rotate", "stale", "{}")] {
+    for body in [act("pr-chat", "stale", "{}"), act("distill", "stale", "{}"), act("rotate", "stale", "{}")] {
         let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
         assert!(a.status.starts_with("501"), "{body}: {}", a.status);
     }
