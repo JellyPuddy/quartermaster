@@ -61,17 +61,18 @@ fn tier_badge(tier: &str) -> (&'static str, u8) {
 }
 
 /// Newest first, matching what plain resume picks; sessions the log never captured sink to the bottom.
-fn session_lines(item: &WorkItem, log: &SessionLog) -> Result<Vec<String>, crate::error::QmError> {
+/// The rows the viewer's ^X list shows: tab-separated columns.
+pub fn session_lines(item: &WorkItem, log: &SessionLog) -> Result<Vec<String>, crate::error::QmError> {
     Ok(log
         .item_sessions(item)?
         .iter()
         .map(|s| {
             if s.tier() == "uncaptured" {
-                format!("{} {} - -", s.id, paint(&ljust("? uncaptured", 12), 90))
+                format!("{}\t{}\t-\t-", s.id, paint(&ljust("? uncaptured", 12), 90))
             } else {
                 let (label, color) = tier_badge(s.tier());
                 let when = s.last_ts_opt().map(|t| prefix_chars(&t, 16)).unwrap_or_default();
-                format!("{} {} {} {}", s.id, paint(&ljust(label, 12), color), when, short_path(s.cwd().as_deref()))
+                format!("{}\t{}\t{}\t{}", s.id, paint(&ljust(label, 12), color), when, short_path(s.cwd().as_deref()))
             }
         })
         .collect())
@@ -155,7 +156,7 @@ pub fn show(a: &[String]) -> Outcome {
         out.push_str("(none)\n");
     } else {
         for l in lines {
-            out.push_str(&puts(&l));
+            out.push_str(&puts(&l.replace('\t', " ")));
         }
     }
     for l in tri!(usage_lines(&item, &log)) {

@@ -15,6 +15,7 @@ const USAGE: &str = include_str!("usage.txt");
 /// `Some(outcome)` for the commands ported here, `None` for every other word.
 pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
     Some(match command {
+        "viewer-rows" | "session-rows" | "inbox-rows" | "cycle-filter" => crate::viewer_commands::run(command, args),
         "attention" => crate::attention_command::attention(),
         "show" => crate::show_command::show(args),
         "show-session" => show_session(args),

@@ -154,7 +154,7 @@ impl Attention {
     }
 
     /// When the item last saw movement: the newest of its file and its sessions' last events.
-    fn activity_at(&self, item: &WorkItem) -> Res<f64> {
+    pub fn activity_at(&self, item: &WorkItem) -> Res<f64> {
         let mut newest = item.file_mtime().unwrap_or(0.0);
         for (id, _) in item.attached_sessions() {
             if let Some(session) = self.session_for(&id) {

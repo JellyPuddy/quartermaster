@@ -40,6 +40,7 @@ pub mod session_commands;
 pub mod show_command;
 pub mod session_rows;
 pub mod tmux;
+pub mod viewer_commands;
 pub mod transcript_usage;
 pub mod transcript_vitals;
 pub mod transcripts;
