@@ -5,6 +5,7 @@ require_relative "test_helper"
 
 require_relative "work_item_test"
 require_relative "automation_items_test"
+require_relative "automation_chat_test"
 require_relative "item_deletion_test"
 require_relative "hook_test"
 require_relative "free_text_args_test"

@@ -24,7 +24,9 @@ blocked + unsnoozed your_turn chats.
   PTY running a fresh `tmux attach` per connection (`GET /ws/terminal?session=&token=&cols=&rows=`;
   xterm.js + fit, unicode11 and web-links addons).
   `Launcher#chat_plan`: **Start** = `QM_ITEM=<slug> claude` at `start_cwd`; **Resume** = `resume_plan`
-  (`claude --resume <id>` in its cwd, else the same fresh start).
+  (`claude --resume <id>` in its cwd, else the same fresh start). A first prompt rides as claude's
+  last argument (issue kickoff, an automation's brief via `automation-chat`), never typed; a live
+  pane is only shown again ([automations](automations.md)).
 - Actions `pane-start`, `pane-resume` (optional `session`), `pane-warp` (a Warp tab running
   `tmux -L qm attach -t =slug`); `/api/state` carries `panes` (live tmux session names), each item's
   `pane` flag and `terminalToken`. The chat view's Resume/Start, `r`/`n` and session rows' Resume go to

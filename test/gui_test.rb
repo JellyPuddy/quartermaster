@@ -41,7 +41,7 @@ class GuiTest < Minitest::Test
       status, = gui.respond("POST", route, no_origin, JSON.generate("query" => "q"))
       assert_equal "403 Forbidden", status, route
     end
-    %w[caffeinate pane-start pane-resume rotate issue-start page-annotations].each do |cmd|
+    %w[caffeinate pane-start pane-resume rotate issue-start automation-chat page-annotations].each do |cmd|
       status, = gui.respond("POST", "/api/action", no_origin, JSON.generate("cmd" => cmd, "args" => { "mode" => "status" }))
       assert_equal "200 OK", status, cmd
     end

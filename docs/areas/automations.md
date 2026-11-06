@@ -1,8 +1,8 @@
 # Automations
 
-**Code:** `lib/quartermaster/routines_client.rb`, `lib/quartermaster/automation_store.rb`, `lib/quartermaster/local_schedule.rb`
-**Tests:** `test/routines_client_test.rb`, `test/automation_store_test.rb`, `test/local_schedule_test.rb`
-**Depends on:** [work-items](work-items.md) (an automation is a work item), [settings](settings.md) (`automations.token_source`; writes the way `ConfigFile` does), [gui-shell](gui-shell.md) (`CommandRunner`)
+**Code:** `lib/quartermaster/routines_client.rb`, `lib/quartermaster/automation_store.rb`, `lib/quartermaster/local_schedule.rb`, `lib/quartermaster/automation_chat.rb`, `lib/quartermaster/cli_automation.rb`
+**Tests:** `test/routines_client_test.rb`, `test/automation_store_test.rb`, `test/local_schedule_test.rb`, `test/automation_chat_test.rb`
+**Depends on:** [work-items](work-items.md) (an automation is a work item), [settings](settings.md) (`automations.token_source`; writes the way `ConfigFile` does), [gui-shell](gui-shell.md) (`CommandRunner`), [chats](chats.md) (its chat is the item's pane)
 
 ## What it does
 
@@ -79,6 +79,21 @@ as `days` (0 = Sunday) plus a local `time` in Europe/Amsterdam, with the offset 
 moves its weekdays back a day in UTC; all seven days become `*`. Any other cron is `raw?`: no
 days or time, labelled as itself plus "UTC", and edited as raw cron.
 
+**New and edit** — `qm automation new TITLE --project P` (`AutomationChat.create`) makes a
+`kind: automation` item (`runner: cloud`, state `in_progress`, no `routine` until the first
+push) and its local files: an empty prompt and a yml with `name` and `runner`; a slug whose files
+already exist is refused. It then opens the item's chat, as `qm automation edit SLUG` does:
+through the running GUI's `automation-chat` action (a local action, so the CLI may post it
+without an Origin), then `ChatOpener` brings the GUI up on it; without a GUI it prints the
+`cd … && QM_ITEM=… claude …` line to run. The chat starts fresh when the item has no session, else
+resumes its newest one, either way with the brief as claude's last argument
+(`AutomationChat#plan`). **The brief** (`AutomationChat.brief`) holds the item's title, slug,
+project and routine (or that the first push creates it), the absolute paths of both files, the
+loop (edit the files → `qm automation push` → `qm automation run` → read the run via its claude.ai
+link or RemoteTrigger `get_run_log` → refine), the rule never to call RemoteTrigger create/update
+itself, decisions recorded with `qm note SLUG --kind decision`, the house rules verbatim from
+`docs/automations-house-rules.md`, and the item's description and notes (oldest first, kind shown).
+
 ## Rules
 
 - Opt-in: until `automations.token_source` is `claude_code`, nothing touches the keychain.
@@ -95,6 +110,9 @@ days or time, labelled as itself plus "UTC", and edited as raw cron.
 - Schedule: stdlib only, and no `ENV["TZ"]` switching (process-wide, races GUI threads): the EU rule
   is built in — CEST from the last Sunday of March 01:00 UTC to the last Sunday of October 01:00 UTC.
 - No automatic DST rewrites: a stored cron keeps its UTC time, so its local time moves with DST.
+- A chat that already runs gets nothing typed: `automation-chat` answers `attached` with the brief,
+  which the CLI prints to paste by hand. The brief is claude's argument, never keystrokes.
+- The house rules live only in `docs/automations-house-rules.md`; the brief reads it at runtime.
 
 ## Data
 

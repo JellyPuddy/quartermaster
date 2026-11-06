@@ -60,6 +60,7 @@ module Quartermaster
       when "pane-start" then gui_pane(slug, fresh: true)
       when "pane-resume" then gui_pane(slug, fresh: false, session_id: presence(args["session"]))
       when "pane-warp" then gui_pane_warp(slug)
+      when "automation-chat" then AutomationChat.new(tmux: @tmux).open(slug)
       when "rotate" then gui_rotate(slug, args)
       when "aside-open" then gui_aside_open(slug, args["model"])
       when "aside-close" then gui_aside_close(slug)
@@ -808,9 +809,7 @@ module Quartermaster
       ok
     end
 
-    def presence(value)
-      value.to_s.strip.empty? ? nil : value.to_s
-    end
+    def presence(value) = value.to_s.strip.empty? ? nil : value.to_s
 
     def gui_resume(slug, session_id)
       item = WorkItem.find(slug)

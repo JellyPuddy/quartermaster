@@ -54,6 +54,7 @@ else (see [capture](capture.md)), then requires `lib/quartermaster` through its 
 - `qm resume SLUG [--session ID] [--here]` / `qm start SLUG [--here]` — resume or start in a new Warp tab (or this terminal).
 - `qm pane-start SLUG` / `qm pane-resume SLUG [--session ID]` — the same in the running GUI's pane ([chats](chats.md)).
 - `qm start-issue N [--project P]` — item + issue worktree + kickoff chat ([issues](issues.md)).
+- `qm automation new TITLE --project P` / `qm automation edit SLUG` — an automation item and files, then its chat with qm's brief ([automations](automations.md)).
 - `qm loose [--project P] [--model M] [--starter NAME] ["prompt"]` — a chat with no work item in the GUI; `--starter` opens it with a config.yml `loose_starters:` kickoff ([loose-chats](loose-chats.md)).
 - `qm rotate SLUG [--close]` / `qm rotate --self [--close]` — context rotation ([rotation](rotation.md)).
 - `qm pr SLUG` / `qm pr-requires PR-OR-SHA …` — open the PR; PR prerequisites ([prs](prs.md)).
@@ -124,7 +125,7 @@ refused ("switch to its Warp tab"): it would fork the conversation.
 
 - Never rename or move `./quartermaster`: the `~/bin` symlinks and the hook registrations point at it.
 - The launcher's `sh` half stays before `=end` and its Ruby half after `#!ruby`; `ruby_floor.rb`, which runs before `lib/` loads, must parse on Ruby 2.x and require nothing.
-- Commands that act on the GUI (`caffeinate`, `pane-start`, `pane-resume`, `rotate`, `start-issue`, `loose`) POST `/api/action` to `127.0.0.1:$QM_GUI_PORT` (default 49737) without an Origin; with no GUI they say so, do nothing and exit 1 — except `start-issue`, which then makes the item and worktree itself and prints how to start the chat, and `loose`, which prints how to start it. Each needs its action in `LoopbackGuard::LOCAL_ACTIONS`.
+- Commands that act on the GUI (`caffeinate`, `pane-start`, `pane-resume`, `rotate`, `start-issue`, `loose`, `automation new|edit`) POST `/api/action` to `127.0.0.1:$QM_GUI_PORT` (default 49737) without an Origin; with no GUI they say so, do nothing and exit 1 — except `start-issue`, which then makes the item and worktree itself and prints how to start the chat, and `loose` and `automation new|edit`, which print how to start it. Each needs its action in `LoopbackGuard::LOCAL_ACTIONS`.
 - `qm install-hooks` prints the snippet and never writes `~/.claude/settings.json`; that file is the user's.
 - Hook commands never print except SessionStart's context, honour `QM_SKIP`, rescue everything and exit 0.
 - `qm board SLUG` with no URL prints only the URL and exits non-zero when unset, so a shell can test it in one call.

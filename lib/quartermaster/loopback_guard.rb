@@ -24,9 +24,10 @@ module Quartermaster
     end
 
     # The actions a local process may post without an Origin: the qm CLI's
-    # caffeinate, pane, rotate, start-issue and loose commands, and pf relaying
-    # page annotations. Everything else is the page's, which always sends one.
-    LOCAL_ACTIONS = %w[caffeinate pane-start pane-resume rotate issue-start loose-start page-annotations].freeze
+    # caffeinate, pane, rotate, start-issue, loose and automation new/edit
+    # commands, and pf relaying page annotations. Everything else is the
+    # page's, which always sends one.
+    LOCAL_ACTIONS = %w[caffeinate pane-start pane-resume rotate issue-start loose-start automation-chat page-annotations].freeze
 
     def local_action?(route, action)
       route == "/api/action" && action.is_a?(Hash) && LOCAL_ACTIONS.include?(action["cmd"])

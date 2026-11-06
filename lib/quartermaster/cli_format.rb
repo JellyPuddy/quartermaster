@@ -113,6 +113,10 @@ module Quartermaster
         ["qm config set PATH VALUE", "set a key; VALUE is YAML ([dev, ngrok] a list, true, 4); errors refuse the write (exit 1), warnings don't"],
         ["qm config unset PATH", "remove a key or a whole project (warns how many work items still name it)"],
         ["qm config path", "print config.yml's location"]
+      ],
+      "Automations" => [
+        ["qm automation new TITLE --project P", "create a claude.ai routine as a kind: automation item with empty local files, then open its chat with qm's brief (--description TEXT)"],
+        ["qm automation edit SLUG", "open or resume the automation's chat with the brief; a running chat gets nothing typed, the brief is printed"]
       ]
     }.freeze
 

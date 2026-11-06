@@ -55,12 +55,14 @@ goes in the commit message.
   validation, or how qm edits and writes the file.
 - [automations](areas/automations.md) — read when you touch claude.ai routines managed by qm:
   `RoutinesClient` and its token (`automations.token_source`), the local files, mapping to and
-  from the routines API, API errors, or their schedule (UTC cron ↔ local weekdays and time).
+  from the routines API, API errors, their schedule (UTC cron ↔ local weekdays and time), the
+  brief their chats start with.
 - [cli](areas/cli.md) — read when you touch a `qm` command, the bare-`qm` fzf viewer or live
   sessions listing.
 
 ## Also here
 
+- `automations-house-rules.md` — the rules every automation's prompt follows; the automation chat brief includes it verbatim.
 - `gui-mockup.html` — the GUI's design-reference prototype (fake data).
 - `showcase/` — a fake demo world for running the real `qm gui` on made-up data, scripted
   screenshots of it and the narrated overview video; how to run them is in `showcase/README.md`.
