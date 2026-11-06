@@ -107,6 +107,12 @@ module Quartermaster
         ["qm install-hooks", "print the settings.json hooks snippet (session capture + event/board/snapshot appenders)"],
         ["qm pin-ruby [VERSION|--clear]", "run qm (hooks included) on this Ruby whatever a session's directory pins (default: the running one); --clear unpins"],
         ["qm doctor", "check hooks, Ruby pin and floor, data root, qm.log errors and recent capture; exits 1 on a ✗"]
+      ],
+      "Settings" => [
+        ["qm config get [PATH]", "print config.yml (or the value at a dotted PATH, e.g. projects.App.test_db; unset: exit 1)"],
+        ["qm config set PATH VALUE", "set a key; VALUE is YAML ([dev, ngrok] a list, true, 4); errors refuse the write (exit 1), warnings don't"],
+        ["qm config unset PATH", "remove a key or a whole project (warns how many work items still name it)"],
+        ["qm config path", "print config.yml's location"]
       ]
     }.freeze
 

@@ -1,7 +1,7 @@
 # Settings
 
-**Code:** `lib/quartermaster/config_schema.rb`, `lib/quartermaster/config_check.rb`, `lib/quartermaster/config_file.rb`
-**Tests:** `test/config_file_test.rb`
+**Code:** `lib/quartermaster/config_schema.rb`, `lib/quartermaster/config_check.rb`, `lib/quartermaster/config_file.rb`, `lib/quartermaster/cli_config.rb`
+**Tests:** `test/config_file_test.rb`, `test/config_cli_test.rb`
 **Depends on:** [capture](capture.md) (`ProjectConfig` reads the same file)
 
 ## What it does
@@ -51,6 +51,18 @@ follow the schema's order; unset values (nil, blank text, empty lists) and empti
 dropped and a bare `projects:` (the earlier seed's) is `projects: {}` (`ConfigCheck.tidy`); a project holding only its root is written as the plain path; lists
 of scalars are flow style (`[dev, tunnel]`); multi-line text is a `|` block; paths stay unquoted.
 The first-run seed (`CONFIG_SEED`) is exactly what `emit` writes for `projects: {}`.
+`ConfigFile.dump` is the same emitter for any value, with no header.
+
+**CLI** — `qm config` (`CliConfig`, a [cli](cli.md) command group) loads, changes and writes in
+one go, so a CLI write is never stale unless the file changes mid-command. `get` with no path
+prints the file as it is; with a path, a scalar prints bare (shell-usable) and a subtree as
+`dump`ed YAML; an unset key prints nothing and exits 1. `set PATH VALUE` reads VALUE with
+`parse_value` and echoes `PATH: value` as written; `unset PATH` of an absent key says so and
+writes nothing; `path` prints the file's location. A path the schema doesn't know (`set`, `get`, `unset`, even when absent)
+fails as `qm: unknown config key: …`. Every error the edited file has goes to stderr as
+`qm: error: <path>: <message>`, exit 1, nothing written; warnings about the changed path (at,
+under or above it) go to stderr as `qm: warning: …` after the write, exit 0. `unset projects.X`
+warns how many work items still have `project: X` (they keep it; `qm move` reassigns).
 
 ## Rules
 

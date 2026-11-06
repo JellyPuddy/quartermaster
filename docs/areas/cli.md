@@ -78,6 +78,11 @@ settings snippet) — see [capture](capture.md).
   [capture](capture.md) owns it); and capture (`!` when neither `sessions.jsonl` nor
   `events.jsonl`'s tail has an event from the last day).
 
+**Settings**
+- `qm config get [PATH]` / `qm config set PATH VALUE` / `qm config unset PATH` / `qm config path` —
+  config.yml by dotted path (VALUE is YAML); errors refuse the write with exit 1, warnings don't;
+  unsetting a project warns with its work-item count ([settings](settings.md)).
+
 Internal, called by the viewer's fzf bindings: `viewer-rows`, `sessions-view`, `inbox-view`,
 `cycle-filter`, `session-rows`, `inbox-rows`, `choose-state`, `choose-project`,
 `choose-snooze`, `attach-session`, `item-from-session`. Internal, spawned by the GUI: `bench-run
@@ -87,7 +92,8 @@ Internal, called by the viewer's fzf bindings: `viewer-rows`, `sessions-view`, `
 one file each: `CliViewer` (viewer rows and pickers, `show`, sessions), `CliAttention` (inbox,
 attention, overview, ack, snooze, distill), `CliChats` (commands acting on the running GUI),
 `CliPrs` (pr, pr-requires, draft), `CliCleanup` (cleanup, sweep), `CliWorkspace` (resume, start,
-pf, IDE, terminal), `CliSetup` (how qm itself runs: pin-ruby, doctor), and `CliFormat` (shared output helpers and the help text). Each group's frozen
+pf, IDE, terminal), `CliSetup` (how qm itself runs: pin-ruby, doctor), `CliConfig` (`qm config`, owned by
+[settings](settings.md)), and `CliFormat` (shared output helpers and the help text). Each group's frozen
 `COMMANDS` maps a word to the method `CLI#run` calls with argv; `CLI.commands` merges them and
 refuses a word claimed twice. A new command touches only its group's file (and `qm help`). Hooks
 and commands called otherwise (no argv, extra arguments, another class) stay explicit `when`

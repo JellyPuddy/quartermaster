@@ -116,13 +116,17 @@ module Quartermaster
     end
 
     # The file text qm writes for a config mapping.
-    def self.emit(data)
+    def self.emit(data) = "#{HEADER}\n#{dump(ordered(ConfigCheck.tidy(data), ""))}"
+
+    # A mapping or list as qm writes it in config.yml (flow lists, `|`
+    # blocks, unquoted paths), with no document marker.
+    def self.dump(value)
       tree = Psych::Visitors::YAMLTree.create(line_width: -1)
-      tree << fresh(ordered(ConfigCheck.tidy(data), ""))
+      tree << fresh(value)
       ast = tree.tree
       ast.each { |node| style(node) }
       ast.children.first.implicit = true
-      "#{HEADER}\n#{ast.yaml(nil, line_width: -1)}"
+      ast.yaml(nil, line_width: -1)
     end
 
     # A copy sharing no object, so the emitter never writes YAML aliases.
