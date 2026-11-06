@@ -49,6 +49,29 @@ fn asides_of(item: &WorkItem) -> Vec<Session> {
     SessionLog::read().sessions().into_iter().filter(|s| s.aside_for().as_deref() == Some(item.slug.as_str())).collect()
 }
 
+/// `Aside#history`: the item's asides, newest first, for the drawer's list of earlier ones.
+pub fn history(item: &WorkItem) -> Result<Vec<Value>, Halt> {
+    let promoted: Vec<String> = item.notes().into_iter().map(|n| n.text).collect();
+    let mut sessions = asides_of(item);
+    sessions.sort_by_key(|s| s.started_ts());
+    sessions.reverse();
+    let mut rows = vec![];
+    for s in sessions {
+        let transcript = s.transcript();
+        let answer = match &transcript {
+            Some(t) => last_answer_in(t)?,
+            None => None,
+        };
+        let model = match &transcript {
+            Some(t) => model_in(t)?,
+            None => None,
+        };
+        let is_promoted = answer.as_ref().is_some_and(|a| promoted.contains(&note_text(a)));
+        rows.push(serde_json::json!({"id": s.id, "tier": s.tier(), "at": s.started_ts_opt(), "prompt": s.first_prompt(), "model": model, "answer": answer, "promoted": is_promoted}));
+    }
+    Ok(rows)
+}
+
 /// `Aside#reopen`: an earlier aside resumed under its marker, on the model it ran on.
 pub fn reopen(item: &WorkItem, session_id: &str) -> Result<(), Halt> {
     if Tmux::new().live(&aside_name(&item.slug)) {

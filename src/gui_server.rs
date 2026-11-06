@@ -316,6 +316,18 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
                 Err(_) => text_reply("501 Not Implemented", "not ported yet: this state (status boards, benchmarks, loose chats, build progress)"),
             };
         }
+        if let Some(id) = route.strip_prefix("/api/session/") {
+            return match crate::session_detail::session_detail(id) {
+                Some(v) => json_reply(v),
+                None => text_reply("501 Not Implemented", "not ported yet: this session"),
+            };
+        }
+        if let Some(slug) = route.strip_prefix("/api/asides/") {
+            return match asides_payload(slug) {
+                Some(v) => json_reply(v),
+                None => text_reply("501 Not Implemented", "not ported yet: this drawer"),
+            };
+        }
         if let Some(slug) = route.strip_prefix("/api/diff/") {
             return match diff_payload(slug, query) {
                 Some(v) => json_reply(v),
@@ -471,4 +483,26 @@ pub fn run() -> Outcome {
         std::thread::spawn(move || handle(stream, &guard, &token));
     }
     done(String::new())
+}
+
+/// `Gui#asides_payload`: the drawer's earlier asides; a failure must not cost the drawer.
+fn asides_payload(slug: &str) -> Option<Value> {
+    let failed = |class: &str, message: String| {
+        data_root::log_error("gui-asides", class, &message);
+        Some(json!({"error": message}))
+    };
+    let item = match crate::work_item::WorkItem::find(slug) {
+        Ok(i) => i,
+        Err(e) => return failed(e.class, e.message),
+    };
+    let mut rows = match crate::aside::history(&item) {
+        Ok(r) => r,
+        Err(crate::aside::Halt::Unported) => return None,
+        Err(crate::aside::Halt::Refuse(m)) => return failed("RuntimeError", m),
+    };
+    for row in rows.iter_mut() {
+        let when = crate::gui_state::relative_when(row["at"].as_str()).ok()?.unwrap_or_else(|| "—".into());
+        row["when"] = json!(when);
+    }
+    Some(json!({"asides": rows}))
 }

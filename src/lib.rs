@@ -57,6 +57,7 @@ pub mod stack_layers;
 pub mod sha1;
 pub mod sha256;
 pub mod session_commands;
+pub mod session_detail;
 pub mod show_command;
 pub mod session_rows;
 pub mod tmux;

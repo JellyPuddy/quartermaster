@@ -49,6 +49,9 @@ impl Session {
         text(self.last.get("ts"))
     }
 
+    pub fn started_ts_opt(&self) -> Option<String> {
+        text(self.start.get("ts"))
+    }
     pub fn started_ts(&self) -> String {
         text(self.start.get("ts")).unwrap_or_default()
     }

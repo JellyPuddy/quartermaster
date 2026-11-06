@@ -2920,3 +2920,119 @@ fn the_ask_route_matches_ruby() {
     }
     assert!(!seen.contains("\"slug\":\"ghost\"") && !seen.contains("item-9"), "invented slugs and a ninth hit are dropped");
 }
+
+#[test]
+fn the_asides_route_matches_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let stamp = |secs: i64| (chrono::Utc::now() - chrono::Duration::seconds(secs)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let assistant = |id: &str, model: &str, blocks: &[&str]| format!("{}\n", serde_json::json!({"type": "assistant", "message": {"id": id, "model": model, "content": blocks.iter().map(|t| serde_json::json!({"type": "text", "text": t})).collect::<Vec<_>>()}}));
+    let user = |text: &str| format!("{}\n", serde_json::json!({"type": "user", "message": {"role": "user", "content": text}}));
+    let mut log = fs::read_to_string(w.root.join("sessions.jsonl")).unwrap();
+    for (id, slug, text, age, ts) in [
+        ("h-old", "as-one", Some(user("first question") + &assistant("m1", "claude-opus-5-5", &["an answer", "in two blocks"])), 90_000, true),
+        ("h-new", "as-one", Some(user("second question") + &assistant("m1", "claude-sonnet-5-5", &["already a note"])), 3_000, true),
+        ("h-none", "as-one", None, 2_000, true),
+        ("h-empty", "as-one", Some(user("nothing back")), 1_000, true),
+        ("h-nots", "as-one", Some(assistant("m1", "<synthetic>", &["no ts"])), 500, false),
+        ("h-other", "as-two", Some(assistant("m1", "claude-opus-5-5", &["not yours"])), 100, true),
+    ] {
+        let path = w.transcripts.join(format!("p/{id}.jsonl"));
+        if let Some(t) = text {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, t).unwrap();
+        }
+        let when = if ts { format!(",\"ts\":\"{}\"", stamp(age)) } else { String::new() };
+        log += &format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"{id}\",\"cwd\":\"/srv/app\",\"pid\":999999,\"aside\":\"{slug}\",\"transcript_path\":\"{}\"{when}}}\n", path.display());
+    }
+    fs::write(w.root.join("sessions.jsonl"), log).unwrap();
+    for (slug, notes) in [("as-one", "- 2026-01-02: aside: already a note\n"), ("as-two", ""), ("as-bare", "")] {
+        fs::write(w.root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: {slug}\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\n---\n\n## Description\n\nd\n\n## Notes\n\n{notes}\n## Snapshots\n")).unwrap();
+    }
+    let env: Vec<(&str, String)> = vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string())];
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let ruby = start_env(false, &w.root, &w.home, &env);
+    let rust = start_env(true, &root2, &w.home, &env);
+    let mut seen = String::new();
+    for slug in ["as-one", "as-two", "as-bare", "nowhere"] {
+        let path = format!("/api/asides/{slug}");
+        let (a, b) = (request(ruby.port, "GET", &path, &[], "", true), request(rust.port, "GET", &path, &[], "", true));
+        assert_eq!(shown(&a, ruby.port), shown(&b, rust.port), "{slug}");
+        seen += &String::from_utf8_lossy(&a.body);
+    }
+    let log = |root: &Path| fs::read_to_string(root.join("qm.log")).unwrap_or_default().lines().map(|l| l.splitn(2, ' ').nth(1).unwrap_or("").to_string()).collect::<Vec<_>>();
+    assert_eq!(log(&w.root), log(&root2));
+    for needle in ["\"promoted\":true", "\"promoted\":false", "\"model\":\"claude-opus-5-5\"", "\"answer\":null", "\"tier\":\"expired\"", "\"at\":null", "ago", "no work item"] {
+        assert!(seen.contains(needle), "the world should reach {needle}: {seen}");
+    }
+}
+
+#[test]
+fn the_session_route_matches_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let j = |v: serde_json::Value| format!("{v}\n");
+    let user = |text: &str, ts: &str| j(serde_json::json!({"type": "user", "timestamp": ts, "message": {"role": "user", "content": text}}));
+    let asst = |model: &str, blocks: serde_json::Value| j(serde_json::json!({"type": "assistant", "message": {"model": model, "content": blocks}}));
+    let tool = |name: &str, file: Option<&str>| serde_json::json!({"type": "tool_use", "name": name, "input": file.map(|f| serde_json::json!({"file_path": f})).unwrap_or(serde_json::json!({}))});
+    let long = "r".repeat(500);
+    let long_prompt = "p".repeat(900);
+    let mut transcripts: Vec<(&str, String)> = vec![];
+    transcripts.push(("t-full", [
+        j(serde_json::json!({"type": "ai-title", "aiTitle": "A fine title"})),
+        asst("claude-opus-5-5", serde_json::json!([{"type": "text", "text": "before any prompt"}])),
+        user("first prompt", "2026-03-01T10:00:00.000Z"),
+        j(serde_json::json!({"type": "assistant", "gitBranch": "feat/x", "message": {"model": "claude-opus-5-5", "content": [tool("Read", Some("/a/b/one.rs")), tool("Read", Some("/a/two.rs")), tool("Edit", Some("/a/b/one.rs")), tool("Bash", None), {"type": "text", "text": "  the reply  "}]}})),
+        user(&long_prompt, "2026-03-01T10:05:00.000Z"),
+        asst("claude-sonnet-5-5", serde_json::json!([tool("Grep", None), {"type": "text", "text": long}, {"type": "text", "text": "second text wins"}, 5, "str"])),
+        j(serde_json::json!({"type": "user", "isMeta": true, "message": {"content": "meta"}})),
+        j(serde_json::json!({"type": "user", "toolUseResult": {"x": 1}, "message": {"content": "tool result"}})),
+        user("<command-name>x</command-name>", "2026-03-01T10:06:00.000Z"),
+        j(serde_json::json!({"type": "user", "isSidechain": true, "message": {"content": "side"}})),
+        j(serde_json::json!({"type": "assistant", "isSidechain": true, "gitBranch": "side", "message": {"model": "side-model", "content": []}})),
+        "not json\n".to_string(),
+        "\"just a string\"\n".to_string(),
+        "\n".to_string(),
+        user("third prompt", "2026-03-01T10:10:00.000Z"),
+        asst("<synthetic>", serde_json::json!("a string content")),
+        j(serde_json::json!({"type": "assistant", "message": {"content": [tool("Read", Some("/f/1")), tool("Read", Some("/f/2")), tool("Read", Some("/f/3")), tool("Read", Some("/f/4")), tool("Read", Some("/f/5")), tool("Read", Some("/f/6")), tool("Read", Some("/f/7")), serde_json::json!({"type": "tool_use", "input": null})]}})),
+    ].concat()));
+    transcripts.push(("t-edges", [
+        j(serde_json::json!({"type": "user", "gitBranch": "kept", "timestamp": "2026-03-04T10:00:00.000Z", "message": {"content": format!("{} bcccc", "a".repeat(699))}})),
+        j(serde_json::json!({"type": "assistant", "gitBranch": "", "message": {"content": [{"type": "text", "text": "r".repeat(361)}]}})),
+        user("second", "2026-03-04T10:01:00.000Z"),
+        j(serde_json::json!({"type": "assistant", "message": {"content": [{"type": "text", "text": format!("{} tail words", "s".repeat(359))}]}})),
+    ].concat()));
+    transcripts.push(("t-array", format!("{}[1,2]\n", user("a prompt", "2026-03-02T10:00:00.000Z"))));
+    transcripts.push(("t-number", format!("{}5\n", user("a prompt", "2026-03-02T10:00:00.000Z"))));
+    transcripts.push(("t-null", format!("{}null\n", user("a prompt", "2026-03-02T10:00:00.000Z"))));
+    transcripts.push(("t-badmsg", format!("{}{}", user("a prompt", "2026-03-02T10:00:00.000Z"), j(serde_json::json!({"type": "assistant", "message": "text"})))));
+    transcripts.push(("t-baduser", j(serde_json::json!({"type": "user", "message": "oops"}))));
+    transcripts.push(("t-badinput", format!("{}{}", user("a prompt", "2026-03-02T10:00:00.000Z"), asst("m", serde_json::json!([{"type": "tool_use", "name": "X", "input": "text"}])))));
+    transcripts.push(("t-empty", String::new()));
+    transcripts.push(("t-noreply", user("only a prompt", "2026-03-03T10:00:00.000Z")));
+    let mut log = fs::read_to_string(w.root.join("sessions.jsonl")).unwrap();
+    for (id, text) in &transcripts {
+        let path = w.transcripts.join(format!("p/{id}.jsonl"));
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, text).unwrap();
+        log += &format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"{id}\",\"cwd\":\"{}/proj\",\"pid\":999999,\"transcript_path\":\"{}\",\"ts\":\"2026-03-01T09:00:00Z\"}}\n", w.home.display(), path.display());
+    }
+    log += "{\"v\":1,\"event\":\"start\",\"session_id\":\"t-pruned\",\"cwd\":\"/srv/app\",\"pid\":999999,\"transcript_path\":\"/nonexistent/x.jsonl\",\"ts\":\"2026-03-01T09:00:00Z\"}\n";
+    fs::write(w.root.join("sessions.jsonl"), log).unwrap();
+    let env: Vec<(&str, String)> = vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string())];
+    let ruby = start_env(false, &w.root, &w.home, &env);
+    let rust = start_env(true, &w.root, &w.home, &env);
+    let mut seen = String::new();
+    let ids: Vec<&str> = transcripts.iter().map(|(id, _)| *id).chain(["t-pruned", "d-live", "never-heard-of", "x/y"]).collect();
+    for id in ids {
+        let path = format!("/api/session/{id}");
+        let (a, b) = (request(ruby.port, "GET", &path, &[], "", true), request(rust.port, "GET", &path, &[], "", true));
+        assert_eq!(shown(&a, ruby.port), shown(&b, rust.port), "{id}");
+        seen += &String::from_utf8_lossy(&a.body);
+    }
+    for needle in ["\"title\":\"A fine title\"", "\"branch\":\"feat/x\"", "\"model\":\"<synthetic>\"", "\"name\":\"Read\",\"count\":2", "one.rs", "\"turns\":null", "\"tier\":\"uncaptured\"", "…", "\"reply\":\"the reply\"", "\"reply\":null"] {
+        assert!(seen.contains(needle), "the world should reach {needle}");
+    }
+}
