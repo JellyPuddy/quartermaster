@@ -7,7 +7,8 @@
 ## What it does
 
 `qm gui` is a loopback web UI over the work items: a kanban board, a chat view (`v`), a PRs
-view (`p`) and an Issues view (`I`). It is a stdlib `TCPServer`, no web framework.
+view (`p`), an Issues view (`I`) and the Settings view (`,`, [settings](settings.md)). It is a
+stdlib `TCPServer`, no web framework.
 
 **Server lifecycle** (`Gui#run`). Binds `127.0.0.1` on the fixed port 49737 (`QM_GUI_PORT`
 overrides) so the URL is stable and the browser keeps one tab. If the port is taken, it
@@ -99,7 +100,7 @@ own cwd, no `QM_ITEM`). Esc closes the top sheet first.
 
 **Keyboard map** (board): `j`/`k` move, `h`/`l` column, `/` search, `c` new item, Enter
 chat, `r` resume, `n` new session, `o` PR, `s` state, `a` note, `.` more, Esc close;
-`v` / `p` / `I` switch mode. The chat view has its own map (see [chats](chats.md)).
+`v` / `p` / `I` / `,` switch mode. The chat view has its own map (see [chats](chats.md)).
 
 **Search** (client-side over the state payload). Every space-separated term must match. Free
 terms fuzzy-match slug/title (fzf-style subsequence, from 4 chars, tight or word-start only)

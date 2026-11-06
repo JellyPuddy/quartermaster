@@ -32,6 +32,7 @@
 <link rel="stylesheet" href="/assets/css/prs.css">
 <link rel="stylesheet" href="/assets/css/issues-list.css">
 <link rel="stylesheet" href="/assets/css/issue-start.css">
+<link rel="stylesheet" href="/assets/css/settings.css">
 <link rel="stylesheet" href="/assets/css/responsive.css">
 </head>
 <body data-mode="board">
@@ -44,6 +45,7 @@
       <button data-mode="chat" aria-pressed="false">Chats <span id="chat-count"></span></button>
       <button data-mode="prs" aria-pressed="false" title="Open PRs: yours, and those asking your review (p)">PRs <span id="prs-badge"></span></button>
       <button data-mode="issues" aria-pressed="false" title="Issue drafts across all items (⇧I)">Issues <span id="issues-badge"></span></button>
+      <button data-mode="settings" aria-pressed="false" title="Edit config.yml: projects, dev servers, IDE, prices (,)">Settings</button>
     </div>
 
     <label class="search">
@@ -163,6 +165,10 @@
     </main>
   </div>
 
+  <div class="st-wrap">
+    <main class="st-main" id="st-body"></main>
+  </div>
+
   <footer class="legend">
     <span class="tag">keyboard-first · mouse optional</span>
     <span class="grp"><kbd>v</kbd><span>board / chats</span></span>
@@ -173,6 +179,8 @@
     <span class="grp"><kbd>⇧I</kbd><span>issues</span></span>
     <span class="grp issues-only"><kbd>⏎</kbd><span>open in its chat</span></span>
     <span class="grp issues-only"><kbd>s</kbd><span>start work (created)</span></span>
+    <span class="grp"><kbd>,</kbd><span>settings</span></span>
+    <span class="grp settings-only"><kbd>⌘S</kbd><span>save</span></span>
     <span class="grp"><kbd>j</kbd><kbd>k</kbd><span>move</span></span>
     <span class="grp board-only"><kbd>←</kbd><kbd>→</kbd><span>column</span></span>
     <span class="grp chat-only"><kbd>z</kbd><span>snooze your turn</span></span>
@@ -251,6 +259,9 @@ let terminalToken = /*__TERMINAL_TOKEN__*/ null;
 <script src="/assets/js/issues-list.js"></script>
 <script src="/assets/js/issue-start.js"></script>
 <script src="/assets/js/transcript-search.js"></script>
+<script src="/assets/js/settings-widgets.js"></script>
+<script src="/assets/js/settings-render.js"></script>
+<script src="/assets/js/settings.js"></script>
 <script src="/assets/js/events.js"></script>
 </body>
 </html>

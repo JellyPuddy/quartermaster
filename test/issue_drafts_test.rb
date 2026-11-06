@@ -327,7 +327,7 @@ class IssueDraftsTest < Minitest::Test
      '<span class="grp"><kbd>⇧I</kbd><span>issues</span></span>',
      '<span class="grp issues-only"><kbd>⏎</kbd><span>open in its chat</span></span>',
      'if (e.key === "I") { e.preventDefault(); setMode(mode === "issues" ? "board" : "issues"); return; }',
-     'if (mode === "issues") return issueListKey(e);', 'if (["chat", "prs", "issues"].includes(savedMode)) setMode(savedMode);',
+     'if (mode === "issues") return issueListKey(e);', 'if (["chat", "prs", "issues", "settings"].includes(savedMode)) setMode(savedMode);',
      'else if (m === "issues") { renderIssueList(); loadIssueIndex(); }',
      'body:not([data-mode="issues"]) .il-wrap { display: none; }',
      'body:not([data-mode="issues"]) .legend .issues-only { display: none; }',

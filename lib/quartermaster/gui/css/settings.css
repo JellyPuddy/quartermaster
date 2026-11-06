@@ -1,0 +1,173 @@
+/* ------- Settings view: projects × features grid, the document, a sticky side column ------- */
+body:not([data-mode="settings"]) .st-wrap, body:not([data-mode="settings"]) .legend .settings-only { display: none; }
+body[data-mode="settings"] .legend .item-key { display: none; }
+.st-wrap { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+.st-main {
+  max-width: 1500px; margin: 0 auto; padding: 10px 12px 80px;
+  display: grid; grid-template-columns: minmax(0, 1fr) 248px; gap: 14px; align-items: start;
+}
+.st-main > .col-empty { grid-column: 1 / -1; }
+.st-head { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.st-head h2 { margin: 0; font-size: 18px; }
+.st-file { font: 11px var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-sub { font-size: 12px; color: var(--muted); }
+.st-title { font: 10px var(--mono); text-transform: uppercase; letter-spacing: .07em; color: var(--faint); margin: 2px 0 4px; }
+.st-dot { color: var(--turn); font-size: 9px; vertical-align: 2px; }
+.st-flash { animation: st-flash 1.2s; }
+@keyframes st-flash { 0%, 40% { background: var(--accent-soft); } 100% { background: transparent; } }
+
+/* The grid: tight cells so seven columns fit a ~1500px window; a whole cell is the click target. */
+.st-matrix {
+  grid-column: 1 / -1; overflow-x: auto; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-card);
+}
+.st-matrix table { width: 100%; border-collapse: collapse; }
+.st-matrix th {
+  font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .04em; color: var(--faint);
+  text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.st-matrix td { padding: 4px 4px; border-bottom: 1px solid var(--border); font-size: 12.5px; cursor: pointer; }
+.st-matrix tr:last-child td { border-bottom: none; }
+.st-matrix tr:hover td { background: var(--surface-2); }
+.st-matrix th:first-child, .st-matrix td:first-child { padding-left: 10px; }
+.st-matrix th:last-child, .st-matrix td:last-child { padding-right: 10px; text-align: right; }
+.st-name { font-weight: 700; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.st-name small { display: block; max-width: 200px; font: 400 10.5px var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; }
+.st-bad { color: var(--crit); font-size: 11px; }
+.st-items { font: 11.5px var(--mono); color: var(--muted); }
+
+.st-feat {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 150px; font: 600 10.5px var(--mono);
+  padding: 1px 6px; border-radius: 9px; border: 1px solid transparent; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; vertical-align: middle;
+}
+.st-feat::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.st-feat.on { color: var(--good); background: var(--good-bg); }
+.st-feat.off { color: var(--faint); border-color: var(--border); }
+.st-feat.inherit { color: var(--accent); border-color: var(--accent-line); }
+.st-feat.off::before, .st-feat.inherit::before { background: transparent; border: 1px solid currentColor; width: 4px; height: 4px; }
+.st-feat.warning { color: var(--warn); background: var(--warn-bg); }
+.st-feat.error { color: var(--crit); background: var(--crit-bg); }
+
+/* The document */
+.st-doc { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.st-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 16px; box-shadow: var(--shadow-card); scroll-margin-top: 10px;
+}
+.st-card h3 { margin: 0 0 2px; font-size: 14.5px; display: flex; align-items: center; gap: 8px; }
+.st-group { font: 10px var(--mono); text-transform: uppercase; letter-spacing: .07em; color: var(--faint); margin: 6px 2px -4px; }
+.st-proj > summary { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.st-proj > summary::-webkit-details-marker { display: none; }
+.st-proj > summary h3 { margin: 0; }
+.st-proj > summary h3::before { content: "▸"; color: var(--faint); font-size: 12px; width: 12px; }
+.st-proj[open] > summary h3::before { content: "▾"; }
+.st-proj > summary .st-sub { margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.st-proj[open] > summary { padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 2px; }
+.st-sec h4 { margin: 12px 0 0; font: 600 12px var(--mono); color: var(--muted); }
+.st-more { margin-top: 6px; border-top: 1px solid var(--border); scroll-margin-top: 10px; }
+.st-more > summary { cursor: pointer; list-style: none; font-size: 12px; color: var(--muted); padding: 8px 0 4px; user-select: none; }
+.st-more > summary::-webkit-details-marker { display: none; }
+.st-more > summary::before { content: "▸ "; }
+.st-more[open] > summary::before { content: "▾ "; }
+.st-more > summary:hover { color: var(--accent); }
+.st-sec.st-more > summary { font: 600 12px var(--mono); }
+.st-rare > summary { list-style: none; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); padding: 6px 2px; }
+.st-rare > summary::-webkit-details-marker { display: none; }
+.st-rare > summary::before { content: "▸ "; }
+.st-rare[open] > summary::before { content: "▾ "; }
+.st-rare-body { display: flex; flex-direction: column; gap: 12px; }
+
+/* A field: label column, control, help, the check's messages */
+.st-fld { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 3px 14px; padding: 8px 0; align-items: start; }
+.st-fld + .st-fld { border-top: 1px dashed var(--border); }
+.st-fld > label { font-size: 12.5px; font-weight: 600; color: var(--ink); padding-top: 5px; overflow-wrap: anywhere; }
+.st-fld > label code { display: block; font: 400 10.5px var(--mono); color: var(--faint); margin-top: 2px; }
+.st-fld.dirty > label::before { content: "●"; color: var(--turn); margin-right: 5px; font-size: 9px; vertical-align: 2px; }
+.st-ctl { min-width: 0; }
+.st-help, .st-msg, .st-preview { grid-column: 2; font-size: 11.5px; color: var(--muted); }
+.st-msg { font-family: var(--mono); }
+.st-msg.error { color: var(--crit); }
+.st-msg.warning { color: var(--warn); }
+.st-preview { font: 11px var(--mono); color: var(--faint); overflow-wrap: anywhere; }
+.st-in {
+  width: 100%; font: 13px var(--sans); color: var(--ink); background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: 6px; padding: 5px 8px; outline: none;
+}
+.st-in.mono, textarea.st-in { font: 12px var(--mono); }
+textarea.st-in { min-height: 60px; resize: vertical; }
+.st-num { max-width: 140px; }
+.st-in:focus, .st-chips:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.st-fld.has-error .st-in, .st-fld.has-error .st-chips { border-color: var(--crit); }
+.st-fld.has-warning .st-in, .st-fld.has-warning .st-chips { border-color: var(--warn); }
+.st-toggle { display: inline-flex; align-items: center; gap: 8px; padding-top: 5px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.st-toggle input { width: 15px; height: 15px; accent-color: var(--accent); }
+.st-chips {
+  display: flex; flex-wrap: wrap; gap: 5px; align-items: center; border: 1px solid var(--border-strong);
+  border-radius: 6px; padding: 3px 5px; background: var(--surface); cursor: text;
+}
+.st-chip {
+  display: inline-flex; align-items: center; gap: 3px; font: 11.5px var(--mono); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 5px; padding: 1px 2px 1px 7px; max-width: 100%; overflow-wrap: anywhere;
+}
+.st-chip.ph { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); font-weight: 700; }
+.st-chip button { all: unset; cursor: pointer; color: var(--faint); padding: 0 3px; }
+.st-chip button:hover { color: var(--crit); }
+.st-chip-in { border: none; outline: none; background: none; font: 12px var(--mono); color: var(--ink); flex: 1 1 90px; min-width: 90px; padding: 3px; }
+
+.st-prices-scroll { overflow-x: auto; }
+.st-prices { width: 100%; border-collapse: collapse; font: 12px var(--mono); }
+.st-prices th { text-align: right; font: 600 10px var(--mono); color: var(--faint); text-transform: uppercase; letter-spacing: .04em; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.st-prices th:first-child, .st-prices td:first-child { text-align: left; }
+.st-prices td { padding: 2px 4px; border-bottom: 1px solid var(--border); text-align: right; }
+.st-prices td input { width: 74px; text-align: right; font: 12px var(--mono); border: 1px solid transparent; background: none; color: var(--ink); border-radius: 4px; padding: 3px 5px; }
+.st-prices td input:hover { border-color: var(--border); }
+.st-prices td input:focus { border-color: var(--accent); outline: none; background: var(--surface); }
+.st-prices td input:not(:placeholder-shown) { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.st-prices td.has-error input { border-color: var(--crit); }
+.st-prices tr.custom td:first-child { color: var(--accent); }
+
+.st-entry { border: 1px solid var(--border); border-radius: 8px; padding: 4px 12px; margin: 6px 0; }
+.st-entry-head { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
+.st-entry-head .st-danger { margin-left: auto; }
+.st-add { display: flex; gap: 8px; align-items: center; padding: 6px 0; }
+.st-add .st-in { max-width: 320px; }
+.st-x { all: unset; cursor: pointer; color: var(--faint); padding: 0 4px; }
+.st-x:hover { color: var(--crit); }
+.st-danger { all: unset; cursor: pointer; font-size: 12px; color: var(--crit); }
+.st-danger:hover { text-decoration: underline; }
+.st-ghost { all: unset; cursor: pointer; font-size: 12.5px; color: var(--accent); padding: 6px 8px; border-radius: 6px; align-self: flex-start; }
+.st-ghost:hover { background: var(--accent-soft); }
+.st-remove { margin-top: 10px; }
+.st-confirm { padding: 8px 10px; border-radius: 6px; background: var(--crit-bg); color: var(--crit); font-size: 12px; display: flex; gap: 10px; align-items: center; }
+.st-confirm .act:first-of-type { margin-left: auto; }
+.st-broken { grid-column: 1 / -1; font-size: 13px; }
+
+/* The side column: always in view while the document scrolls */
+.st-side { position: sticky; top: 10px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.st-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; box-shadow: var(--shadow-card); }
+.st-save { display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 220px); overflow-y: auto; }
+.st-row { display: flex; gap: 8px; align-items: center; }
+.st-save .btn.primary { flex: 1; justify-content: center; }
+.st-save .btn[disabled] { opacity: .45; cursor: not-allowed; }
+.st-save .btn.primary kbd { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.28); color: inherit; }
+.st-issues { display: flex; flex-direction: column; gap: 2px; }
+.st-issue { display: flex; flex-direction: column; align-items: flex-start; }
+.st-issue .st-danger { margin: 0 0 4px 66px; font-size: 11.5px; }
+.st-jump { all: unset; cursor: pointer; display: flex; gap: 8px; font-size: 12px; padding: 4px 6px; border-radius: 5px; overflow-wrap: anywhere; }
+.st-jump:hover { background: var(--surface-2); }
+.st-jump b { font: 10px var(--mono); text-transform: uppercase; letter-spacing: .05em; padding-top: 2px; min-width: 52px; }
+.st-issue.error b { color: var(--crit); }
+.st-issue.warning b { color: var(--warn); }
+.st-jump code { font: 11px var(--mono); color: var(--muted); }
+.st-toc a { display: block; font-size: 12.5px; color: var(--muted); text-decoration: none; padding: 3px 4px; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-toc a:hover { color: var(--accent); background: var(--accent-soft); }
+.st-toc a.dirty::after { content: " ●"; color: var(--turn); font-size: 9px; }
+.st-toc a.rare { color: var(--faint); }
+
+@media (max-width: 860px) {
+  .st-main { grid-template-columns: minmax(0, 1fr); padding: 8px 12px 60px; }
+  .st-side { position: static; }
+  .st-fld { grid-template-columns: minmax(0, 1fr); }
+  .st-help, .st-msg, .st-preview { grid-column: 1; }
+}

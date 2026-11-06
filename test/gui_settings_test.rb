@@ -160,6 +160,26 @@ class GuiSettingsTest < Minitest::Test
     refute File.exist?("#{file}.bak")
   end
 
+  # The page draws every field through SETTINGS_WIDGETS (settings-widgets.js),
+  # one entry per line; a schema type without one would render as a text box.
+  def test_the_page_has_a_widget_for_every_schema_type
+    page = served_page(gui, { "host" => "127.0.0.1:4567" })
+    table = page[/const SETTINGS_WIDGETS = \{\n(.*?)\n\};/m, 1]
+    refute_nil table, "settings-widgets.js is served and declares SETTINGS_WIDGETS"
+    widgets = table.scan(/^  (\w+):/).flatten
+
+    assert_equal Quartermaster::ConfigSchema::TYPES.sort, widgets.sort
+  end
+
+  def test_settings_is_a_mode_with_its_shortcut_in_the_legend
+    page = served_page(gui, { "host" => "127.0.0.1:4567" })
+
+    assert_includes page, %(<button data-mode="settings")
+    assert_match(%r{<kbd>,</kbd><span>settings</span>}, page)
+    assert_includes page, %(if (e.key === ",") { e.preventDefault(); setMode(mode === "settings" ? "board" : "settings"); return; })
+    assert_operator page.index("/assets/js/settings.js"), :<, page.index("/assets/js/events.js"), "settings.js loads before events.js"
+  end
+
   def test_save_and_check_refuse_a_foreign_or_missing_origin
     write_config(APP)
     loaded = get_settings
