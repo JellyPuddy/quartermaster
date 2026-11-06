@@ -244,6 +244,20 @@ class GuiAutomationsTest < Minitest::Test
     assert_includes page, %(act("describe", { slug, args: { text } }))
   end
 
+  # Opening the tab asks for runs and refreshes at once: runs that arrive
+  # while that refresh is under way are already fresh.
+  def test_runs_loaded_during_a_refresh_stay_loaded
+    gate = Queue.new
+    @client.define_singleton_method(:list) { gate.pop && super() }
+    adopt
+    post("/api/automations/refresh")
+    post("/api/automations/runs", "slug" => "digest")
+    Timeout.timeout(10) { sleep 0.02 until get("/api/automations/digest")["runsState"] == "ok" }
+    gate << true
+    settle
+    assert_equal "ok", get("/api/automations/digest")["runsState"]
+  end
+
   def test_new_creates_the_item_and_its_empty_files_for_the_chat_to_fill
     status, answer = post("/api/automations/new", "title" => "Weekly report", "project" => "MyApp")
     assert_equal ["200 OK", true, "weekly-report"], [status, answer["ok"], answer["slug"]]

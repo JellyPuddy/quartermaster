@@ -103,9 +103,10 @@ module Quartermaster
     def refresh
       return { "ok" => true, "remote" => remote_state } unless enabled?
 
+      loaded = @lock.synchronize { @runs.reject { |_, runs| runs["state"] == "idle" }.keys }
       @jobs.background("automations", "listing routines") do
         fetch_routines
-        @lock.synchronize { @runs.each_key { |slug| @runs[slug] = stale(@runs[slug]) } }
+        @lock.synchronize { loaded.each { |slug| @runs[slug] = stale(@runs[slug]) } }
         { "ok" => true, "quiet" => true, "automation" => nil }
       end
     end

@@ -148,7 +148,8 @@ Claude does). Every network call is a `GuiJobs` job (`automations`, `automation-
 page reloads the tab when the state poll hands it the job's end. The page opens the tab with
 one refresh and asks for the shown automation's runs while its `runsState` is `idle`: the first
 time, and again after an action job on that slug ends (Run now, a refused push too) or a refresh
-ends, both of which set loaded runs back to `idle` (still listed until the new ones arrive);
+ends, both of which set loaded runs back to `idle` (still listed until the new ones arrive; a
+refresh leaves runs that arrived while it ran, so opening the tab loads them once);
 Apply is per automation. The detail's Description has an edit control that saves through the
 GUI's `describe` action (`/api/action`, as `qm describe` does): the item's text, local, never pushed.
 
