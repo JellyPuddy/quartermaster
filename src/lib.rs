@@ -69,6 +69,7 @@ pub mod uncommitted_marks;
 pub mod unified_diff;
 pub mod transcript_usage;
 pub mod transcript_vitals;
+pub mod turn_notifier;
 pub mod transcripts;
 pub mod usage_ledger;
 pub mod viewed_marks;

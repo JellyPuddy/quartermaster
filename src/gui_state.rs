@@ -92,13 +92,13 @@ pub fn pulse() -> String {
     let mut parts = vec![size(data_root::root().join("events.jsonl")), size(SessionLog::path())];
     parts.extend(MID_TURN.lock().unwrap().iter().map(|p| size(p.into())));
     let mut out: Vec<String> = parts.iter().map(u64::to_string).collect();
-    out.extend([if crate::caffeinate::status()["on"] == true { "1" } else { "0" }.to_string(), drafts::signature(), issue_drafts::signature(), "0".to_string()]);
+    out.extend([if crate::caffeinate::status()["on"] == true { "1" } else { "0" }.to_string(), drafts::signature(), issue_drafts::signature(), crate::turn_notifier::seq().to_string()]);
     out.join(":")
 }
 
 pub fn events_pulse() -> String {
     let size = std::fs::metadata(data_root::root().join("events.jsonl")).map(|m| m.len()).unwrap_or(0);
-    format!("{size}:{}:{}:0", drafts::signature(), issue_drafts::signature())
+    format!("{size}:{}:{}:{}", drafts::signature(), issue_drafts::signature(), crate::turn_notifier::seq())
 }
 
 fn config_raw() -> Map<String, Value> {
@@ -506,7 +506,7 @@ pub fn build(token: &str) -> R<Value> {
         ("asideModels", json!(["sonnet", "opus", "haiku"])),
         ("caffeinate", crate::caffeinate::status()),
         ("benchmark", Value::Null),
-        ("notifications", json!([])),
+        ("notifications", Value::Array(crate::turn_notifier::recent())),
         ("rateLimits", rate_limits()),
         ("finished", Value::Array(crate::gui_jobs::take_finished())),
     ] {
@@ -514,4 +514,37 @@ pub fn build(token: &str) -> R<Value> {
     }
     let _ = text(&Value::Null);
     Ok(Value::Object(out))
+}
+
+/// `Drafts.counts`: every item's draft count, for the page's badges.
+fn draft_counts() -> Option<Value> {
+    let Ok(dir) = std::fs::read_dir(data_root::root().join("drafts")) else { return Some(json!({})) };
+    let mut slugs: Vec<String> = vec![];
+    for e in dir.filter_map(|e| e.ok()) {
+        let name = e.file_name().into_string().ok()?;
+        if let Some(slug) = name.strip_suffix(".json") {
+            let shaped = slug.chars().next().is_some_and(|c| c.is_ascii_alphanumeric()) && slug.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'));
+            if shaped {
+                slugs.push(slug.to_string());
+            }
+        }
+    }
+    slugs.sort();
+    let mut counts = Map::new();
+    for slug in slugs {
+        let n = drafts::entries(&slug)?.len();
+        if n > 0 {
+            counts.insert(slug, json!(n));
+        }
+    }
+    Some(Value::Object(counts))
+}
+
+/// `GuiState#attention_payload`: off the chat view only whose move it is matters: the tab title's
+/// count, the notifications to show and each item's draft count.
+pub fn attention_payload() -> Option<Value> {
+    let log = SessionLog::read();
+    let attention = chat_attention().ok()?;
+    let panes = crate::tmux::Tmux::new().sessions();
+    Some(json!({"attention": attention, "notifications": crate::turn_notifier::recent(), "loose": loose_payload(&panes, &log), "draftCounts": draft_counts()?}))
 }

@@ -307,7 +307,20 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
             }
             return text_reply("404 Not Found", "not found");
         }
+        if route == "/api/attention" {
+            return match crate::gui_state::attention_payload() {
+                Some(v) => json_reply(v),
+                None => text_reply("501 Not Implemented", "not ported yet: this attention"),
+            };
+        }
         if route == "/api/pulse" {
+            let seen = params(query);
+            if seen.get("visible").and_then(Value::as_str) == Some("1") {
+                let chat = seen.get("chat").and_then(Value::as_str).filter(|c| !c.is_empty()).map(String::from);
+                crate::turn_notifier::page_seen(seen.get("focused").and_then(Value::as_str) == Some("1"), chat);
+            } else {
+                crate::turn_notifier::page_hidden();
+            }
             return json_reply(json!({"pulse": crate::gui_state::pulse(), "events": crate::gui_state::events_pulse(), "issues": crate::issue_drafts::signature()}));
         }
         if route == "/api/state" {
@@ -491,6 +504,18 @@ pub fn run() -> Outcome {
     unsafe { libc::signal(libc::SIGINT, stop as extern "C" fn(libc::c_int) as libc::sighandler_t) };
     crate::pr_status::set_background(true);
     crate::command_runner::set_fenced(!crate::command_runner::live_root());
+    // notifications for chats that need the user, raised from hook output (events.jsonl growing)
+    std::thread::spawn(|| {
+        let mut size: Option<Option<u64>> = None;
+        loop {
+            let current = std::fs::metadata(data_root::root().join("events.jsonl")).ok().map(|m| m.len());
+            if size != Some(current) {
+                crate::turn_notifier::check();
+            }
+            size = Some(current);
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+        }
+    });
     // auto mode's verdict, re-checked on a server thread so it holds with no tab open
     std::thread::spawn(|| loop {
         std::thread::sleep(std::time::Duration::from_secs(15));

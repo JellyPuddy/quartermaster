@@ -3225,3 +3225,125 @@ fn the_history_route_matches_ruby() {
         assert!(seen.contains(needle), "the world should reach {needle}");
     }
 }
+
+#[test]
+fn turn_notifications_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let (base_a, base_b) = (base.path().join("a"), base.path().join("b"));
+    let (wa, wb) = (attention_world(&base_a, std::time::SystemTime::now(), None), attention_world(&base_b, std::time::SystemTime::now(), None));
+    let now = chrono::Utc::now();
+    let at = |secs: i64| (now - chrono::Duration::seconds(secs)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    for w in [&wa, &wb] {
+        let mut log = fs::read_to_string(w.root.join("sessions.jsonl")).unwrap();
+        for (id, extra, prompt) in [("n-linked", "", None), ("n-blank", "", None), ("n-long", "", None), ("n-short", "", None), ("n-hour", "", None), ("n-snooze", "", None), ("n-aside", ",\"aside\":\"nlink\"", None), ("n-loose", ",\"loose\":\"abcd1234\"", Some("a question that was asked in a loose chat")), ("n-unlinked", "", Some("an unlinked session\nwith two lines")), ("n-bare", "", None), ("n-wait", "", None)] {
+            let path = w.transcripts.join(format!("p/{id}.jsonl"));
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let mut text = prompt.map(|p| format!("{}\n", serde_json::json!({"type": "user", "message": {"role": "user", "content": p}}))).unwrap_or_default();
+            if id == "n-wait" {
+                text += &format!("{}\n", serde_json::json!({"type": "user", "timestamp": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true), "toolUseResult": {"status": "async_launched", "agentId": "bg-1", "description": "a job"}}));
+            }
+            fs::write(&path, text).unwrap();
+            log += &format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"{id}\",\"cwd\":\"/srv/app\",\"pid\":999999,\"transcript_path\":\"{}\",\"ts\":\"{}\"{extra}}}\n", path.display(), at(3600));
+        }
+        fs::write(w.root.join("sessions.jsonl"), log).unwrap();
+        for (slug, sessions, extra) in [("nlink", "- id: n-linked\n- id: n-long\n- id: n-short\n- id: n-hour\n- id: n-wait\n", ""), ("nsnooze", "- id: n-snooze\n", "turn_snoozed_at: '2099-01-01T00:00:00+00:00'\n")] {
+            fs::write(w.root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: Title of {slug}\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\n{extra}sessions:\n{sessions}---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n")).unwrap();
+        }
+        executable(&w.bin.join("terminal-notifier"), "#!/bin/sh\necho \"$@\" >> \"$FAKE_NOTIFY_LOG\"\n");
+    }
+    // what happened before the GUI started is not news
+    for w in [&wa, &wb] {
+        fs::write(w.root.join("events.jsonl"), format!("{}\n{}\n", serde_json::json!({"v": 1, "ts": at(500), "event": "UserPromptSubmit", "session_id": "n-old"}), serde_json::json!({"v": 1, "ts": at(490), "event": "PermissionRequest", "session_id": "n-old", "tool": "Bash"}))).unwrap();
+    }
+    let logs = [base_a.join("notify.log"), base_b.join("notify.log")];
+    let env_for = |w: &common::AttentionWorld, side: usize| -> Vec<(&'static str, String)> { vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("PATH", format!("{}:{}", w.bin.display(), std::env::var("PATH").unwrap())), ("FAKE_NOTIFY_LOG", logs[side].display().to_string())] };
+    let ruby = start_env(false, &wa.root, &wa.home, &env_for(&wa, 0));
+    let rust = start_env(true, &wb.root, &wb.home, &env_for(&wb, 1));
+    std::thread::sleep(std::time::Duration::from_millis(2000)); // the first check only takes stock
+    let state = |s: &Server| -> serde_json::Value { serde_json::from_slice(&request(s.port, "GET", "/api/state", &[], "", true).body).unwrap() };
+    let event = |name: &str, id: &str, secs: i64, tool: Option<&str>| format!("{}\n", serde_json::json!({"v": 1, "ts": at(secs), "event": name, "session_id": id, "tool": tool}));
+    let emit = |text: &str| {
+        for w in [&wa, &wb] {
+            use std::io::Write;
+            fs::OpenOptions::new().append(true).create(true).open(w.root.join("events.jsonl")).unwrap().write_all(text.as_bytes()).unwrap();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(3400));
+    };
+    let notes = |s: &Server| state(s)["notifications"].to_string();
+    let notified = |side: usize| fs::read_to_string(&logs[side]).unwrap_or_default().lines().map(|l| regex::Regex::new(r"-execute .*? (open-chat [^ ]*)$").unwrap().replace(l, "-execute <qm> $1").into_owned()).map(|l| regex::Regex::new(r"-execute \S+ ").unwrap().replace(&l, "-execute ").into_owned()).collect::<Vec<_>>();
+    let step = |label: &str| {
+        assert_eq!(notes(&ruby), notes(&rust), "{label}: the page's notifications");
+        let (a, b) = (notified(0), notified(1));
+        assert_eq!(a.len(), b.len(), "{label}: macOS notifications: {a:?} vs {b:?}");
+        for (x, y) in a.iter().zip(b.iter()) {
+            assert_eq!(x.split("-execute").next(), y.split("-execute").next(), "{label}");
+            assert_eq!(x.rsplit(' ').next(), y.rsplit(' ').next(), "{label}: the click opens the same chat");
+        }
+        assert_eq!(state(&ruby)["pulse"].as_str().unwrap().rsplit(':').next(), state(&rust)["pulse"].as_str().unwrap().rsplit(':').next(), "{label}: the pulse moves with each notification");
+    };
+    emit(&[event("UserPromptSubmit", "n-linked", 200, Some("Edit")), event("PermissionRequest", "n-linked", 190, Some("Bash"))].concat());
+    step("blocked on a tool");
+    emit(&[event("UserPromptSubmit", "n-bare", 180, None), event("PermissionRequest", "n-bare", 170, None)].concat());
+    step("blocked, no tool, no item");
+    emit(&[event("UserPromptSubmit", "n-long", 300, None), event("Stop", "n-long", 255, None)].concat());
+    step("a long turn");
+    emit(&[event("UserPromptSubmit", "n-short", 100, None), event("Stop", "n-short", 90, None)].concat());
+    step("a short turn is no news");
+    emit(&[event("UserPromptSubmit", "n-hour", 7000, None), event("Stop", "n-hour", 3250, None)].concat());
+    step("an hour-long turn");
+    emit(&[event("UserPromptSubmit", "n-loose", 60, None), event("PermissionRequest", "n-loose", 50, Some("Write"))].concat());
+    step("a loose chat");
+    emit(&[event("UserPromptSubmit", "n-unlinked", 60, None), event("PermissionRequest", "n-unlinked", 50, Some("Edit"))].concat());
+    step("an unlinked session, titled by its prompt");
+    emit(&[event("UserPromptSubmit", "n-aside", 60, None), event("PermissionRequest", "n-aside", 50, Some("Edit"))].concat());
+    step("an aside is never news");
+    emit(&[event("UserPromptSubmit", "n-snooze", 300, None), event("Stop", "n-snooze", 200, None)].concat());
+    step("a snoozed turn");
+    emit(&[event("UserPromptSubmit", "n-wait", 300, None), event("Stop", "n-wait", 200, None)].concat());
+    step("a turn that handed off to background work");
+    // the page's pulse chooses the channel: a visible tab shows the notification itself, and says nothing to
+    // macOS; one focused on that very chat says nothing at all
+    let keep_seen = |chat: &'static str| {
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let handles: Vec<_> = [ruby.port, rust.port]
+            .into_iter()
+            .map(|port| {
+                let stop = stop.clone();
+                std::thread::spawn(move || {
+                    while !stop.load(std::sync::atomic::Ordering::SeqCst) {
+                        request(port, "GET", &format!("/api/pulse?visible=1&focused=1&chat={chat}"), &[], "", true);
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                    }
+                })
+            })
+            .collect();
+        (stop, handles)
+    };
+    let release = |held: (std::sync::Arc<std::sync::atomic::AtomicBool>, Vec<std::thread::JoinHandle<()>>)| {
+        held.0.store(true, std::sync::atomic::Ordering::SeqCst);
+        for h in held.1 {
+            h.join().unwrap();
+        }
+    };
+    let before = (notified(0).len(), notified(1).len());
+    let held = keep_seen("nlink");
+    emit(&[event("UserPromptSubmit", "n-linked", 40, Some("Edit")), event("PermissionRequest", "n-linked", 30, Some("Read"))].concat());
+    release(held);
+    step("watching that very chat");
+    assert_eq!(before, (notified(0).len(), notified(1).len()), "a tab on that chat is told, macOS is not");
+    let held = keep_seen("elsewhere");
+    emit(&[event("UserPromptSubmit", "n-linked", 20, Some("Edit")), event("PermissionRequest", "n-linked", 10, Some("Grep"))].concat());
+    release(held);
+    step("visible, on another chat");
+    assert_eq!(before, (notified(0).len(), notified(1).len()), "a visible tab shows it itself");
+    let (a, b) = (request(ruby.port, "GET", "/api/attention", &[], "", true), request(rust.port, "GET", "/api/attention", &[], "", true));
+    assert_eq!(shown(&a, ruby.port), shown(&b, rust.port), "the attention payload");
+    assert!(String::from_utf8_lossy(&a.body).contains("\"notifications\":[{"));
+    let seen = notes(&rust);
+    for needle in ["Needs you: Bash", "Needs your answer", "Your turn — after 0m 45s", "Your turn — after 1h 2m", "\"loose\":\"loose--abcd1234\"", "a question that was asked in a loose chat", "an unlinked session\\nwith two lines", "\"title\":\"Title of nlink\"", "\"page\":false"] {
+        assert!(seen.contains(needle) || notes(&ruby).contains(needle), "the world should reach {needle}: {seen}");
+    }
+    let log = notified(1).join("\n");
+    assert!(log.contains("-sound Glass") && log.contains("open-chat nlink") && log.contains("open-chat loose--abcd1234"), "{log}");
+    assert!(!seen.contains("n-aside") && !seen.contains("n-short") && !seen.contains("n-snooze") && !seen.contains("n-wait"), "{seen}");
+}
