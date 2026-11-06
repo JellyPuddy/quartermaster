@@ -89,7 +89,7 @@ fn text_reply(status: &'static str, body: &str) -> Reply {
 }
 
 /// `String#inspect`, for the messages that quote what the page sent.
-fn inspect(s: &str) -> String {
+pub fn inspect(s: &str) -> String {
     let mut out = String::from("\"");
     let cs: Vec<char> = s.chars().collect();
     for (i, c) in cs.iter().enumerate() {
@@ -182,6 +182,40 @@ fn diff_file_payload(slug: &str, query: Option<&str>) -> Value {
     }
 }
 
+/// `Gui#diff_payload` for the scopes ported; `None` for the rest.
+fn diff_payload(slug: &str, query: Option<&str>) -> Option<Value> {
+    use crate::branch_diff::{call, Failure, Params};
+    let p = params(query);
+    let get = |k: &str| p.get(k).and_then(Value::as_str).map(String::from);
+    let fail = |e: String| Some(json!({"ok": false, "error": e}));
+    let mut item = match WorkItem::find(&decode(slug)) {
+        Ok(i) => i,
+        Err(e) => {
+            if e.class != "ArgumentError" {
+                data_root::log_error("gui-diff", e.class, &e.message);
+            }
+            return fail(e.message);
+        }
+    };
+    if get("scope").as_deref() == Some("prompt") {
+        return None;
+    }
+    let params = Params { branch: get("branch"), scope: get("scope"), from: get("from"), to: get("to"), base: get("base") };
+    match call(&mut item, &params) {
+        Ok(mut result) => {
+            if let Some(Value::Array(files)) = result.get_mut("files") {
+                crate::viewed_marks::apply(&item.slug, files);
+            }
+            let mut out = Map::new();
+            out.insert("ok".into(), json!(true));
+            out.extend(result);
+            Some(Value::Object(out))
+        }
+        Err(Failure::Arg(m)) => fail(m),
+        Err(Failure::Unported) => None,
+    }
+}
+
 fn pulse() -> String {
     let size = |p: PathBuf| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
     let events = size(data_root::root().join("events.jsonl"));
@@ -269,6 +303,12 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
         }
         if route == "/api/pulse" {
             return json_reply(json!({"pulse": pulse(), "events": events_pulse(), "issues": crate::issue_drafts::signature()}));
+        }
+        if let Some(slug) = route.strip_prefix("/api/diff/") {
+            return match diff_payload(slug, query) {
+                Some(v) => json_reply(v),
+                None => text_reply("501 Not Implemented", "not ported yet: this diff scope (pr, prompt) or a Review item"),
+            };
         }
         if let Some(slug) = route.strip_prefix("/api/diff-file/") {
             return json_reply(diff_file_payload(slug, query));

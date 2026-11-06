@@ -53,6 +53,16 @@ impl Tmux {
         (ok && pid > 0).then_some(pid)
     }
 
+    /// The directory of the session's pane, or None.
+    pub fn pane_path(&self, name: &str) -> Option<String> {
+        if !valid_name(name) {
+            return None;
+        }
+        let (ok, out) = self.run(&["display-message", "-p", "-t", &format!("={name}:"), "#{pane_current_path}"]);
+        let path = crate::ruby_text::strip(&out).to_string();
+        (ok && !path.is_empty()).then_some(path)
+    }
+
     /// Renames session `old` and its window to `new`, so the attach target follows the chat. False
     /// when either name is unusable, `old` isn't running, or `new` already is.
     pub fn rename(&self, old: &str, new: &str) -> bool {

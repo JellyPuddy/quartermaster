@@ -43,3 +43,20 @@ pub fn git_bytes(cwd: Option<&str>, args: &[&str], stdin: &[u8]) -> Option<Vec<u
 pub fn git(cwd: Option<&str>, args: &[&str]) -> Option<String> {
     git_with(cwd, args, "")
 }
+
+/// `BranchDiff#raw_git`: unstripped stdout with invalid bytes scrubbed to `?`, for the exit statuses
+/// in `ok` (`diff --no-index` exits 1 when the files differ); None otherwise.
+pub fn raw(cwd: &str, args: &[&str], ok: &[i32]) -> Option<String> {
+    let out = Command::new("git").args(["-c", "core.quotepath=off", "-C", cwd]).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output().ok()?;
+    if !ok.contains(&out.status.code()?) {
+        return None;
+    }
+    let mut text = String::new();
+    for chunk in out.stdout.utf8_chunks() {
+        text.push_str(chunk.valid());
+        if !chunk.invalid().is_empty() {
+            text.push('?');
+        }
+    }
+    Some(text)
+}

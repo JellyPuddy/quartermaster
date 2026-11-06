@@ -38,7 +38,7 @@ fn truthy(v: &Value) -> bool {
 }
 
 /// `<common git dir>/gh-stack` of the repo at `root`, if it is one.
-fn file_for(root: &str) -> Option<PathBuf> {
+pub fn file_for(root: &str) -> Option<PathBuf> {
     let out = git(Some(root), &["rev-parse", "--git-common-dir"])?;
     let common = if Path::new(&out).is_absolute() { data_root::expand_path(&out) } else { data_root::expand_path(&format!("{root}/{out}")) };
     Some(common.join(FILE_NAME))
@@ -69,7 +69,7 @@ pub fn parse(json: &str) -> Vec<Stack> {
         .collect()
 }
 
-fn for_root(root: &str) -> GhStack {
+pub fn for_root(root: &str) -> GhStack {
     let Some(path) = file_for(root) else { return GhStack { stacks: vec![] } };
     if !path.exists() {
         return GhStack { stacks: vec![] };
@@ -152,21 +152,33 @@ impl RefTips {
     }
 }
 
-fn default_trunk(refs: Option<&RefTips>) -> String {
+pub fn default_trunk(refs: Option<&RefTips>) -> String {
     match refs.and_then(|r| r.first(&TRUNK_REFS)) {
         Some((name, _)) => name.strip_prefix("origin/").unwrap_or(&name).to_string(),
         None => "main".to_string(),
     }
 }
 
+/// The ref tips of the repo at `root`, read from its common git dir.
+pub fn ref_tips(root: &str) -> Option<RefTips> {
+    file_for(root).and_then(|p| p.parent().map(|d| RefTips { common: d.to_path_buf(), root: root.to_string() }))
+}
+
 impl GhStack {
+    /// The branch just below this one in its stack; None for the bottom branch or one in no stack.
+    pub fn parent_of(&self, branch: &str) -> Option<String> {
+        let stack = self.stacks_for(&[branch.to_string()]).into_iter().next()?;
+        let index = stack.entries.iter().position(|e| e.branch == branch)?;
+        (index > 0).then(|| stack.entries[index - 1].branch.clone())
+    }
+
     /// Every stack holding any of these branches, in stack-file order.
-    fn stacks_for(&self, branches: &[String]) -> Vec<&Stack> {
+    pub fn stacks_for(&self, branches: &[String]) -> Vec<&Stack> {
         self.stacks.iter().filter(|s| s.entries.iter().any(|e| branches.contains(&e.branch))).collect()
     }
 
     /// Links every branch of the item's stacks to it; cheap and write-free when nothing is missing.
-    fn link_into(&self, item: &mut WorkItem) -> crate::error::Res<Vec<String>> {
+    pub fn link_into(&self, item: &mut WorkItem) -> crate::error::Res<Vec<String>> {
         let have = item.branches();
         let mut missing: Vec<String> = vec![];
         for stack in self.stacks_for(&have) {
