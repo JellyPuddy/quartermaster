@@ -287,3 +287,40 @@ pub fn stop_pf() -> Result<String, Failed> {
 pub fn job_reply(slug: &str, report: &Report) -> Value {
     json!({"ok": true, "message": format!("{slug}: {}", report.steps.join("; ")), "warning": report.target.warning, "switched": report.mode.is_some(), "path": report.target.path})
 }
+
+/// `TargetWorktree#materialize_branch`: a PR's branch rather than an item's — its existing worktree, else a
+/// new one (the same never-switch-a-worktree rule as for items).
+pub fn materialize_branch(project: &str, branch: &str) -> Result<Target, Failed> {
+    let root = root_for(Some(project))?;
+    if let Some(path) = lookup(&checked_out(&root), branch) {
+        return Ok(Target { path: path.clone(), branch: Some(branch.to_string()), create: false, warning: None, alternatives: vec![] });
+    }
+    let target = Target { path: new_worktree_path(&root, branch), branch: Some(branch.to_string()), create: true, warning: None, alternatives: vec![] };
+    add_worktree(&root, branch, &target.path)?;
+    prepare_test_db(Some(project), &target.path)?;
+    Ok(target)
+}
+
+/// `Workspace#switch_pf_to_branch`: the PRs view's button; `mode` None means the project's default mode.
+pub fn switch_pf_to_branch(project: &str, branch: &str, mode: Option<&str>) -> Result<Report, Failed> {
+    let config = ProjectConfig::current();
+    let server = dev_server_of(&config, Some(project))?;
+    let mode = check_mode(&server, mode.unwrap_or(&server.default_mode))?;
+    let target = materialize_branch(project, branch)?;
+    let shown = mode.clone();
+    report(target, Some(mode), |steps, target| {
+        steps.push(pf_step(&server, target, &shown)?);
+        Ok(())
+    })
+}
+
+/// `Workspace#open_ide_on_branch`.
+pub fn open_ide_on_branch(project: &str, branch: &str) -> Result<Report, Failed> {
+    let config = ProjectConfig::current();
+    let ide = config.ide(Some(project)).ok_or_else(no_ide)?;
+    let target = materialize_branch(project, branch)?;
+    report(target, None, |steps, target| {
+        steps.push(ide_step(ide, target)?);
+        Ok(())
+    })
+}

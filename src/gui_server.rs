@@ -329,6 +329,12 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
                 Err(_) => text_reply("501 Not Implemented", "not ported yet: this state (status boards, benchmarks, loose chats, build progress)"),
             };
         }
+        if route == "/api/prs" {
+            return match crate::gui_prs::payload(&params(query)) {
+                Some(v) => json_reply(v),
+                None => text_reply("501 Not Implemented", "not ported yet: this PR list"),
+            };
+        }
         if let Some(rest) = route.strip_prefix("/api/history/") {
             return match history_payload(rest, &params(query)) {
                 Some(v) => json_reply(v),

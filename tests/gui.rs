@@ -1167,7 +1167,7 @@ fn the_data_actions_match_ruby() {
     }
     // what is not ported answers 501 before anything happens, with the files untouched
     let before = action_traces(&root2, &w.root);
-    for body in [act("pr-chat", "stale", "{}"), act("distill", "stale", "{}"), act("rotate", "stale", "{}")] {
+    for body in [act("build-progress", "stale", "{}"), act("distill", "stale", "{}"), act("rotate", "stale", "{}")] {
         let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
         assert!(a.status.starts_with("501"), "{body}: {}", a.status);
     }
@@ -3616,5 +3616,211 @@ fn the_terminal_websocket_matches_ruby() {
     for s in socks {
         assert!(tmux_on(s, &["list-sessions", "-F", "#{session_name}"]).contains("chat"), "the chat outlives its client");
         tmux_on(s, &["kill-server"]);
+    }
+}
+
+fn pr_node(number: u32, repo: &str, head: &str, updated: &str, decision: Option<&str>, reviews: &[&str], contexts: serde_json::Value, draft: bool) -> serde_json::Value {
+    serde_json::json!({
+        "number": number, "title": format!("PR {number} title"), "url": format!("https://github.com/{repo}/pull/{number}"), "isDraft": draft, "updatedAt": updated,
+        "headRefName": head, "baseRefName": "main", "reviewDecision": decision,
+        "latestReviews": {"nodes": reviews.iter().map(|s| serde_json::json!({"state": s})).collect::<Vec<_>>()},
+        "author": {"login": "octo"}, "repository": {"nameWithOwner": repo},
+        "commits": {"nodes": [{"commit": {"statusCheckRollup": {"contexts": {"nodes": contexts}}}}]}
+    })
+}
+
+fn run_node(name: &str, conclusion: &str, started: &str, suite_id: u64, suite_at: &str, slug: &str, workflow: &str) -> serde_json::Value {
+    serde_json::json!({"name": name, "status": "COMPLETED", "conclusion": conclusion, "startedAt": started, "checkSuite": {"databaseId": suite_id, "createdAt": suite_at, "app": {"slug": slug}, "workflowRun": {"workflow": {"name": workflow}}}})
+}
+
+#[test]
+fn the_prs_view_and_its_actions_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let (base_a, base_b) = (base.path().join("a"), base.path().join("b"));
+    let (wa, wb) = (workspace_world(&base_a, false), workspace_world(&base_b, false));
+    let now = chrono::Utc::now().timestamp();
+    let nodes = |side: &Path| {
+        let ok_suite = vec![
+            run_node("build", "FAILURE", "2026-03-01T10:00:01Z", 1, "2026-03-01T10:00:00Z", "github-actions", "CI"),
+            run_node("build", "CANCELLED", "2026-03-01T11:00:01Z", 2, "2026-03-01T11:00:00Z", "github-actions", "CI"),
+            run_node("build", "SUCCESS", "2026-03-01T11:05:00Z", 2, "2026-03-01T11:00:00Z", "github-actions", "CI"),
+            run_node("lint", "NEUTRAL", "2026-03-01T11:00:02Z", 2, "2026-03-01T11:00:00Z", "github-actions", "CI"),
+            serde_json::json!({"context": "deploy/preview", "state": "PENDING", "createdAt": "2026-03-01T11:00:03Z"}),
+        ];
+        let _ = side;
+        let a = pr_node(5, "acme/widgets", "feat-w", "2026-03-05T10:00:00Z", Some("APPROVED"), &[], serde_json::json!(ok_suite), false);
+        let b = pr_node(6, "acme/widgets", "feat-nowhere", "2026-03-04T10:00:00Z", None, &["APPROVED", "CHANGES_REQUESTED"], serde_json::json!([]), true);
+        let c = pr_node(7, "acme/other", "other-branch", "2026-03-06T10:00:00Z", None, &["APPROVED"], serde_json::json!([run_node("t", "TIMED_OUT", "2026-03-01T12:00:00Z", 9, "2026-03-01T12:00:00Z", "x", "Y"), serde_json::Value::Null]), false);
+        let d = pr_node(8, "acme/unknown", "u", "2026-03-03T10:00:00Z", None, &[], serde_json::json!([run_node("t", "SUCCESS", "2026-03-01T12:00:00Z", 9, "2026-03-01T12:00:00Z", "x", "Y"), run_node("u", "SKIPPED", "2026-03-01T12:00:01Z", 9, "2026-03-01T12:00:00Z", "x", "Y")]), false);
+        (a, b, c, d)
+    };
+    let gh_dirs = [base_a.join("gh"), base_b.join("gh")];
+    for (i, (w, b)) in [(&wa, &base_a), (&wb, &base_b)].iter().enumerate() {
+        git(&w.repo, &["remote", "set-url", "origin", "git@github.com:acme/widgets.git"]);
+        let other = b.join("other-repo");
+        common::repo(&other, "main");
+        git(&other, &["remote", "add", "origin", "https://github.com/acme/other.git"]);
+        let config = fs::read_to_string(w.root.join("config.yml")).unwrap();
+        fs::write(w.root.join("config.yml"), config.replace("  plain:", &format!("  other: {}\n  plain:", other.display()))).unwrap();
+        fs::create_dir_all(&gh_dirs[i]).unwrap();
+        executable(&w.bin.join("gh"), "#!/bin/sh\necho \"$*\" >> \"$FAKE_GH_LOG\"\ncase \"$1\" in\n  api)\n    case \"$2\" in\n      graphql) [ -f \"$FAKE_GH/graphql-fail\" ] && { echo \"graphql is down\" >&2; exit 1; }; cat \"$FAKE_GH/graphql.json\";;\n      */releases/latest) f=\"$FAKE_GH/release-$(echo \"${2#repos/}\" | cut -d/ -f1,2 | tr / _)\"; [ -f \"$f\" ] && cat \"$f\" || { echo \"no release\" >&2; exit 1; };;\n      */compare/*) f=\"$FAKE_GH/compare-${2##*...}\"; [ -f \"$f\" ] && cat \"$f\" || { echo \"no compare\" >&2; exit 1; };;\n    esac;;\n  pr) f=\"$FAKE_GH/pull-$(echo \"$3\" | tr '/:' '__')\"; [ -f \"$f\" ] && cat \"$f\" || { echo \"no pull\" >&2; exit 1; };;\nesac\n");
+        let (n_a, n_b, n_c, n_d) = nodes(b);
+        let graphql = serde_json::json!({"data": {"author": {"nodes": [n_a, n_b, serde_json::Value::Null, serde_json::json!({"title": "no url"})]}, "review": {"nodes": [n_c.clone()]}, "assignee": {"nodes": [n_c, n_d]}}});
+        fs::write(gh_dirs[i].join("graphql.json"), graphql.to_string()).unwrap();
+        // the cache the page starts from: fresh, with two of the PRs
+        let (c_a, c_b, ..) = nodes(b);
+        let merged = quartermaster::pr_inbox::merge(&[("author", vec![c_a, c_b])]);
+        fs::write(w.root.join("pr-inbox.json"), serde_json::json!({"prs": merged, "ts": now - 30, "error": null}).to_string()).unwrap();
+        // two items: one holds the first PR's branch, one is its review; prerequisites and their deploy cache
+        fs::write(w.root.join("work-items/review-widgets-6-old-title.md"), "---\nv: 1\ntitle: 'Review widgets#6: old title'\nstate: resolved\nproject: demo\ncreated: '2026-01-01'\n---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n").unwrap();
+        fs::write(w.root.join("pr-prerequisites.json"), serde_json::json!({"v": 1, "prs": {"https://github.com/acme/widgets/pull/5": [
+            {"kind": "pr", "ref": "https://github.com/acme/widgets/pull/9", "repo": "acme/widgets"},
+            {"kind": "commit", "ref": "abc1234", "repo": "acme/widgets"},
+            {"kind": "pr", "ref": "https://github.com/acme/widgets/pull/10", "repo": "acme/widgets"}
+        ]}}).to_string()).unwrap();
+        fs::write(w.root.join("pr-deployment.json"), serde_json::json!({"v": 1, "releases": {"acme/widgets": {"tag": "v1.2", "ts": now - 10}}, "pulls": {
+            "https://github.com/acme/widgets/pull/5": {"state": "OPEN", "mergeCommit": null, "ts": now - 10},
+            "https://github.com/acme/widgets/pull/9": {"state": "MERGED", "mergeCommit": "def5678", "ts": now - 10},
+            "https://github.com/acme/widgets/pull/10": {"state": "OPEN", "mergeCommit": null, "ts": now - 10}
+        }, "verdicts": {"def5678": {"tag": "v1.2", "deployed": true, "ts": now - 10}, "abc1234": {"tag": "v1.1", "deployed": false, "ts": now - 10}}}).to_string()).unwrap();
+        let _ = b;
+    }
+    let logs = [base_a.join("gh.log"), base_b.join("gh.log")];
+    let chat = base.path().join("fake-chat");
+    executable(&chat, "#!/bin/sh\nexec sleep 300\n");
+    let env_for = |w: &common::AttentionWorld, side: usize| -> Vec<(&'static str, String)> {
+        let base = if side == 0 { &base_a } else { &base_b };
+        vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("PATH", format!("{}:{}:{}", w.bin.display(), base.join("tools").display(), std::env::var("PATH").unwrap())), ("FAKE_GH", gh_dirs[side].display().to_string()), ("FAKE_GH_LOG", logs[side].display().to_string()), ("FAKE_FAIL", base.join("fail").display().to_string()), ("FAKE_TOOL_LOG", base.join("tool.log").display().to_string()), ("QM_TMUX_SOCKET", format!("qm-test-prs-{side}")), ("QM_CHAT_COMMAND", chat.display().to_string()), ("QM_WARP_TAB_CONFIGS", base.join("warp").display().to_string())]
+    };
+    for side in 0..2 {
+        tmux_on(&format!("qm-test-prs-{side}"), &["kill-server"]);
+        fs::create_dir_all(if side == 0 { base_a.join("fail") } else { base_b.join("fail") }).unwrap();
+    }
+    for w in [&wa, &wb] {
+        // an item on the first PR's branch, with a chat pane
+        fs::write(w.root.join("work-items/w-pr.md"), "---\nv: 1\ntitle: w-pr\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\nbranches:\n- feat-w\n---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n").unwrap();
+    }
+    let ruby = start_env(false, &wa.root, &wa.home, &env_for(&wa, 0));
+    let rust = start_env(true, &wb.root, &wb.home, &env_for(&wb, 1));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let norm = |text: String, side: usize| text.replace("\"prerequisitesRefreshing\":true", "\"prerequisitesRefreshing\":false").replace(&(if side == 0 { &base_a } else { &base_b }).display().to_string(), "BASE");
+    let get = |path: &str| -> (String, String) {
+        let (a, b) = (request(ruby.port, "GET", path, &[], "", true), request(rust.port, "GET", path, &[], "", true));
+        (norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1))
+    };
+    let settle = || {
+        for _ in 0..100 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let (a, b) = get("/api/prs");
+            if [&a, &b].iter().all(|t| !t.contains("\"refreshing\":true") && !t.contains("\"prerequisitesRefreshing\":true")) {
+                return;
+            }
+        }
+    };
+    let (a, b) = get("/api/prs");
+    assert_eq!(a, b, "the cached list");
+    for needle in ["\"label\":\"widgets#5\"", "\"project\":\"plain\"", "\"item\":\"w-plain\"", "\"reviewItem\":\"review-widgets-6-old-title\"", "\"state\":\"deployed\"", "\"state\":\"unmerged\"", "\"state\":\"pending\"", "\"reviewSkill\":\"/code-review\"", "\"worktree\":\"BASE/wt-w\"", "\"ci\":{\"state\":\"PENDING\",\"ok\":2,\"total\":3}", "\"reviewDecision\":\"CHANGES_REQUESTED\"", "\"ci\":null"] {
+        assert!(a.contains(needle), "the world should reach {needle}: {a}");
+    }
+    // a forced refresh answers at once and the list follows; the roles merge; the checks are counted as GitHub counts them
+    let (a, b) = get("/api/prs?refresh=1");
+    assert_eq!(a, b, "a forced refresh");
+    assert!(a.contains("\"refreshing\":true"), "{a}");
+    settle();
+    let (a, b) = get("/api/prs");
+    assert_eq!(a, b, "after the refresh");
+    for needle in ["\"roles\":[\"review\",\"assignee\"]", "\"widgets#5\"", "\"project\":null", "\"state\":\"FAILURE\"", "\"state\":\"SUCCESS\",\"ok\":2,\"total\":2", "\"refreshing\":false", "\"error\":null"] {
+        assert!(a.contains(needle), "the refreshed list should show {needle}: {a}");
+    }
+    let cache = |w: &common::AttentionWorld| regex::Regex::new(r#""ts":\d+"#).unwrap().replace_all(&fs::read_to_string(w.root.join("pr-inbox.json")).unwrap(), "\"ts\":T").into_owned();
+    assert_eq!(cache(&wa), cache(&wb));
+    // a failing refresh keeps the last list and says why
+    for d in &gh_dirs {
+        fs::write(d.join("graphql-fail"), "").unwrap();
+    }
+    get("/api/prs?refresh=1");
+    settle();
+    let (a, b) = get("/api/prs");
+    assert_eq!(a, b, "after a failed refresh");
+    assert!(a.contains("gh api graphql failed: graphql is down") && a.contains("\"widgets#5\""), "{a}");
+    for d in &gh_dirs {
+        fs::remove_file(d.join("graphql-fail")).unwrap();
+        fs::write(d.join("graphql.json"), "{\"errors\":[{\"message\":\"timed out\"},{\"message\":\"again\"}],\"data\":null}").unwrap();
+    }
+    get("/api/prs?refresh=1");
+    settle();
+    let (a, b) = get("/api/prs");
+    assert_eq!(a, b, "after a GraphQL error");
+    assert!(a.contains("gh api graphql: timed out; again"), "{a}");
+    // the prerequisites refresh asks GitHub read-only and prunes what it confirms merged
+    let (a, b) = get("/api/prs");
+    assert_eq!(a, b);
+    settle();
+    let (a, b) = get("/api/prs");
+    assert_eq!(a, b, "after the deployment refresh");
+    let deploy = |w: &common::AttentionWorld| regex::Regex::new(r#""ts": \d+"#).unwrap().replace_all(&fs::read_to_string(w.root.join("pr-deployment.json")).unwrap(), "\"ts\": T").into_owned();
+    assert_eq!(deploy(&wa), deploy(&wb));
+    let ghlog = |side: usize| { let mut l: Vec<String> = fs::read_to_string(&logs[side]).unwrap_or_default().lines().map(String::from).collect(); l.sort(); l };
+    assert_eq!(ghlog(0), ghlog(1), "what each server asked GitHub");
+    // the actions on a PR, by its URL
+    for d in &gh_dirs {
+        fs::write(d.join("graphql.json"), serde_json::json!({"data": {"author": {"nodes": [pr_node(5, "acme/widgets", "feat-w", "2026-03-05T10:00:00Z", None, &[], serde_json::json!([]), false), pr_node(6, "acme/widgets", "feat-nowhere", "2026-03-04T10:00:00Z", None, &[], serde_json::json!([]), false), pr_node(7, "acme/other", "other-branch", "2026-03-03T10:00:00Z", None, &[], serde_json::json!([]), false), pr_node(8, "acme/unknown", "u", "2026-03-02T10:00:00Z", None, &[], serde_json::json!([]), false)]}}}).to_string()).unwrap();
+    }
+    get("/api/prs?refresh=1");
+    settle();
+    let post = |body: &str| -> (String, String) {
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, body, true), request(rust.port, "POST", "/api/action", &origin, body, true));
+        (norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1))
+    };
+    let act = |cmd: &str, url: &str, extra: &str| format!("{{\"cmd\":\"{cmd}\",\"slug\":null,\"args\":{{\"url\":\"{url}\"{extra}}}}}");
+    let pr = |n: u32, repo: &str| format!("https://github.com/{repo}/pull/{n}");
+    let mut finished = |label: &str| {
+        let (mut x, mut y): (Vec<String>, Vec<String>) = (vec![], vec![]);
+        for _ in 0..200 {
+            let state = |s: &Server| -> serde_json::Value { serde_json::from_slice(&request(s.port, "GET", "/api/state", &[], "", true).body).unwrap() };
+            let (sa, sb) = (state(&ruby), state(&rust));
+            x.extend(sa["finished"].as_array().unwrap().iter().map(|v| norm(v.to_string(), 0)));
+            y.extend(sb["finished"].as_array().unwrap().iter().map(|v| norm(v.to_string(), 1)));
+            if sa["jobs"].as_array().is_some_and(|j| j.is_empty()) && sb["jobs"].as_array().is_some_and(|j| j.is_empty()) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert_eq!(x, y, "{label}");
+        x.join("\n")
+    };
+    for (label, body) in [
+        ("an unknown PR", act("pr-chat", "https://github.com/acme/widgets/pull/99", "")),
+        ("a PR's chat", act("pr-chat", &pr(5, "acme/widgets"), "")),
+        ("a PR's chat again", act("pr-chat", &pr(5, "acme/widgets"), "")),
+        ("a chat for a PR with no item", act("pr-chat", &pr(6, "acme/widgets"), "")),
+        ("a chat for a PR of no project", act("pr-chat", &pr(8, "acme/unknown"), "")),
+        ("a review", act("pr-review", &pr(7, "acme/other"), "")),
+        ("the review again", act("pr-review", &pr(7, "acme/other"), "")),
+        ("a review whose item was resolved", act("pr-review", &pr(6, "acme/widgets"), "")),
+        ("a PR that is no project", act("pr-pf", &pr(8, "acme/unknown"), "")),
+        ("an IDE for a PR that is no project", act("pr-ide", &pr(8, "acme/unknown"), "")),
+        ("an unknown prerequisite", act("pr-unrequire", &pr(5, "acme/widgets"), ",\"ref\":\"nothing\"")),
+        ("a prerequisite", act("pr-unrequire", &pr(5, "acme/widgets"), ",\"ref\":\"abc1234\"")),
+    ] {
+        let (a, b) = post(&body);
+        assert_eq!(a, b, "{label}: reply to {body}");
+    }
+    for (label, body) in [("the IDE on a PR's branch", act("pr-ide", &pr(5, "acme/widgets"), "")), ("a worktree to create for a PR", act("pr-ide", &pr(6, "acme/widgets"), ""))] {
+        let (a, b) = post(&body);
+        assert_eq!(a, b, "{label}");
+        finished(label);
+    }
+    let items = |w: &common::AttentionWorld, side: usize| {
+        let mut t = String::new();
+        tree_text(&w.root.join("work-items"), "items", &mut t);
+        tree_text(&w.root.join("pr-prerequisites.json").parent().unwrap().join("."), "x", &mut String::new());
+        norm(format!("{t}{}", fs::read_to_string(w.root.join("pr-prerequisites.json")).unwrap_or_default()), side)
+    };
+    assert_eq!(items(&wa, 0), items(&wb, 1), "the items and prerequisites the actions left");
+    let panes = |side: usize| tmux_on(&format!("qm-test-prs-{side}"), &["list-sessions", "-F", "#{session_name}"]);
+    assert_eq!(panes(0), panes(1));
+    for side in 0..2 {
+        tmux_on(&format!("qm-test-prs-{side}"), &["kill-server"]);
     }
 }

@@ -138,6 +138,20 @@ pub fn set_note(pr: &str, reference: &str, note: &str) -> R<Option<Map<String, V
     })
 }
 
+/// Drop the entries of dependent PRs GitHub confirmed merged or closed (`PrPrerequisites#prune`).
+pub fn prune(closed: &[String]) -> R<Vec<String>> {
+    if closed.is_empty() || all()?.is_empty() {
+        return Ok(vec![]);
+    }
+    update(|prs| {
+        let gone: Vec<String> = prs.keys().filter(|k| closed.contains(k)).cloned().collect();
+        for url in &gone {
+            prs.shift_remove(url);
+        }
+        gone
+    })
+}
+
 pub fn remove(pr: &str, reference: &str) -> R<bool> {
     update(|prs| {
         let Some(Value::Array(list)) = prs.get_mut(pr) else { return false };

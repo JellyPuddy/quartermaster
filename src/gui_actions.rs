@@ -222,6 +222,16 @@ fn run(payload: &Value) -> R<Value> {
         "loose-promote" => loose_promote(&args),
         "loose-close" => loose_close(&args),
         "cleanup" => cleanup(&args),
+        "pr-unrequire" => {
+            let (url, reference) = (args.text("url")?, args.text("ref")?);
+            if !crate::pr_prerequisites::remove(&url, &reference).map_err(|_| Stop::Unported)? {
+                return Err(fail(format!("{url} has no prerequisite {reference}")));
+            }
+            Ok(ok())
+        }
+        "pr-chat" => pr_chat(&args),
+        "pr-review" => pr_review(&args),
+        "pr-pf" | "pr-ide" => pr_workspace_job(&args, cmd == "pr-pf"),
         "start" => {
             let item = find(&slug)?;
             open_session(&crate::branch_diff::start_cwd(&item), &["claude"], &[("QM_ITEM", &item.slug)], &format!("qm {}", item.slug))?;
@@ -475,6 +485,92 @@ pub fn sessions_busy() -> bool {
     let log = crate::session_log::SessionLog::read();
     let mut attention = crate::chat_attention::ChatAttention::new();
     log.sessions().iter().filter(|s| s.live).any(|s| matches!(attention.turn_for(s).state.as_str(), "working" | "waiting"))
+}
+
+fn pr_of(args: &Args) -> R<Value> {
+    crate::pr_inbox::find(&args.text("url")?).map_err(fail)
+}
+
+/// A PR's own chat: the item holding its branch, or a new one, with its pane opened or resumed.
+fn pr_chat(args: &Args) -> R<Value> {
+    let pr = pr_of(args)?;
+    let project = crate::pr_items::project_for_repo(pr["repo"].as_str().unwrap_or("")).unwrap_or_else(|| "No project".to_string());
+    let items = WorkItem::all().map_err(error)?;
+    let slug = match crate::pr_items::pr_item(&pr, Some(&project), &items) {
+        Some(i) => i.slug.clone(),
+        None => {
+            let title = format!("{}: {}", crate::pr_items::pr_label(&pr), pr["title"].as_str().unwrap_or(""));
+            find_or_create(&title, &project, pr["head"].as_str(), &format!("Pull request {}.", crate::pr_items::pr_summary(&pr)))?
+        }
+    };
+    let mut reply = pane(&slug, false, &Args(Some(&Map::new())))?;
+    reply["slug"] = json!(slug);
+    Ok(reply)
+}
+
+fn find_or_create(title: &str, project: &str, branch: Option<&str>, description: &str) -> R<String> {
+    let slug = WorkItem::slugify(title);
+    if WorkItem::path_for(&slug).exists() {
+        return Ok(find(&slug)?.slug);
+    }
+    Ok(WorkItem::create(title, project, branch, None, Some(description), None).map_err(error)?.slug)
+}
+
+/// A review runs in a chat of its own — a separate item, so it never lands in the PR's own chat — with the
+/// review skill as its first prompt.
+fn pr_review(args: &Args) -> R<Value> {
+    let pr = pr_of(args)?;
+    let project = crate::pr_items::project_for_repo(pr["repo"].as_str().unwrap_or("")).unwrap_or_else(|| "No project".to_string());
+    let items = WorkItem::all().map_err(error)?;
+    let slug = match crate::pr_items::review_item(&pr, &items) {
+        Some(i) => i.slug.clone(),
+        None => {
+            let title = format!("Review {}: {}", crate::pr_items::pr_label(&pr), pr["title"].as_str().unwrap_or(""));
+            find_or_create(&title, &project, None, &format!("Review of pull request {}.", crate::pr_items::pr_summary(&pr)))?
+        }
+    };
+    let tmux = crate::tmux::Tmux::new();
+    if tmux.live(&slug) {
+        return Ok(json!({"ok": true, "slug": slug, "attached": true}));
+    }
+    let mut item = find(&slug)?;
+    if item.state().as_deref() == Some("resolved") {
+        item.update_state("in_progress").map_err(error)?;
+    }
+    let plan = crate::launcher::chat_plan(&item, true, None, None).ok_or(Stop::Unported)?;
+    if matches!(plan.mode, crate::launcher::Mode::Live) {
+        return Err(fail(format!("{slug} has a chat running outside the GUI — review from there, or end it first")));
+    }
+    let skill = crate::project_config::ProjectConfig::current().review_skill(Some(&project));
+    let argv: Vec<String> = plan.argv.iter().cloned().chain([crate::pr_items::review_kickoff(&skill, &pr, &slug)]).collect();
+    match tmux.open(&slug, &plan.cwd, &argv, &plan.env) {
+        Ok(_) => Ok(json!({"ok": true, "slug": slug, "mode": "start"})),
+        Err(m) => Err(fail(m)),
+    }
+}
+
+/// The dev server / the IDE on the PR's own branch (a new worktree when none has it).
+fn pr_workspace_job(args: &Args, pf: bool) -> R<Value> {
+    let pr = pr_of(args)?;
+    let repo = pr["repo"].as_str().unwrap_or("").to_string();
+    let Some(project) = crate::pr_items::project_for_repo(&repo) else {
+        return Err(fail(format!("{repo} is not a project in config.yml — qm doesn't know where it is checked out")));
+    };
+    let config = crate::project_config::ProjectConfig::current();
+    let label = if pf {
+        "switching the dev server…".to_string()
+    } else {
+        format!("opening {}…", config.ide(Some(&project)).ok_or_else(|| fail("no IDE configured: set ide_command (and ide_label) in config.yml"))?.label)
+    };
+    let items = WorkItem::all().map_err(error)?;
+    let item = crate::pr_items::pr_item(&pr, Some(&project), &items);
+    let key = item.map(|i| i.slug.clone()).unwrap_or_else(|| crate::pr_items::pr_label(&pr));
+    let mode = item.and_then(|i| i.pf_mode());
+    let (head, shown) = (pr["head"].as_str().unwrap_or("").to_string(), crate::pr_items::pr_label(&pr));
+    Ok(crate::gui_jobs::background(&key, &label, pf, move || {
+        let report = if pf { crate::workspace::switch_pf_to_branch(&project, &head, mode.as_deref()) } else { crate::workspace::open_ide_on_branch(&project, &head) }.map_err(crate::gui_jobs::Failure::Argument)?;
+        Ok(json!({"ok": true, "message": format!("{shown}: {}", report.steps.join("; ")), "switched": report.mode.is_some(), "path": report.target.path}))
+    }))
 }
 
 /// The ☕ toggle, and `qm caffeinate on|off|auto|status` from the CLI.

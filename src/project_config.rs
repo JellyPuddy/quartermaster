@@ -52,6 +52,8 @@ pub struct ProjectSettings {
     pub ide: Option<Ide>,
     pub pr_prerequisites: bool,
     pub test_db: Option<String>,
+    /// The PRs view's Review button runs this skill (default `/code-review`).
+    pub review_skill: String,
 }
 
 /// config.yml's project side; an unreadable or malformed file reads as no projects.
@@ -112,6 +114,7 @@ fn parse_project(name: String, value: &Value) -> Option<ProjectSettings> {
         ide: parse_ide(get_raw("ide_command"), get_raw("ide_label")),
         pr_prerequisites: matches!(get_raw("pr_prerequisites"), Some(Value::Bool(true))),
         test_db: string(get_raw("test_db")),
+        review_skill: string(get_raw("review_skill")).unwrap_or_else(|| "/code-review".to_string()),
     })
 }
 
@@ -146,6 +149,16 @@ impl ProjectConfig {
     pub fn settings(&self, project: Option<&str>) -> Option<&ProjectSettings> {
         let name = project?;
         self.projects.iter().find(|p| p.name == name)
+    }
+
+    /// `ProjectConfig#settings(project).review_skill`: a project's own, else the default.
+    pub fn review_skill(&self, project: Option<&str>) -> String {
+        self.settings(project).map(|s| s.review_skill.clone()).unwrap_or_else(|| "/code-review".to_string())
+    }
+
+    /// Every project name, in config order.
+    pub fn project_names(&self) -> Vec<String> {
+        self.projects.iter().map(|p| p.name.clone()).collect()
     }
 
     /// Every dev-server command config.yml configures, once each.
