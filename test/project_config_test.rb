@@ -127,10 +127,10 @@ class ProjectConfigTest < Minitest::Test
     assert_nil Quartermaster::ProjectConfig.current.default_project
   end
 
-  def test_uncommenting_the_seeds_example_project_configures_it
-    seed = Quartermaster::CONFIG_SEED.sub("#   my-app: ~/code/my-app", "  my-app: ~/code/my-app")
-
-    assert_equal({ "my-app" => File.expand_path("~/code/my-app") }, config(seed).roots)
+  def test_the_seed_is_what_qm_writes_for_no_projects
+    assert_equal "# Edited by qm (Settings view / qm config); key reference: docs/overview.md\nprojects: {}\n",
+                 Quartermaster::CONFIG_SEED
+    assert_equal Quartermaster::CONFIG_SEED, Quartermaster::ConfigFile.emit({ "projects" => {} })
   end
 
   def test_project_map_takes_injected_settings_mappings
