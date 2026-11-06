@@ -348,4 +348,12 @@ class AutomationCliTest < Minitest::Test
     _, err = qm_fails("frobnicate")
     assert_includes err, "usage: qm automation"
   end
+
+  def test_a_slug_command_with_a_stray_word_prints_usage_and_does_nothing
+    adopt
+    _, err = qm_fails("delete", "digest", "extra", "--yes")
+    assert_includes err, "usage: qm automation"
+    assert_equal "active", item.state
+    assert_empty @client.calls
+  end
 end

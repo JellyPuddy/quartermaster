@@ -24,7 +24,8 @@ module Quartermaster
 
     def automations = Automations.new(client: RoutinesClient.new(runner: @runner || CommandRunner.new))
 
-    def automation_slug(argv) = argv.shift || abort(AUTOMATION_USAGE)
+    # The one word left once a command's flags are taken out.
+    def automation_slug(argv) = argv.size == 1 ? argv.shift : abort(AUTOMATION_USAGE)
 
     # The local files at once, then one list call for each routine's status
     # and the routines qm doesn't manage yet.
