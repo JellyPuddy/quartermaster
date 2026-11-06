@@ -2283,6 +2283,7 @@ fn the_cleanup_dialog_and_job_match_ruby() {
         let left = |w: &common::AttentionWorld, side: usize| {
             let mut tree = String::new();
             tree_text(&w.root.join("issues"), "issues", &mut tree);
+            let tree = regex::Regex::new(r#""seen_at":[0-9.e+-]+"#).unwrap().replace_all(&tree, "\"seen_at\":T").into_owned();
             norm(format!("{}\n{}\n{tree}", git(&w.repo, &["worktree", "list", "--porcelain"]), git(&w.repo, &["branch", "--list", "--format=%(refname:short)"])), side)
         };
         assert_eq!(left(&wa, 0), left(&wb, 1), "{label}: what is left");
