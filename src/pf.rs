@@ -56,3 +56,21 @@ pub fn serves(status: &Option<Status>, path: &str) -> bool {
         _ => false,
     }
 }
+
+/// `Pf#switch` / `Pf#stop`: the command run, its own message when it fails.
+fn run(argv: &[&str], label: &str) -> Result<(), String> {
+    let result = command_runner::call(argv);
+    if result.success {
+        return Ok(());
+    }
+    let message = [result.err.as_str(), result.out.as_str()].iter().map(|t| crate::ruby_text::strip(t)).find(|t| !t.is_empty()).unwrap_or("exit status non-zero").to_string();
+    Err(format!("{label} failed: {message}"))
+}
+
+pub fn switch(server: &DevServer, path: &str, mode: &str) -> Result<(), String> {
+    run(&[server.command.as_str(), "switch", path, mode], &format!("{} switch", server.command))
+}
+
+pub fn stop(server: &DevServer) -> Result<(), String> {
+    run(&[server.command.as_str(), "stop"], &format!("{} stop", server.command))
+}

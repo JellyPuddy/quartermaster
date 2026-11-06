@@ -73,4 +73,5 @@ pub mod aside;
 pub mod launcher;
 pub mod work_item;
 pub mod work_item_commands;
+pub mod workspace;
 pub mod yaml_scalar;

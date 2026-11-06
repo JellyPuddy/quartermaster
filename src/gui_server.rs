@@ -414,6 +414,7 @@ pub fn run() -> Outcome {
     }
     unsafe { libc::signal(libc::SIGINT, stop as extern "C" fn(libc::c_int) as libc::sighandler_t) };
     crate::pr_status::set_background(true);
+    crate::command_runner::set_fenced(!crate::command_runner::live_root());
     let token = random_token();
     let guard = std::sync::Arc::new(Guard::new(port));
     for stream in listener.incoming().flatten() {

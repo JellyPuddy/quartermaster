@@ -2309,3 +2309,233 @@ fn the_cleanup_dialog_and_job_match_ruby() {
     let missing = plan("nowhere");
     assert!(missing.0.contains("no work item"), "{}", missing.0);
 }
+
+fn executable(path: &Path, text: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, text).unwrap();
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// A repo with an origin, branches in every state "work on this item" meets (local without a worktree,
+/// with one, a slash in the name, only on origin, a gh-stack whose top has none), and fake tools that
+/// log what they are asked: the dev server, the test-DB command, the IDE and `open` for Warp.
+fn workspace_world(base: &Path, live: bool) -> common::AttentionWorld {
+    let mut w = attention_world(base, std::time::SystemTime::now(), None);
+    if live {
+        // the live data root of a sandbox home, so the dev server is not fenced off
+        let root = w.home.join(".claude/quartermaster");
+        fs::create_dir_all(root.parent().unwrap()).unwrap();
+        fs::rename(&w.root, &root).unwrap();
+        w.root = root;
+    }
+    let repo = &w.repo;
+    let origin = base.join("origin.git");
+    fs::create_dir_all(&origin).unwrap();
+    git(&origin, &["init", "-q", "--bare", "-b", "main"]);
+    git(repo, &["remote", "add", "origin", origin.to_str().unwrap()]);
+    git(repo, &["push", "-q", "origin", "main"]);
+    git(repo, &["push", "-q", "origin", "HEAD:refs/heads/origin-only"]);
+    for b in ["feat-a", "feat/slash", "feat-w", "st-1", "st-2", "fresh-b"] {
+        git(repo, &["branch", b]);
+    }
+    git(repo, &["worktree", "add", base.join("wt-w").to_str().unwrap(), "feat-w"]);
+    git(repo, &["worktree", "add", base.join("wt-st1").to_str().unwrap(), "st-1"]);
+    fs::write(repo.join(".git/gh-stack"), serde_json::json!({"stacks": [{"trunk": {"branch": "main"}, "branches": [{"branch": "st-1"}, {"branch": "st-2"}]}]}).to_string()).unwrap();
+    let tools = base.join("tools");
+    let log = "\"${FAKE_TOOL_LOG}\"";
+    executable(&tools.join("devsrv"), &format!("#!/bin/sh\necho \"devsrv $*\" >> {log}\ncase \"$1\" in status) exit 1;; esac\n[ -f \"$FAKE_FAIL/devsrv\" ] && {{ echo \"devsrv exploded\" >&2; exit 3; }}\nexit 0\n"));
+    executable(&tools.join("tdb"), &format!("#!/bin/sh\necho \"tdb $* @ $(pwd)\" >> {log}\n[ -f \"$FAKE_FAIL/tdb\" ] && {{ echo \"no database\" >&2; exit 4; }}\nexit 0\n"));
+    executable(&tools.join("fake-ide"), &format!("#!/bin/sh\necho \"ide $*\" >> {log}\n[ -f \"$FAKE_FAIL/ide\" ] && {{ echo \"ide refused\" >&2; exit 5; }}\nexit 0\n"));
+    executable(&tools.join("open"), &format!("#!/bin/sh\necho \"open $*\" >> {log}\n[ -f \"$FAKE_FAIL/open\" ] && exit 1\nexit 0\n"));
+    fs::write(
+        w.root.join("config.yml"),
+        format!("ide_command: [{ide}, PATH]\nide_label: FakeIDE\nprojects:\n  demo:\n    root: {repo}\n    test_db: {tdb}\n    dev_server:\n      command: {dev}\n      modes: [dev, tunnel]\n      default_mode: dev\n  plain: {repo}\n", ide = tools.join("fake-ide").display(), repo = repo.display(), tdb = tools.join("tdb").display(), dev = tools.join("devsrv").display()),
+    )
+    .unwrap();
+    let item = |slug: &str, project: &str, extra: &str| {
+        fs::write(w.root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: {slug}\nstate: in_progress\nproject: {project}\ncreated: '2026-01-01'\n{extra}---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n")).unwrap();
+    };
+    item("w-exist", "demo", "branches:\n- feat-w\n");
+    item("w-feat", "demo", "branches:\n- feat-a\n");
+    item("w-slash", "demo", "branches:\n- feat/slash\n");
+    item("w-origin", "demo", "branches:\n- origin-only\n");
+    item("w-stack", "demo", "branches:\n- st-1\n");
+    item("w-main", "demo", "branches:\n- main\n");
+    item("w-two", "demo", "branches:\n- feat-w\n- feat-a\n");
+    item("w-plain", "plain", "branches:\n- feat-w\n");
+    item("w-fresh", "demo", "branches:\n- fresh-b\n");
+    item("w-none", "nowhere", "");
+    w
+}
+
+#[test]
+fn the_workspace_jobs_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let (base_a, base_b) = (base.path().join("a"), base.path().join("b"));
+    let (wa, wb) = (workspace_world(&base_a, true), workspace_world(&base_b, true));
+    let fail_dirs = [base_a.join("fail"), base_b.join("fail")];
+    let logs = [base_a.join("tool.log"), base_b.join("tool.log")];
+    let env_for = |w: &common::AttentionWorld, side: usize| -> Vec<(&'static str, String)> {
+        let base = if side == 0 { &base_a } else { &base_b };
+        vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("PATH", format!("{}:{}:{}", base.join("tools").display(), w.bin.display(), std::env::var("PATH").unwrap())), ("FAKE_FAIL", fail_dirs[side].display().to_string()), ("FAKE_TOOL_LOG", logs[side].display().to_string()), ("QM_WARP_TAB_CONFIGS", base.join("warp").display().to_string()), ("QM_TMUX_SOCKET", format!("qm-test-ws-{side}"))]
+    };
+    for d in &fail_dirs {
+        fs::create_dir_all(d).unwrap();
+    }
+    let ruby = start_env(false, &wa.root, &wa.home, &env_for(&wa, 0));
+    let rust = start_env(true, &wb.root, &wb.home, &env_for(&wb, 1));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let norm = |text: String, side: usize| text.replace(&(if side == 0 { &base_a } else { &base_b }).display().to_string(), "BASE");
+    let post = |server: &Server, body: &str| String::from_utf8_lossy(&request(server.port, "POST", "/api/action", &origin, body, true).body).into_owned();
+    let state = |server: &Server| -> serde_json::Value { serde_json::from_slice(&request(server.port, "GET", "/api/state", &[], "", true).body).expect("a state") };
+    let (mut got_ruby, mut got_rust): (Vec<String>, Vec<String>) = (vec![], vec![]);
+    let act = |cmd: &str, slug: &str, args: &str| format!("{{\"cmd\":\"{cmd}\",\"slug\":\"{slug}\",\"args\":{args}}}");
+    let mut run = |label: &str, body: String| {
+        let (a, b) = (post(&ruby, &body), post(&rust, &body));
+        assert_eq!(norm(a.clone(), 0), norm(b.clone(), 1), "{label}: reply to {body}");
+        if a.contains("background") {
+            for _ in 0..300 {
+                let (sa, sb) = (state(&ruby), state(&rust));
+                got_ruby.extend(sa["finished"].as_array().unwrap().iter().map(|v| norm(v.to_string(), 0)));
+                got_rust.extend(sb["finished"].as_array().unwrap().iter().map(|v| norm(v.to_string(), 1)));
+                if sa["jobs"].as_array().is_some_and(|j| j.is_empty()) && sb["jobs"].as_array().is_some_and(|j| j.is_empty()) {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+        for (i, (x, y)) in got_ruby.iter().zip(got_rust.iter()).enumerate() {
+            assert_eq!(x, y, "{label}: job report #{i}");
+        }
+        assert_eq!(got_ruby.len(), got_rust.len(), "{label}: how many jobs reported");
+        let left = |w: &common::AttentionWorld, side: usize| {
+            let base = if side == 0 { &base_a } else { &base_b };
+            // the state builds the test polls with ask the dev server for its status whenever they run
+            let tools: String = fs::read_to_string(&logs[side]).unwrap_or_default().lines().filter(|l| !l.starts_with("devsrv status")).map(|l| format!("{l}\n")).collect();
+            let warp = fs::read_to_string(base.join("warp/qm-launch.toml")).unwrap_or_default();
+            let mut items = String::new();
+            tree_text(&w.root.join("work-items"), "items", &mut items);
+            norm(format!("{}\n{}\n== tools\n{tools}== warp\n{warp}== items\n{items}", git(&w.repo, &["worktree", "list", "--porcelain"]), git(&w.repo, &["branch", "--list", "--format=%(refname:short) %(upstream:short)"])), side)
+        };
+        let (la, lb) = (left(&wa, 0), left(&wb, 1));
+        let sha = regex::Regex::new(r"\bHEAD [0-9a-f]{40}\b").unwrap();
+        assert_eq!(sha.replace_all(&la, "HEAD SHA"), sha.replace_all(&lb, "HEAD SHA"), "{label}: what is left");
+    };
+    let fail = |tool: &str, on: bool| {
+        for d in &fail_dirs {
+            if on {
+                fs::write(d.join(tool), "").unwrap();
+            } else {
+                let _ = fs::remove_file(d.join(tool));
+            }
+        }
+    };
+    run("work on an item with a worktree", act("work-on", "w-exist", "{}"));
+    run("work on, a worktree to create", act("work-on", "w-feat", "{}"));
+    run("work on again", act("work-on", "w-feat", "{}"));
+    run("switch the dev server, a slash branch", act("pf-switch", "w-slash", r#"{"mode":"tunnel"}"#));
+    run("switch to a mode that is not there", act("pf-switch", "w-two", r#"{"mode":"bogus"}"#));
+    run("switch to the item's default mode", act("pf-switch", "w-two", "{}"));
+    run("open the IDE on a branch only origin has", act("ide", "w-origin", "{}"));
+    run("a terminal on a stack whose top has no worktree", act("terminal", "w-stack", "{}"));
+    run("work on a stack's existing worktree", act("work-on", "w-stack", r#"{"branch":"st-1"}"#));
+    run("work on the main checkout", act("work-on", "w-main", "{}"));
+    run("an explicit worktree", act("ide", "w-exist", &format!("{{\"worktree\":\"{}/wt-w\"}}", "BASEPLACEHOLDER")).replace("BASEPLACEHOLDER", "/nonexistent"));
+    run("a branch that is not linked", act("work-on", "w-exist", r#"{"branch":"nope"}"#));
+    run("a project without a dev server", act("work-on", "w-plain", "{}"));
+    run("switching where there is no dev server", act("pf-switch", "w-plain", "{}"));
+    run("an item without a project root", act("work-on", "w-none", "{}"));
+    run("a missing item", act("ide", "nowhere", "{}"));
+    fail("devsrv", true);
+    run("the dev server fails", act("pf-switch", "w-exist", "{}"));
+    run("the dev server fails after a new worktree", act("work-on", "w-slash", "{}"));
+    fail("devsrv", false);
+    fail("ide", true);
+    run("the IDE refuses", act("ide", "w-exist", "{}"));
+    fail("ide", false);
+    fail("tdb", true);
+    run("the test database fails", act("work-on", "w-fresh", "{}"));
+    fail("tdb", false);
+    fail("open", true);
+    run("Warp is not there", act("terminal", "w-exist", "{}"));
+    fail("open", false);
+    run("stop the dev server", act("pf-stop", "", "{}"));
+    fail("devsrv", true);
+    run("the dev server will not stop", act("pf-stop", "", "{}"));
+    fail("devsrv", false);
+    let seen = got_rust.join("\n");
+    for needle in ["devsrv tunnel @", "created worktree", "FakeIDE opened", "Opened Warp tab", "stack top st-2 has no worktree", "mode must be one of", "devsrv exploded", "ide refused", "no database", "could not open a Warp tab", "devsrv stopped", "tdb prepare", "worktrees/origin-only for origin-only"] {
+        let found = seen.contains(needle) || fs::read_to_string(&logs[1]).unwrap_or_default().contains(needle);
+        assert!(found, "the world should reach {needle}: {seen}");
+    }
+    tmux_on("qm-test-ws-0", &["kill-server"]);
+    tmux_on("qm-test-ws-1", &["kill-server"]);
+}
+
+#[test]
+fn a_gui_on_a_throwaway_root_is_fenced_off_the_dev_server_and_runs_updates() {
+    let base = tempfile::tempdir().unwrap();
+    let (base_a, base_b) = (base.path().join("a"), base.path().join("b"));
+    let (wa, wb) = (workspace_world(&base_a, false), workspace_world(&base_b, false));
+    for b in [&base_a, &base_b] {
+        executable(&b.join("proj/bin/update"), "#!/bin/sh\necho updating\n");
+        fs::create_dir_all(b.join("proj-plain")).unwrap();
+        fs::create_dir_all(b.join("fail")).unwrap();
+    }
+    let env_for = |w: &common::AttentionWorld, side: usize| -> Vec<(&'static str, String)> {
+        let base = if side == 0 { &base_a } else { &base_b };
+        vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("PATH", format!("{}:{}:{}", base.join("tools").display(), w.bin.display(), std::env::var("PATH").unwrap())), ("FAKE_FAIL", base.join("fail").display().to_string()), ("FAKE_TOOL_LOG", base.join("tool.log").display().to_string()), ("QM_WARP_TAB_CONFIGS", base.join("warp").display().to_string()), ("QM_TMUX_SOCKET", format!("qm-test-fence-{side}"))]
+    };
+    for side in 0..2 {
+        tmux_on(&format!("qm-test-fence-{side}"), &["kill-server"]);
+    }
+    let ruby = start_env(false, &wa.root, &wa.home, &env_for(&wa, 0));
+    let rust = start_env(true, &wb.root, &wb.home, &env_for(&wb, 1));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let norm = |text: String, side: usize| text.replace(&(if side == 0 { &base_a } else { &base_b }).display().to_string(), "BASE");
+    let post = |server: &Server, body: &str| String::from_utf8_lossy(&request(server.port, "POST", "/api/action", &origin, body, true).body).into_owned();
+    let state = |server: &Server| -> serde_json::Value { serde_json::from_slice(&request(server.port, "GET", "/api/state", &[], "", true).body).expect("a state") };
+    let act = |cmd: &str, slug: &str, args: &str| format!("{{\"cmd\":\"{cmd}\",\"slug\":\"{slug}\",\"args\":{args}}}");
+    let mut finished = |label: &str| {
+        let (mut a, mut b): (Vec<String>, Vec<String>) = (vec![], vec![]);
+        for _ in 0..200 {
+            let (sa, sb) = (state(&ruby), state(&rust));
+            a.extend(sa["finished"].as_array().unwrap().iter().map(|v| norm(v.to_string(), 0)));
+            b.extend(sb["finished"].as_array().unwrap().iter().map(|v| norm(v.to_string(), 1)));
+            if sa["jobs"].as_array().is_some_and(|j| j.is_empty()) && sb["jobs"].as_array().is_some_and(|j| j.is_empty()) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert_eq!(a, b, "{label}");
+        a.join("\n")
+    };
+    let mut seen = String::new();
+    for (label, body) in [("switch", act("pf-switch", "w-exist", "{}")), ("work on", act("work-on", "w-exist", "{}")), ("stop", act("pf-stop", "", "{}")), ("a worktree to create first", act("work-on", "w-feat", "{}"))] {
+        let (a, b) = (post(&ruby, &body), post(&rust, &body));
+        assert_eq!(norm(a, 0), norm(b, 1), "{label}");
+        seen += &finished(label);
+    }
+    assert!(seen.matches("the dev server is off in this GUI: BASE/root is not the live qm data root").count() >= 4 && seen.contains("created worktree"), "{seen}");
+    // the fence reaches the page's dev-server badge, and nothing reached the dev server but status asks
+    let (sa, sb) = (state(&ruby), state(&rust));
+    assert_eq!(norm(sa["pf"].to_string(), 0), norm(sb["pf"].to_string(), 1));
+    assert!(sa["pf"]["off"].is_string());
+    for base in [&base_a, &base_b] {
+        let log = fs::read_to_string(base.join("tool.log")).unwrap_or_default();
+        assert!(log.lines().all(|l| l.starts_with("devsrv status") || !l.starts_with("devsrv")), "{log}");
+    }
+    // bin/update runs in a tmux session of its own
+    for (label, args) in [("update", format!("{{\"path\":\"{}/proj\"}}", "BASEX")), ("again", format!("{{\"path\":\"{}/proj\"}}", "BASEX")), ("no bin/update", format!("{{\"path\":\"{}/proj-plain\"}}", "BASEX")), ("no such path", "{\"path\":\"/nonexistent/x\"}".to_string())] {
+        let (a, b) = (post(&ruby, &act("run-update", "", &args.replace("BASEX", &base_a.display().to_string()))), post(&rust, &act("run-update", "", &args.replace("BASEX", &base_b.display().to_string()))));
+        assert_eq!(norm(a, 0), norm(b, 1), "{label}");
+    }
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let panes = |side: usize| tmux_on(&format!("qm-test-fence-{side}"), &["list-sessions", "-F", "#{session_name}"]);
+    assert_eq!(panes(0), panes(1));
+    assert!(panes(1).contains("bin-update-proj"), "{}", panes(1));
+    for side in 0..2 {
+        tmux_on(&format!("qm-test-fence-{side}"), &["kill-server"]);
+    }
+}

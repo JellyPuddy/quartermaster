@@ -26,12 +26,43 @@ fn resolve(name: &str) -> String {
     if executable { personal.to_string_lossy().into_owned() } else { name.to_string() }
 }
 
+/// A GUI on a throwaway data root is fenced off from the dev server (`PfFence`): the configured server is
+/// the user's one real server whatever `QM_ROOT` says, so every command of it that changes what it serves
+/// is refused here. Reads (`<command> status`) pass.
+static FENCED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_fenced(on: bool) {
+    FENCED.store(on, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Why the dev server is off in this GUI (`PfFence.reason`).
+pub fn fence_reason() -> String {
+    format!("the dev server is off in this GUI: {} is not the live qm data root", crate::cli_format::short_path(Some(&data_root::root().to_string_lossy())))
+}
+
+/// Whether this GUI's data root is the user's own (`Quartermaster.live_root?`).
+pub fn live_root() -> bool {
+    data_root::root() == data_root::expand_path("~/.claude/quartermaster")
+}
+
+fn changes_server(argv: &[&str]) -> bool {
+    let base = |p: &str| std::path::Path::new(p).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let config = crate::project_config::ProjectConfig::current();
+    config.dev_server_commands().iter().any(|c| base(c) == base(argv.first().copied().unwrap_or(""))) && argv.get(1) != Some(&"status")
+}
+
 pub fn call(argv: &[&str]) -> CmdResult {
+    if FENCED.load(std::sync::atomic::Ordering::SeqCst) && changes_server(argv) {
+        return CmdResult { out: String::new(), err: fence_reason(), success: false };
+    }
     run(argv, None)
 }
 
 /// As `call`, in `chdir` (Ruby's `CommandRunner#call(argv, chdir:)`).
 pub fn call_in(argv: &[&str], chdir: &str) -> CmdResult {
+    if FENCED.load(std::sync::atomic::Ordering::SeqCst) && changes_server(argv) {
+        return CmdResult { out: String::new(), err: fence_reason(), success: false };
+    }
     run(argv, Some(chdir))
 }
 

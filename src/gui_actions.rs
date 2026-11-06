@@ -222,6 +222,12 @@ fn run(payload: &Value) -> R<Value> {
         "loose-promote" => loose_promote(&args),
         "loose-close" => loose_close(&args),
         "cleanup" => cleanup(&args),
+        "work-on" | "pf-switch" | "ide" | "terminal" => workspace_job(&cmd, &slug, &args),
+        "pf-stop" => Ok(crate::gui_jobs::background("pf", "stopping the dev server…", true, || match crate::workspace::stop_pf() {
+            Ok(message) => Ok(json!({"ok": true, "message": message})),
+            Err(m) => Err(crate::gui_jobs::Failure::Argument(m)),
+        })),
+        "run-update" => run_update(&args),
         "pane-start" | "pane-resume" => pane(&slug, cmd == "pane-start", &args),
         "pf-mode" => {
             let mut item = find(&slug)?;
@@ -378,6 +384,63 @@ fn loose_start(args: &Args) -> R<Value> {
     match crate::tmux::Tmux::new().open(&name, &cwd, &argv, &[("QM_LOOSE".to_string(), id.clone()), ("QM_ITEM".to_string(), String::new())]) {
         Ok(_) => Ok(json!({"ok": true, "name": name, "id": id})),
         Err(message) => Err(fail(message)),
+    }
+}
+
+/// Work on this / Switch the dev server / Open in the IDE / Terminal: a worktree may have to be created
+/// and a switch takes seconds, so each runs on a job; only one drives the shared dev server at a time.
+fn workspace_job(cmd: &str, slug: &str, args: &Args) -> R<Value> {
+    let item = find(slug)?;
+    let label = match cmd {
+        "work-on" => "working on it…".to_string(),
+        "pf-switch" => "switching the dev server…".to_string(),
+        "ide" => {
+            let config = crate::project_config::ProjectConfig::current();
+            let ide = config.ide(item.project().as_deref()).ok_or_else(|| fail("no IDE configured: set ide_command (and ide_label) in config.yml"))?;
+            format!("opening {}…", ide.label)
+        }
+        _ => "opening a terminal…".to_string(),
+    };
+    let worktree = presence_of(args, "worktree")?;
+    let branch = presence_of(args, "branch")?;
+    if let Some(b) = &branch {
+        crate::workspace::require_linked(&item, b).map_err(fail)?;
+    }
+    let pf_action = cmd == "work-on" || cmd == "pf-switch";
+    let mode = if pf_action { presence_of(args, "mode")? } else { None };
+    let uses_pf = pf_action && crate::project_config::ProjectConfig::current().settings(item.project().as_deref()).is_some_and(|s| s.dev_server.is_some());
+    let (cmd, slug) = (cmd.to_string(), slug.to_string());
+    Ok(crate::gui_jobs::background(&slug.clone(), &label, uses_pf, move || {
+        let mut item = WorkItem::find(&slug).map_err(|e| crate::gui_jobs::Failure::Argument(e.message))?;
+        let (w, b, m) = (worktree.as_deref(), branch.as_deref(), mode.as_deref());
+        let report = match cmd.as_str() {
+            "work-on" => crate::workspace::work_on(&mut item, m, w, b),
+            "pf-switch" => crate::workspace::switch_pf(&mut item, m, w, b),
+            "ide" => crate::workspace::open_ide(&mut item, w, b),
+            _ => crate::workspace::open_terminal(&mut item, w, b),
+        }
+        .map_err(crate::gui_jobs::Failure::Argument)?;
+        Ok(crate::workspace::job_reply(&slug, &report))
+    }))
+}
+
+/// `run-update`: bin/update in a tmux session of its own, waiting for Enter once it finishes.
+fn run_update(args: &Args) -> R<Value> {
+    let path = crate::data_root::expand_path(&args.text("path")?).to_string_lossy().into_owned();
+    let exe = std::path::Path::new(&path).join("bin/update");
+    let executable = std::fs::metadata(&exe).is_ok_and(|m| {
+        use std::os::unix::fs::PermissionsExt;
+        m.is_file() && m.permissions().mode() & 0o111 != 0
+    });
+    if !executable {
+        return Err(fail(format!("no bin/update in {}", crate::cli_format::short_path(Some(&path)))));
+    }
+    let base = std::path::Path::new(&path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = format!("bin-update-{}", base.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '-' }).collect::<String>());
+    let script = "bin/update; echo; echo \"[bin/update exited $?, Enter closes]\"; read _";
+    match crate::tmux::Tmux::new().open(&name, &path, &["sh".to_string(), "-c".to_string(), script.to_string()], &[]) {
+        Ok(_) => Ok(json!({"ok": true, "session": name})),
+        Err(m) => Err(fail(m)),
     }
 }
 

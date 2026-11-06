@@ -149,9 +149,8 @@ fn pf_payload(status: &Option<crate::pf::Status>, server: Option<&crate::project
     };
     payload["command"] = json!(server.map(|s| s.command.clone()));
     // a data root that is not the live one is fenced off from the dev server
-    let live = data_root::root() == data_root::expand_path("~/.claude/quartermaster");
-    if !live {
-        payload["off"] = json!(format!("the dev server is off in this GUI: {} is not the live qm data root", short_path(Some(&data_root::root().to_string_lossy()))));
+    if !crate::command_runner::live_root() {
+        payload["off"] = json!(crate::command_runner::fence_reason());
     }
     payload
 }

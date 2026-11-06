@@ -6,8 +6,37 @@ use crate::yaml_scalar::{array, get, string, text};
 
 pub struct Ide {
     pub label: String,
+    pub command: Vec<String>,
 }
 
+impl Ide {
+    /// The command with the checkout's path in: an element that is exactly `PATH` becomes the path, `PATH`
+    /// inside a longer element (a `sh -c` script) the shell-escaped path.
+    pub fn argv(&self, path: &str) -> Vec<String> {
+        self.command.iter().map(|arg| if arg == "PATH" { path.to_string() } else { arg.replace("PATH", &shell_escape(path)) }).collect()
+    }
+}
+
+/// `Shellwords.escape`.
+pub fn shell_escape(s: &str) -> String {
+    if s.is_empty() {
+        return "''".into();
+    }
+    let mut out = String::new();
+    for c in s.chars() {
+        match c {
+            '\n' => out.push_str("'\n'"),
+            c if c.is_ascii_alphanumeric() || "_-.,:+/@".contains(c) => out.push(c),
+            c => {
+                out.push('\\');
+                out.push(c);
+            }
+        }
+    }
+    out
+}
+
+#[derive(Clone)]
 pub struct DevServer {
     pub command: String,
     pub modes: Vec<String>,
@@ -43,7 +72,7 @@ fn parse_ide(command: Option<&Value>, label: Option<&Value>) -> Option<Ide> {
     if strip(&argv[0]).is_empty() || argv.iter().all(|a| !a.contains("PATH")) {
         return None;
     }
-    Some(Ide { label: string(label).unwrap_or_else(|| "IDE".to_string()) })
+    Some(Ide { label: string(label).unwrap_or_else(|| "IDE".to_string()), command: argv })
 }
 
 fn expand(path: Option<String>) -> Option<String> {
@@ -117,6 +146,19 @@ impl ProjectConfig {
     pub fn settings(&self, project: Option<&str>) -> Option<&ProjectSettings> {
         let name = project?;
         self.projects.iter().find(|p| p.name == name)
+    }
+
+    /// Every dev-server command config.yml configures, once each.
+    pub fn dev_server_commands(&self) -> Vec<String> {
+        let mut out: Vec<String> = vec![];
+        for p in &self.projects {
+            if let Some(d) = &p.dev_server {
+                if !out.contains(&d.command) {
+                    out.push(d.command.clone());
+                }
+            }
+        }
+        out
     }
 
     /// The project's own IDE, else the global one.
