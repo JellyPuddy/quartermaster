@@ -94,6 +94,20 @@ written, and the command goes to Ruby.
 a hook to the Rust binary is the user's edit of `~/.claude/settings.json`; `qm install-hooks`
 still prints the Ruby snippet.
 
+**Switching the hooks** (the user's edit; qm never writes that file). Only the two Ruby hooks
+change — SessionStart and SessionEnd; the per-tool-call hooks are `sh` scripts already. Build once
+with `cargo build --release` (the binary is `target/release/qm`, ~11 ms a hook against Ruby's ~250 ms,
+same context byte for byte) and in `~/.claude/settings.json` replace the two commands with
+
+    "command": "<checkout>/target/release/qm hook-session-start || <checkout>/quartermaster hook-session-start"
+    "command": "<checkout>/target/release/qm hook-session-end || <checkout>/quartermaster hook-session-end"
+
+The `||` is the safety net: a missing or unrunnable binary (127) falls back to Ruby, while the
+Rust hook itself always exits 0 and never double-runs. Rebuild after every `git pull` — a stale
+binary keeps serving old behavior for the words it has ported (every other word still runs the
+checkout's Ruby). Rollback: put the Ruby-only commands back (`qm install-hooks` prints them).
+Check a switched hook with `QM_ROOT=$(mktemp -d)` and the payload on stdin before trusting it.
+
 ## How it is tested
 
 `tests/characterization.rs` is black-box: it runs the executable `QM_BIN` names (default the
