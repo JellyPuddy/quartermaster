@@ -132,6 +132,26 @@ class AutomationFlowsTest < Minitest::Test
     assert_empty tmux.opened
   end
 
+  def test_start_refuses_a_hand_edited_yml_with_bypass_permissions
+    tmux = FakeTmux.new
+
+    error = assert_raises(ArgumentError) do
+      flows(tmux).start(entry("cwd" => Dir.home, "permission_mode" => "bypassPermissions"), nil, "Go.",
+                        run_id: "r1", session_id: SID)
+    end
+    assert_includes error.message, "bypassPermissions is refused"
+    assert_empty tmux.opened
+  end
+
+  def test_a_json_item_that_only_looks_like_a_plain_line_stays_json
+    tmux = FakeTmux.new
+
+    flows(tmux).start(entry("cwd" => Dir.home), { "key" => "k1", "line" => "something else" }, "Go.",
+                      run_id: "r1", session_id: SID)
+
+    assert_equal "Go.\n\n## Item\n\n{\n  \"key\": \"k1\",\n  \"line\": \"something else\"\n}", tmux.opened.first[:argv].last
+  end
+
   def test_a_pr_review_run_opens_the_review_items_chat_with_flags_and_the_prompt_as_extra_instructions
     with_project do |repo|
       cache_prs(PR)

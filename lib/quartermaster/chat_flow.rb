@@ -28,7 +28,8 @@ module Quartermaster
 
     # A guard's plain line comes back as that line; a JSON item pretty-printed.
     def self.item_text(item)
-      item.is_a?(Hash) && item.keys.sort == %w[key line] ? item["line"].to_s : JSON.pretty_generate(item)
+      plain = item.is_a?(Hash) && item.keys.sort == %w[key line] && item["key"] == item["line"]
+      plain ? item["line"].to_s : JSON.pretty_generate(item)
     end
 
     def start(automation, item, prompt, run_id:, session_id:)

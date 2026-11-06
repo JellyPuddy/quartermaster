@@ -36,8 +36,9 @@ module Quartermaster
     end
 
     # Starts the run through the automation's flow; raises ArgumentError when
-    # the item doesn't suit it.
+    # the item doesn't suit it or the yml (hand-edited past the store) is invalid.
     def start(automation, item, prompt, run_id:, session_id:)
+      AutomationStore.validate_local(automation.record)
       name = AutomationStore.local_settings(automation.record)["flow"]
       reason = problem(name, item)
       raise ArgumentError, reason if reason

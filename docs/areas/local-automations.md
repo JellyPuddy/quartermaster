@@ -36,14 +36,15 @@ runs and the guard's output), description and notes — is the cloud brief's (`b
 prompt, run_id:, session_id:)`, answering `{item_slug:, tmux:}` once a chat runs or `{waiting:
 reason}` when the run stays queued. `AutomationFlows#problem(flow, item)` says why a flow can't take
 an item (an unknown flow, or a `needs` field missing or blank; a cron run's nil item lacks every
-field), and `#start` raises it as an ArgumentError. Both flows pass claude `--session-id` (qm's
+field), and `#start` raises it as an ArgumentError, as it does for a yml the store would refuse
+(a hand edit never reaches the store's write). Both flows pass claude `--session-id` (qm's
 uuid), then `--model`, `--permission-mode` and `--allowedTools` (one comma-joined value: the flag
 is variadic and would swallow the prompt) when the yml sets them, before the prompt.
 - `chat` (`ChatFlow`): tmux session `<slug>--run-<run id>` on qm's socket, running
   `Launcher#chat_command` (so `QM_CHAT_COMMAND` swaps it) with `QM_ITEM=<automation slug>`; Tmux
   unsets every `CLAUDE*` var. cwd is the yml's `cwd`, else the automation item's project root,
   else home. The prompt is `<slug>.prompt.md`, plus for an item a final `## Item` section: the
-  item pretty-printed as JSON, or a guard's plain line (an item of only `key` and `line`) as the line.
+  item pretty-printed as JSON, or a guard's plain line (only `key` and `line`, equal) as the line.
 - `pr-review` (`PrReviewFlow`, needs `url`): the PR from the inbox cache, else one
   `gh pr view URL --json …` through the runner (a failure raises). While the PR's Review chat is
   live (`PrReviewStart#live?`) it answers `waiting: "Review chat for <repo>#<n> is open"` and
@@ -101,7 +102,7 @@ plist exists.
 - Never skip, dedupe at queue time: a key is consumed when queued and a failed or timed-out run is
   never retried automatically; only `retry` queues a key again.
 - Cron runs coalesce to at most one queued cron run per automation; guard items queue one each, FIFO.
-- `bypassPermissions` is refused for local automations at the store.
+- `bypassPermissions` is refused for local automations at the store and again when a flow starts.
 - Only a `chat` run gets a `--run-` tmux session; a `pr-review` run lives in its Review item's own
   chat and never opens a second one beside it.
 - Flows hand tmux the argv and env only through the `Tmux` wrapper; tests pass a `FakeTmux`.
