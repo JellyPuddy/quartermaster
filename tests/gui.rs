@@ -1368,3 +1368,115 @@ fn diff_viewed_and_pf_mode_match_ruby() {
         step(label, body);
     }
 }
+
+fn tree_text(dir: &Path, prefix: &str, out: &mut String) {
+    let mut names: Vec<_> = fs::read_dir(dir).map(|r| r.map(|e| e.unwrap().path()).collect()).unwrap_or_default();
+    names.sort();
+    for p in names {
+        let shown = format!("{prefix}/{}", p.file_name().unwrap().to_string_lossy());
+        if p.is_dir() {
+            *out += &format!("== {shown}/\n");
+            tree_text(&p, &shown, out);
+        } else {
+            *out += &format!("== {shown}\n{}\n", fs::read_to_string(&p).unwrap_or_default());
+        }
+    }
+}
+
+fn issue_traces(root: &Path, other: &Path) -> String {
+    let mut out = String::new();
+    tree_text(&root.join("issues"), "issues", &mut out);
+    tree_text(&root.join("drafts"), "drafts", &mut out);
+    let log = fs::read_to_string(root.join("qm.log")).unwrap_or_default();
+    out += &format!("== qm.log\n{}", regex::Regex::new(r"(?m)^\S+ \[").unwrap().replace_all(&log, "[").replace(&other.display().to_string(), &root.display().to_string()));
+    regex::Regex::new(r#""seen_at":[0-9.e+-]+"#).unwrap().replace_all(&out, "\"seen_at\":T").into_owned()
+}
+
+#[test]
+fn the_issue_draft_actions_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let issue = |slug: &str, name: &str, front: &str, body: &str| {
+        let p = w.root.join(format!("issues/{slug}/{name}"));
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, format!("---\n{front}---\n\n{body}\n")).unwrap();
+    };
+    issue("stale", "01-bug.md", "title: A bug\nkind: bug\nnumber: 12\n", "created already");
+    issue("stale", "02-feature.md", "title: A feature\nkind: feature\n", "still to create");
+    issue("stale", "03-created.md", "title: Created too\nkind: feature\nnumber: '#7'\ndeps: [one, none]\n", "body three");
+    issue("stale", "04-broken.md", "title: Broken\nkind: epic\n", "bad kind");
+    issue("stale", "05-notitle.md", "kind: bug\n", "no title");
+    fs::write(w.root.join("issues/stale/06-nofront.md"), "just text\n").unwrap();
+    fs::write(w.root.join("issues/stale/.hidden.md"), "---\ntitle: h\nkind: bug\n---\n").unwrap();
+    fs::write(w.root.join("issues/stale/notes.txt"), "not an issue\n").unwrap();
+    issue("degrade", "01-done.md", "title: Done\nkind: bug\nnumber: 3\n", "only created");
+    issue("pr-stack-merged", "01-done.md", "title: Done\nkind: bug\nnumber: 4\n", "drafts hold a float");
+    fs::create_dir_all(w.root.join("drafts")).unwrap();
+    fs::write(w.root.join("drafts/pr-stack-merged.json"), "{\"v\":1,\"entries\":[{\"id\":\"f\",\"kind\":\"issue-comment\",\"file\":\"01-done.md\",\"rev\":1.5}]}").unwrap();
+    issue("fridge-old", "01-date.md", "title: Dated\nkind: bug\nwhen: 2026-01-01\n", "a date Psych reads as one");
+    fs::create_dir_all(w.root.join("issues/stale/.prev")).unwrap();
+    fs::write(w.root.join("issues/stale/.prev/02-feature.md.json"), serde_json::json!({"v": 1, "seen": "---\ntitle: Older\nkind: feature\n---\n\nolder body\n", "seen_at": 1.0, "previous": null}).to_string()).unwrap();
+    fs::write(w.root.join("issues/stale/.prev/orphan.md.json"), "{\"v\":1,\"seen\":\"x\",\"seen_at\":1.0,\"previous\":null}").unwrap();
+    fs::create_dir_all(w.root.join("drafts")).unwrap();
+    fs::write(
+        w.root.join("drafts/stale.json"),
+        serde_json::to_string_pretty(&serde_json::json!({"v": 1, "entries": [
+            {"id": "c1", "kind": "issue-comment", "comment": "on the bug", "rev": 1, "file": "01-bug.md", "block": "x"},
+            {"id": "c2", "kind": "issue-comment", "comment": "on the feature", "rev": 1, "file": "02-feature.md", "block": "y"},
+            {"id": "d1", "kind": "diff-comment", "comment": "unrelated", "rev": 1, "path": "a.txt", "side": "new", "line": 1}
+        ]}))
+        .unwrap(),
+    )
+    .unwrap();
+    let env: Vec<(&str, String)> = vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string())];
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let ruby = start_env(false, &w.root, &w.home, &env);
+    let rust = start_env(true, &root2, &w.home, &env);
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let step = |label: &str, body: &str| {
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, body, true), request(rust.port, "POST", "/api/action", &origin, body, true));
+        assert_eq!(shown(&a, ruby.port), shown(&b, rust.port), "{label}: reply to {body}");
+        assert_eq!(issue_traces(&w.root, &root2), issue_traces(&root2, &w.root), "{label}: files after {body}");
+    };
+    let act = |cmd: &str, slug: &str, args: &str| format!("{{\"cmd\":\"{cmd}\",\"slug\":\"{slug}\",\"args\":{args}}}");
+    let ack = |slug: &str, file: &str| act("issue-acknowledge", slug, &format!("{{\"file\":{file}}}"));
+    step("ack", &ack("stale", "\"02-feature.md\""));
+    step("ack again", &ack("stale", "\"02-feature.md\""));
+    step("ack a created one", &ack("stale", "\"01-bug.md\""));
+    step("ack broken", &ack("stale", "\"04-broken.md\""));
+    step("ack no title", &ack("stale", "\"05-notitle.md\""));
+    step("ack no front matter", &ack("stale", "\"06-nofront.md\""));
+    step("ack missing file", &ack("stale", "\"nope.md\""));
+    step("ack not a file name", &ack("stale", "\"notes.txt\""));
+    step("ack hidden", &ack("stale", "\".hidden.md\""));
+    step("ack with a slash", &ack("stale", "\"a/b.md\""));
+    step("ack too short", &ack("stale", "\".md\""));
+    step("ack null", &ack("stale", "null"));
+    step("ack number", &ack("stale", "5"));
+    step("ack bool", &ack("stale", "true"));
+    step("ack no args", &act("issue-acknowledge", "stale", "{}"));
+    step("ack no issues", &ack("fridge-quiet-none", "\"x.md\""));
+    step("ack missing item", &ack("nowhere", "\"02-feature.md\""));
+    // the file changes, is read again, and the new revision is acknowledged
+    for root in [&w.root, &root2] {
+        fs::write(root.join("issues/stale/02-feature.md"), "---\ntitle: A feature, edited\nkind: feature\n---\n\nnew body\n").unwrap();
+    }
+    step("ack a new revision", &ack("stale", "\"02-feature.md\""));
+    for root in [&w.root, &root2] {
+        fs::write(root.join("issues/stale/03-created.md"), "---\ntitle: Created, edited\nkind: feature\nnumber: 7\n---\n\nchanged\n").unwrap();
+    }
+    step("ack another", &ack("stale", "\"03-created.md\""));
+    step("clear created", &act("issues-clear-created", "stale", "{}"));
+    step("clear again", &act("issues-clear-created", "stale", "{}"));
+    step("clear the last", &act("issues-clear-created", "degrade", "{}"));
+    step("clear without issues", &act("issues-clear-created", "pr-one-merged", "{}"));
+    step("clear missing item", &act("issues-clear-created", "nowhere", "{}"));
+    // a file Psych would read as a date: Ruby's, nothing written
+    let before = issue_traces(&root2, &w.root);
+    for body in [act("issues-clear-created", "fridge-old", "{}"), act("issues-clear-created", "pr-stack-merged", "{}"), ack("fridge-old", "\"01-date.md\"")] {
+        let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
+        assert!(a.status.starts_with("501"), "{body}: {}", a.status);
+    }
+    assert_eq!(before, issue_traces(&root2, &w.root));
+}

@@ -196,6 +196,14 @@ fn run(payload: &Value) -> R<Value> {
                 Err(crate::viewed_marks::Halt::Unported) => Err(Stop::Unported),
             }
         }
+        "issue-acknowledge" | "issues-clear-created" => {
+            let item = find(&slug)?;
+            let slug = item.slug.clone();
+            if !slug_shaped(&slug) {
+                return Err(fail(format!("'{slug}' is not a work item slug")));
+            }
+            issues(&cmd, &slug, &args)
+        }
         "pf-mode" => {
             let mut item = find(&slug)?;
             item.update_pf_mode(&args.text("mode")?).map_err(error)?;
@@ -204,6 +212,34 @@ fn run(payload: &Value) -> R<Value> {
         "draft-edit" | "draft-delete" | "drafts-discard" | "draft-put" | "draft-move" => drafts(&cmd, &slug, &args),
         _ => Err(Stop::Unported),
     }
+}
+
+fn issues(cmd: &str, slug: &str, args: &Args) -> R<Value> {
+    use crate::issue_drafts as i;
+    if cmd == "issue-acknowledge" {
+        let name = match args.get("file")? {
+            Value::String(s) => s.clone(),
+            other => {
+                to_s(other)?;
+                return Err(fail(format!("'{}' is not an issue file", to_s(other)?)));
+            }
+        };
+        if !i::is_issue_file(&name) {
+            return Err(fail(format!("'{name}' is not an issue file")));
+        }
+        let acknowledged = i::acknowledge(slug, &name).map_err(|_| Stop::Unported)?;
+        return Ok(json!({"ok": true, "acknowledged": acknowledged}));
+    }
+    if !crate::drafts::writable(slug) {
+        return Err(Stop::Unported);
+    }
+    let loaded = i::load(slug).ok_or(Stop::Unported)?;
+    loaded.record().map_err(|_| Stop::Unported)?;
+    let created: Vec<String> = loaded.issues.iter().filter(|x| x.number.is_some()).map(|x| x.file.clone()).collect();
+    for name in &created {
+        i::delete(slug, name).map_err(|_| Stop::Unported)?;
+    }
+    Ok(json!({"ok": true, "cleared": created}))
 }
 
 fn slug_shaped(slug: &str) -> bool {

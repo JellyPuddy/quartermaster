@@ -271,10 +271,10 @@ fn snapshot_is_readable(dir: &Path, name: &str, content: &str) -> Option<()> {
     }
 }
 
-fn remember(dir: &Path, name: &str, content: &str) -> std::io::Result<()> {
+fn remember(dir: &Path, name: &str, content: &str) -> std::io::Result<serde_json::Map<String, Json>> {
     let old = read_snapshot(dir, name);
-    if old.as_ref().is_some_and(|m| m["seen"].as_str() == Some(content)) {
-        return Ok(());
+    if let Some(m) = old.as_ref().filter(|m| m["seen"].as_str() == Some(content)) {
+        return Ok(m.clone());
     }
     let now = clock::now_f64();
     let seen_at = old.as_ref().and_then(|m| m.get("seen_at")).and_then(Json::as_f64).unwrap_or(0.0);
@@ -285,11 +285,42 @@ fn remember(dir: &Path, name: &str, content: &str) -> std::io::Result<()> {
         Some(m) => m.get("previous").cloned().unwrap_or(Json::Null),
     };
     let snapshot = json!({"v": 1, "seen": content, "seen_at": now, "previous": previous});
-    let path = snapshot_path(dir, name);
+    write_snapshot(&snapshot_path(dir, name), &snapshot)?;
+    Ok(snapshot.as_object().cloned().unwrap_or_default())
+}
+
+fn write_snapshot(path: &Path, snapshot: &Json) -> std::io::Result<()> {
     std::fs::create_dir_all(path.parent().unwrap())?;
     let temp = format!("{}.{}.{:?}.tmp", path.display(), std::process::id(), std::thread::current().id());
-    std::fs::write(&temp, serde_json::to_string(&snapshot).unwrap())?;
-    std::fs::rename(&temp, &path)
+    std::fs::write(&temp, serde_json::to_string(snapshot).unwrap())?;
+    std::fs::rename(&temp, path)
+}
+
+/// A name `IssueDrafts` takes for an issue file: `\A[^.\/][^\/]*\.md\z`.
+pub fn is_issue_file(name: &str) -> bool {
+    name.len() >= 4 && !name.starts_with('.') && !name.contains('/') && name.ends_with(".md")
+}
+
+/// `IssueDrafts#acknowledge`: the file's current revision stops reading as changed. `Ok(false)` when
+/// there is no such file or it doesn't parse; `Err` for what this port can't judge as Ruby does.
+pub fn acknowledge(slug: &str, name: &str) -> Result<bool, ()> {
+    let dir = dir(slug);
+    let path = dir.join(name);
+    if !path.is_file() {
+        return Ok(false);
+    }
+    let content = String::from_utf8(std::fs::read(&path).map_err(|_| ())?).map_err(|_| ())?;
+    match parse(&content) {
+        Parsed::Unsure => return Err(()),
+        Parsed::Error(_) => return Ok(false),
+        Parsed::Issue { .. } => {}
+    }
+    snapshot_is_readable(&dir, name, &content).ok_or(())?;
+    let mut snapshot = remember(&dir, name, &content).map_err(|_| ())?;
+    snapshot.insert("previous".into(), Json::String(content));
+    snapshot.insert("acked".into(), Json::Bool(true));
+    write_snapshot(&snapshot_path(&dir, name), &Json::Object(snapshot)).map_err(|_| ())?;
+    Ok(true)
 }
 
 /// A snapshot whose file is gone would hand a later file of that name a previous version it never had.
