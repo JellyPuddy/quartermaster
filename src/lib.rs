@@ -27,6 +27,7 @@ pub mod git;
 pub mod gui_action;
 pub mod gui_server;
 pub mod gui_actions;
+pub mod gui_draft_actions;
 pub mod gui_state;
 pub mod hook;
 pub mod issue_drafts;

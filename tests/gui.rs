@@ -1141,9 +1141,145 @@ fn the_data_actions_match_ruby() {
     }
     // what is not ported answers 501 before anything happens, with the files untouched
     let before = action_traces(&root2, &w.root);
-    for body in [act("state", "stale", r#"{"state":"resolved"}"#), act("start", "stale", "{}"), act("draft-put", "stale", "{}")] {
+    for body in [act("state", "stale", r#"{"state":"resolved"}"#), act("start", "stale", "{}"), act("rotate", "stale", "{}")] {
         let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
         assert!(a.status.starts_with("501"), "{body}: {}", a.status);
     }
     assert_eq!(before, action_traces(&root2, &w.root));
+}
+
+/// Drafts and item files as the draft actions leave them, with the random parts named: each
+/// server's own new ids become `NEWID`, stamps become `STAMP`.
+fn draft_traces(root: &Path, other: &Path, ids: &[String]) -> String {
+    let mut out = String::new();
+    let mut names: Vec<_> = fs::read_dir(root.join("drafts")).map(|r| r.map(|e| e.unwrap().path()).collect()).unwrap_or_default();
+    names.sort();
+    for p in names {
+        out += &format!("== {}\n{}\n", p.file_name().unwrap().to_string_lossy(), fs::read_to_string(&p).unwrap_or_default());
+    }
+    let log = fs::read_to_string(root.join("qm.log")).unwrap_or_default();
+    out += &format!("== qm.log\n{}", regex::Regex::new(r"(?m)^\S+ \[").unwrap().replace_all(&log, "[").replace(&other.display().to_string(), &root.display().to_string()));
+    normalize_drafts(&out, ids)
+}
+
+fn normalize_drafts(text: &str, ids: &[String]) -> String {
+    let mut text = regex::Regex::new(r#""(createdAt|updatedAt)":\s*"[^"]*""#).unwrap().replace_all(text, "\"$1\":\"STAMP\"").into_owned();
+    for id in ids {
+        text = text.replace(id.as_str(), "NEWID");
+    }
+    text
+}
+
+#[test]
+fn the_draft_actions_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let entries = serde_json::json!([
+        {"id": "d1", "kind": "diff-comment", "comment": "first", "rev": 2, "createdAt": "2026-04-01T00:00:00Z", "updatedAt": "2026-04-01T00:00:00Z", "path": "a.txt", "side": "new", "line": 3},
+        {"id": "g1", "kind": "github-comment", "comment": "review one", "rev": 1, "author": "claude", "failed": "nope", "path": "a.txt", "side": "new", "line": 9, "repo": "acme/widgets", "number": 5, "commit": "abcdef0", "subject": "line"},
+        {"id": "g2", "kind": "github-comment", "comment": "no rev", "path": "b.txt", "side": "old", "line": 1, "repo": "acme/widgets", "number": 5, "commit": "abcdef0", "author": "user"},
+        {"id": "g3", "kind": "github-comment", "comment": "never edited, no rev", "path": "b.txt", "side": "new", "line": 2, "repo": "acme/widgets", "number": 5, "commit": "abcdef0", "author": "user"},
+        {"id": "g4", "kind": "github-comment", "comment": "failed to post", "rev": 4, "failed": "422", "path": "b.txt", "side": "new", "line": 3, "repo": "acme/widgets", "number": 5, "commit": "abcdef0", "author": "user", "subject": "file"},
+        {"id": "d2", "kind": "diff-comment", "comment": "pinned", "rev": 1, "path": "e.txt", "side": "new", "line": 1, "pin": "abcdef0", "failed": "old failure"},
+        {"id": "a1", "kind": "annotation", "comment": "annotated", "rev": 1, "url": "https://example.test/"},
+        {"id": "i1", "kind": "issue-comment", "comment": "about an issue", "rev": 3, "file": "01.md", "block": "x"}
+    ]);
+    fs::create_dir_all(w.root.join("drafts")).unwrap();
+    fs::write(w.root.join("drafts/stale.json"), serde_json::to_string_pretty(&serde_json::json!({"v": 1, "entries": entries, "loaded": ["page-1"]})).unwrap()).unwrap();
+    fs::write(w.root.join("drafts/degrade.json"), serde_json::to_string_pretty(&serde_json::json!({"v": 1, "entries": [{"id": "d9", "kind": "diff-comment", "comment": "only one", "rev": 1, "path": "z.txt", "side": "new", "line": 1}]})).unwrap()).unwrap();
+    let env: Vec<(&str, String)> = vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string())];
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let ruby = start_env(false, &w.root, &w.home, &env);
+    let rust = start_env(true, &root2, &w.home, &env);
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let (mut ruby_ids, mut rust_ids): (Vec<String>, Vec<String>) = (vec![], vec![]);
+    let id_pattern = regex::Regex::new(r#""id":"([0-9a-f]{12})""#).unwrap();
+    let mut step = |label: &str, body: &str| {
+        let last = |ids: &Vec<String>| ids.last().cloned().unwrap_or_default();
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, &body.replace("{ID}", &last(&ruby_ids)), true), request(rust.port, "POST", "/api/action", &origin, &body.replace("{ID}", &last(&rust_ids)), true));
+        for (ids, answer) in [(&mut ruby_ids, &a), (&mut rust_ids, &b)] {
+            if let Some(c) = id_pattern.captures(&String::from_utf8_lossy(&answer.body)) {
+                ids.push(c[1].to_string());
+            }
+        }
+        assert_eq!(normalize_drafts(&shown(&a, ruby.port), &ruby_ids), normalize_drafts(&shown(&b, rust.port), &rust_ids), "{label}: reply to {body}");
+        assert_eq!(draft_traces(&w.root, &root2, &ruby_ids), draft_traces(&root2, &w.root, &rust_ids), "{label}: files after {body}");
+    };
+    let act = |cmd: &str, slug: &str, args: &str| format!("{{\"cmd\":\"{cmd}\",\"slug\":\"{slug}\",\"args\":{args}}}");
+    let cases: Vec<(&str, String)> = vec![
+        ("edit", act("draft-edit", "stale", r#"{"id":"d1","comment":"changed"}"#)),
+        ("edit same", act("draft-edit", "stale", r#"{"id":"d1","comment":"changed"}"#)),
+        ("edit blank", act("draft-edit", "stale", r#"{"id":"d1","comment":"  "}"#)),
+        ("edit null", act("draft-edit", "stale", r#"{"id":"d1","comment":null}"#)),
+        ("edit missing id", act("draft-edit", "stale", r#"{"id":"zz","comment":"x"}"#)),
+        ("edit null id", act("draft-edit", "stale", r#"{"id":null,"comment":"x"}"#)),
+        ("edit claude's draft", act("draft-edit", "stale", r#"{"id":"g1","comment":"mine now"}"#)),
+        ("edit without rev", act("draft-edit", "stale", r#"{"id":"g2","comment":"has a rev"}"#)),
+        ("edit number", act("draft-edit", "stale", r#"{"id":"i1","comment":5}"#)),
+        ("edit missing item", act("draft-edit", "nowhere", r#"{"id":"d1","comment":"x"}"#)),
+        ("put", act("draft-put", "stale", r#"{"path":"a.txt","side":"new","line":10,"code":"ten","comment":"hello"}"#)),
+        ("put replaces", act("draft-put", "stale", r#"{"path":"a.txt","side":"new","line":10,"code":"ten","comment":"hello again"}"#)),
+        ("put identical", act("draft-put", "stale", r#"{"path":"a.txt","side":"new","line":10,"code":"ten","comment":"hello again"}"#)),
+        ("put new code", act("draft-put", "stale", r#"{"path":"a.txt","side":"new","line":10,"code":"changed","comment":"hello again"}"#)),
+        ("put a range", act("draft-put", "stale", r#"{"path":"a.txt","side":"new","line":12,"range":"10-12","start_line":10,"start_side":"new","comment":"a range"}"#)),
+        ("put on d1's line", act("draft-put", "stale", r#"{"path":"a.txt","side":"new","line":"3","comment":"over d1"}"#)),
+        ("put branch", act("draft-put", "stale", r#"{"path":"c.txt","side":"new","line":1,"branch":"feature/x","committed":true,"comment":"on a branch"}"#)),
+        ("put committed false", act("draft-put", "stale", r#"{"path":"c.txt","side":"new","line":2,"committed":false,"comment":"not committed"}"#)),
+        ("put blanks dropped", act("draft-put", "stale", r#"{"path":"c.txt","side":"","line":null,"code":"","comment":"blank fields"}"#)),
+        ("put no path", act("draft-put", "stale", r#"{"side":"new","line":1,"comment":"x"}"#)),
+        ("put blank path", act("draft-put", "stale", r#"{"path":"  ","comment":"x"}"#)),
+        ("put drops pin and failed", act("draft-put", "stale", r#"{"path":"e.txt","side":"new","line":1,"comment":"unpinned"}"#)),
+        ("put backslash branch", act("draft-put", "stale", r#"{"path":"a.txt","branch":"a\\b","comment":"x"}"#)),
+        ("put bracket branch", act("draft-put", "stale", r#"{"path":"a.txt","branch":"a[b","comment":"x"}"#)),
+        ("put control branch", act("draft-put", "stale", r#"{"path":"a.txt","branch":"a\u0001b","comment":"x"}"#)),
+        ("put long branch", act("draft-put", "stale", &format!(r#"{{"path":"a.txt","branch":"{}","comment":"x"}}"#, "b".repeat(256)))),
+        ("put longest branch", act("draft-put", "stale", &format!(r#"{{"path":"l.txt","line":1,"branch":"{}","comment":"x"}}"#, "b".repeat(255)))),
+        ("put bad branch", act("draft-put", "stale", r#"{"path":"a.txt","branch":"a b","comment":"x"}"#)),
+        ("put number branch", act("draft-put", "stale", r#"{"path":"a.txt","branch":5,"comment":"x"}"#)),
+        ("put kind annotation", act("draft-put", "stale", r#"{"path":"a.txt","kind":"annotation","comment":"x"}"#)),
+        ("put kind null", act("draft-put", "stale", r#"{"path":"d.txt","kind":null,"line":1,"comment":"null kind"}"#)),
+        ("put comment null", act("draft-put", "stale", r#"{"path":"never.txt","comment":null}"#)),
+        ("put removes", act("draft-put", "stale", r#"{"path":"a.txt","side":"new","line":10,"code":"changed","comment":" "}"#)),
+        ("put removes nothing", act("draft-put", "stale", r#"{"path":"a.txt","side":"new","line":99,"comment":""}"#)),
+        ("put missing item", act("draft-put", "nowhere", r#"{"path":"a.txt","comment":"x"}"#)),
+        ("move to chat", act("draft-move", "stale", r#"{"id":"g1","to":"chat"}"#)),
+        ("move a failed draft", act("draft-move", "stale", r#"{"id":"g4","to":"chat"}"#)),
+        ("move again", act("draft-move", "stale", r#"{"id":"g1","to":"chat"}"#)),
+        ("move a chat draft", act("draft-move", "stale", r#"{"id":"d1","to":"chat"}"#)),
+        ("move an annotation", act("draft-move", "stale", r#"{"id":"a1","to":"chat"}"#)),
+        ("move an issue comment", act("draft-move", "stale", r#"{"id":"i1","to":"chat"}"#)),
+        ("move missing id", act("draft-move", "stale", r#"{"id":"zz","to":"chat"}"#)),
+        ("move bogus", act("draft-move", "stale", r#"{"id":"d1","to":"bogus"}"#)),
+        ("move null", act("draft-move", "stale", r#"{"id":"d1","to":null}"#)),
+        ("move number", act("draft-move", "stale", r#"{"id":"d1","to":5}"#)),
+        ("move quoted", act("draft-move", "stale", r#"{"id":"d1","to":"a\"b\\c"}"#)),
+        ("move missing item", act("draft-move", "nowhere", r#"{"id":"d1","to":"chat"}"#)),
+        ("delete", act("draft-delete", "stale", r#"{"id":"d1"}"#)),
+        ("delete again", act("draft-delete", "stale", r#"{"id":"d1"}"#)),
+        ("delete null", act("draft-delete", "stale", r#"{"id":null}"#)),
+        ("delete missing item", act("draft-delete", "nowhere", r#"{"id":"d1"}"#)),
+        ("discard some", act("drafts-discard", "stale", r#"{"ids":["a1","nonexistent"]}"#)),
+        ("discard none", act("drafts-discard", "stale", r#"{"ids":[]}"#)),
+        ("discard without rev", act("drafts-discard", "stale", r#"{"ids":["g2"]}"#)),
+        ("discard missing item", act("drafts-discard", "nowhere", r#"{"ids":["d1"]}"#)),
+        ("discard last of an item", act("drafts-discard", "degrade", r#"{"ids":["d9"]}"#)),
+        ("discard on an item without drafts", act("drafts-discard", "fridge-old", r#"{"ids":["d9"]}"#)),
+        ("discard everything", act("drafts-discard", "stale", r#"{"ids":null}"#)),
+    ];
+    for (label, body) in &cases {
+        step(label, body);
+    }
+    // the same, once more with a file Ruby reads as empty
+    fs::write(w.root.join("drafts/stale.json"), "not json").unwrap();
+    fs::write(root2.join("drafts/stale.json"), "not json").unwrap();
+    step("put over junk", &act("draft-put", "stale", r#"{"path":"a.txt","line":1,"comment":"fresh"}"#));
+    step("delete it", &act("draft-delete", "stale", r#"{"id":"{ID}"}"#));
+    // GitHub drafts, PR addresses and moves to the review need git: Ruby's, with nothing written
+    let before = draft_traces(&root2, &w.root, &rust_ids);
+    for body in [act("draft-put", "stale", r#"{"path":"a.txt","kind":"github-comment","comment":"x"}"#), act("draft-put", "stale", r#"{"path":"a.txt","number":5,"comment":"x"}"#), act("draft-move", "stale", r#"{"id":"g1","to":"github"}"#)] {
+        let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
+        assert!(a.status.starts_with("501"), "{body}: {}", a.status);
+    }
+    assert_eq!(before, draft_traces(&root2, &w.root, &rust_ids));
 }

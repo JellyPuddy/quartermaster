@@ -30,16 +30,22 @@ const KNOWN: &[&str] = &[
 type R<T> = Result<T, Stop>;
 
 /// Either the action's own refusal (a JSON reply) or "Ruby's job".
-enum Stop {
+pub(crate) enum Stop {
     Reply(Value),
     Unported,
 }
 
-fn fail(message: impl Into<String>) -> Stop {
+pub(crate) fn fail(message: impl Into<String>) -> Stop {
     Stop::Reply(json!({"ok": false, "error": message.into()}))
 }
 
 /// What `Ruby ... rescue` makes of an error: ArgumentError is the user's, the rest also lands in qm.log.
+impl Stop {
+    pub(crate) fn refuse(message: impl Into<String>) -> Stop {
+        fail(message)
+    }
+}
+
 fn error(e: QmError) -> Stop {
     if e.class == UNEMITTABLE {
         return Stop::Unported;
@@ -50,7 +56,7 @@ fn error(e: QmError) -> Stop {
     fail(e.message)
 }
 
-fn ok() -> Value {
+pub(crate) fn ok() -> Value {
     json!({"ok": true})
 }
 
@@ -177,7 +183,29 @@ fn run(payload: &Value) -> R<Value> {
             // Ruby answers `false` itself when nothing was attached
             Ok(if item.detach_session(&session).map_err(error)? { ok() } else { Value::Bool(false) })
         }
+        "draft-edit" | "draft-delete" | "drafts-discard" | "draft-put" | "draft-move" => drafts(&cmd, &slug, &args),
         _ => Err(Stop::Unported),
+    }
+}
+
+/// The draft actions open the item first (`drafts_of`), then its drafts, whose slug must be a slug.
+fn drafts(cmd: &str, slug: &str, args: &Args) -> R<Value> {
+    let item = find(slug)?;
+    let slug = item.slug.clone();
+    let shaped = slug.chars().next().is_some_and(|c| c.is_ascii_alphanumeric()) && slug.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'));
+    if !shaped {
+        return Err(fail(format!("'{slug}' is not a work item slug")));
+    }
+    use crate::gui_draft_actions as d;
+    match cmd {
+        "draft-edit" => d::edit(&slug, &args.text("id")?, args.get("comment")?),
+        "draft-delete" => d::delete(&slug, &args.text("id")?),
+        "drafts-discard" => d::discard(&slug, args.get("ids")?),
+        "draft-move" => d::move_to(&slug, &args.text("id")?, args.get("to")?),
+        _ => match args.0 {
+            Some(raw) => d::put(&slug, raw),
+            None => Err(Stop::Unported),
+        },
     }
 }
 

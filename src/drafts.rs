@@ -215,3 +215,48 @@ pub fn relocate(slug: &str, id: &str, fields: &Map<String, Value>, rev: Option<&
     }
     Ok(())
 }
+
+/// Why a `Drafts#update` block stopped before writing.
+pub enum Halt {
+    /// Ruby raises this `ArgumentError`.
+    Refuse(String),
+    /// A value this port does not read as Ruby does; nothing was written.
+    Unported,
+}
+
+/// `Drafts#update`: the entries read and handed to `f` under the item's lock (the directory and lock
+/// file exist even when `f` refuses), then written like Ruby writes them — an item left with no
+/// drafts and no clipboard load ids loses its file.
+pub fn update<T>(slug: &str, f: impl FnOnce(&mut Vec<Value>) -> Result<T, Halt>) -> Result<T, Halt> {
+    use std::os::unix::io::AsRawFd;
+    if !writable(slug) {
+        return Err(Halt::Unported);
+    }
+    let dir = data_root::root().join("drafts");
+    let path = dir.join(format!("{slug}.json"));
+    std::fs::create_dir_all(&dir).map_err(|_| Halt::Unported)?;
+    let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(dir.join(format!(".{slug}.lock"))).map_err(|_| Halt::Unported)?;
+    unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) };
+    let mut data = match std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
+        Some(Value::Object(d)) if d.get("entries").is_some_and(Value::is_array) => d,
+        _ => Map::from_iter([("v".to_string(), Value::from(1)), ("entries".to_string(), Value::Array(vec![]))]),
+    };
+    let Some(Value::Array(list)) = data.get_mut("entries") else { return Err(Halt::Unported) };
+    let result = f(list)?;
+    let no_entries = matches!(data.get("entries"), Some(Value::Array(l)) if l.is_empty());
+    let no_loaded = match data.get("loaded") {
+        None | Some(Value::Null) => true,
+        Some(Value::Array(l)) => l.is_empty(),
+        Some(Value::Object(o)) => o.is_empty(),
+        Some(_) => false,
+    };
+    if no_entries && no_loaded {
+        let _ = std::fs::remove_file(&path);
+    } else {
+        data.insert("v".into(), Value::from(1));
+        let temp = format!("{}.{}.{:?}.tmp", path.display(), std::process::id(), std::thread::current().id());
+        std::fs::write(&temp, pretty(&Value::Object(data))).map_err(|_| Halt::Unported)?;
+        std::fs::rename(&temp, &path).map_err(|_| Halt::Unported)?;
+    }
+    Ok(result)
+}
