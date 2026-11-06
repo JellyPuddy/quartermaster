@@ -15,7 +15,7 @@ module Quartermaster
     STATES = %w[blocked your_turn working waiting none].freeze
 
     Entry = Struct.new(:slug, :session_id, :state, :since, :tool, :snoozed, :waiting_on, :context_tokens,
-                       :cache_warm_until, :last_assistant_at, :activity, keyword_init: true) do
+                       :cache_warm_until, :last_assistant_at, :activity, :run, keyword_init: true) do
       # A snoozed your-turn sinks below working, above chats with no turn at all.
       def rank
         return 2.5 if snoozed
@@ -43,6 +43,22 @@ module Quartermaster
         next unless item.state == "in_progress" || live.any?
 
         entry_for(item, live)
+      end.sort_by(&:sort_key)
+    end
+
+    # The Runs group: one entry per live chat-flow run of a local automation
+    # that isn't `notify: quiet`, named by its own tmux (slug) and carrying the
+    # run (RunChats::Chat). A pr-review run speaks through its Review item's row.
+    def runs(chats = RunChats.by_session)
+      chats.each_value.filter_map do |chat|
+        next if chat.quiet
+
+        session = @session_log.session_for(chat.session_id)
+        next unless session&.live?
+
+        turn = turn_for(session)
+        Entry.new(slug: chat.tmux, session_id: session.id, state: turn[:state], since: turn[:since], tool: turn[:tool],
+                  waiting_on: turn[:waiting_on], activity: session.last_ts ? Time.parse(session.last_ts) : nil, run: chat)
       end.sort_by(&:sort_key)
     end
 

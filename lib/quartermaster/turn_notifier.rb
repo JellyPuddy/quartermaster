@@ -75,7 +75,8 @@ module Quartermaster
       changed = changed.except(*RunLog.quiet_session_ids)
       log = SessionLog.new
       items = WorkItem.all
-      changed.filter_map { |id, turn| raise_for(id, turn, log, items) }
+      runs = RunChats.by_session
+      changed.filter_map { |id, turn| raise_for(id, turn, log, items, runs[id]) }
     end
 
     private
@@ -95,7 +96,7 @@ module Quartermaster
       false
     end
 
-    def raise_for(session_id, turn, log, items)
+    def raise_for(session_id, turn, log, items, run)
       session = log.session_for(session_id)
       return if session&.aside_for
 
@@ -103,7 +104,7 @@ module Quartermaster
       kind = trigger(turn)
       return if kind == :your_turn && quiet_turn?(session, item, turn, log)
 
-      notification = build(session_id, session, item, turn, kind)
+      notification = run ? build_for_run(session_id, run, turn, kind) : build(session_id, session, item, turn, kind)
       deliver(notification)
       notification
     rescue StandardError => e
@@ -124,18 +125,25 @@ module Quartermaster
 
     def build(session_id, session, item, turn, kind)
       title = item ? item.title : self.class.unlinked_title(session)
-      body = if kind == :blocked
-               turn["tool"] ? "Needs you: #{turn['tool']}" : "Needs your answer"
-             else
-               "Your turn — after #{duration(turn)}"
-             end
       loose = !item && session&.loose_id ? LooseChat.session_name(session.loose_id) : nil
       { "slug" => item&.slug, "loose" => loose, "session" => session_id, "kind" => kind.to_s,
-        "title" => title, "body" => body }
+        "title" => title, "body" => body(turn, kind) }
     end
 
-    # The tmux name a click opens: the item's slug, else the loose chat's.
-    def self.chat_of(notification) = notification["slug"] || notification["loose"]
+    # A local automation's chat-flow run: its own tmux, not the automation's slug.
+    def build_for_run(session_id, run, turn, kind)
+      { "slug" => nil, "run" => run.tmux, "session" => session_id, "kind" => kind.to_s,
+        "title" => run.title, "body" => body(turn, kind) }
+    end
+
+    def body(turn, kind)
+      return "Your turn — after #{duration(turn)}" unless kind == :blocked
+
+      turn["tool"] ? "Needs you: #{turn['tool']}" : "Needs your answer"
+    end
+
+    # The tmux name a click opens: the item's slug, else the run's or the loose chat's.
+    def self.chat_of(notification) = notification["slug"] || notification["run"] || notification["loose"]
 
     def self.unlinked_title(session, fallback = "Unlinked session")
       prompt = session&.first_prompt.to_s.strip
@@ -166,7 +174,7 @@ module Quartermaster
     def macos(notification)
       chat = self.class.chat_of(notification)
       announce(title: notification["title"], body: notification["body"],
-               group: "qm-#{notification["slug"] || notification["session"]}",
+               group: "qm-#{notification["slug"] || notification["run"] || notification["session"]}",
                click: chat && ["open-chat", chat], sound: notification["kind"] == "blocked")
     end
 

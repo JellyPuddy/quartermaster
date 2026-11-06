@@ -36,10 +36,12 @@ module Quartermaster
       SessionLog.new.dismiss(session_id)
     end
 
-    # Chats first (whose move it is, longest-waiting first), then the
-    # slower nudges: expiring transcripts, stale items, merged PRs.
+    # Chats first (whose move it is, longest-waiting first; then the Runs
+    # group: local automation run chats, titled by their run), then the slower
+    # nudges: expiring transcripts, stale items, merged PRs.
     def cmd_attention(_argv)
-      chats = ChatAttention.new.entries
+      attention = ChatAttention.new
+      chats = attention.entries + attention.runs
       entries = Attention.new.entries
       if chats.empty? && entries.empty?
         puts "Nothing needs attention."
@@ -100,7 +102,7 @@ module Quartermaster
         detail = entry.waiting_on&.first || entry.tool
         waiting = entry.since ? [format_duration((now - entry.since).to_i), detail].compact.join(" · ") : ""
         puts [paint(label.ljust(21), entry.snoozed ? 90 : color), entry.slug.ljust(width),
-              waiting.ljust(24), context_label(entry, now)].join("  ").rstrip
+              waiting.ljust(24), entry.run ? entry.run.title : context_label(entry, now)].join("  ").rstrip
       end
     end
 

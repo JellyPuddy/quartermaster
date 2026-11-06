@@ -162,9 +162,9 @@ local cron; a raw cron must pass `LocalCron.error`); `pause`, `delete` answer at
 two ticking once after queuing; `resume-run` is `ChatFlow#resume` (`--resume <session id>` under the
 run's own tmux name); `install-tick`/`uninstall-tick` the `automation-tick` job; `local-pause`
 writes `automations.local_paused` through `ConfigFile`. The claude.ai verbs refuse a local slug.
-`RunChats` hands live run chats out with the loose chats (a `run` field, `quiet` for a `notify:
-quiet` automation, left out of the title count; [loose-chats](loose-chats.md)), so "open chat"
-and a run notification's `qm open-chat` reach the chat pane.
+`RunChats` lists live run chats with the loose ones (`run`; `quiet` out of the title count;
+[loose-chats](loose-chats.md)); `RunChats.by_session` (session id → tmux, title) feeds attention's
+Runs group and run notifications, opening the run's tmux; a pr-review run shows as its Review item.
 
 ## Rules
 
@@ -181,8 +181,8 @@ and a run notification's `qm open-chat` reach the chat pane.
   and never a run the user typed into; a typed-into run is theirs until its session ends.
 - Lifecycle runs every tick, paused or not; `local_paused` holds every start, `enabled: false` only
   cron and guard runs (its `manual`/`retry` ones start, under hold and cap, to try it by hand).
-- `notify: quiet` keeps an automation's run sessions out of `ChatAttention` and `TurnNotifier`
-  (`RunLog.quiet_session_ids`, see [attention](attention.md)); its runs list and a timeout notifies.
+- `notify: quiet` keeps a run out of attention and turn notifications (`RunLog.quiet_session_ids`);
+  its runs list and a timeout notifies.
 - Guards, `launchctl` and tmux go through the injected runner and `Tmux`; tests pass a
   `FakeRunner`, a `FakeTmux` and a temp LaunchAgents dir, never a real guard, claude, tmux or launchctl.
 - The LaunchAgent changes only on the user's command or button; `installed?` reads only the plist.
