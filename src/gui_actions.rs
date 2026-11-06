@@ -220,6 +220,7 @@ fn run(payload: &Value) -> R<Value> {
         "aside-open" | "aside-reopen" | "aside-close" | "aside-promote" => aside(&cmd, &slug, &args),
         "loose-start" => loose_start(&args),
         "loose-promote" => loose_promote(&args),
+        "loose-close" => loose_close(&args),
         "pane-start" | "pane-resume" => pane(&slug, cmd == "pane-start", &args),
         "pf-mode" => {
             let mut item = find(&slug)?;
@@ -377,6 +378,35 @@ fn loose_start(args: &Args) -> R<Value> {
         Ok(_) => Ok(json!({"ok": true, "name": name, "id": id})),
         Err(message) => Err(fail(message)),
     }
+}
+
+/// `loose-close`: `/exit` waits for claude to go, so it runs on a job keyed by the pane.
+fn loose_close(args: &Args) -> R<Value> {
+    let id = args.text("id")?;
+    if id.is_empty() {
+        return Err(fail("no loose chat given"));
+    }
+    let name = format!("loose--{id}");
+    let pane = name.clone();
+    Ok(crate::gui_jobs::background(&name, "closing…", false, move || {
+        let tmux = crate::tmux::Tmux::new();
+        if tmux.live(&pane) {
+            tmux.send_text(&pane, "/exit");
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            tmux.send_enter(&pane);
+            for _ in 0..20 {
+                if !tmux.live(&pane) || tmux.pane_dead(&pane) {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(250));
+            }
+            tmux.kill(&pane);
+        }
+        for session in crate::session_log::SessionLog::read().sessions().into_iter().filter(|s| s.loose_id().as_deref() == Some(id.as_str())) {
+            crate::session_log::SessionLog::dismiss(&session.id).map_err(|e| crate::gui_jobs::Failure::Other(e.message, e.class))?;
+        }
+        Ok(json!({"ok": true, "message": "loose chat closed"}))
+    }))
 }
 
 /// `loose-promote`: an item from the chat's newest session, the tmux session renamed to its slug.

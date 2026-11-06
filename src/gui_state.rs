@@ -499,7 +499,7 @@ pub fn build(token: &str) -> R<Value> {
         ("distilling", json!([])),
         ("distilled", json!([])),
         ("pf", pf_payload(&status, config.dev_server())),
-        ("jobs", json!([])),
+        ("jobs", Value::Array(crate::gui_jobs::running())),
         ("buildActive", json!([])),
         ("buildProgress", json!({})),
         ("panes", json!(panes)),
@@ -509,7 +509,7 @@ pub fn build(token: &str) -> R<Value> {
         ("benchmark", Value::Null),
         ("notifications", json!([])),
         ("rateLimits", rate_limits()),
-        ("finished", json!([])),
+        ("finished", Value::Array(crate::gui_jobs::take_finished())),
     ] {
         out.insert(k.into(), v);
     }

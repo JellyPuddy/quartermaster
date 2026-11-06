@@ -2086,9 +2086,110 @@ fn the_loose_chat_actions_match_ruby() {
     }
     // what is not read as Ruby does, and typing into the chat, stay Ruby's: nothing is written
     let before = action_traces(&root2, &w.root);
-    for body in [act("loose-promote", r#"{"id":"x","title":"y","tell":true}"#), act("loose-start", r#"{"starter":"dev"}"#), act("loose-start", r#"{"model":"é"}"#), act("loose-close", r#"{"id":"x"}"#)] {
+    for body in [act("loose-promote", r#"{"id":"x","title":"y","tell":true}"#), act("loose-start", r#"{"starter":"dev"}"#), act("loose-start", r#"{"model":"é"}"#), act("caffeinate", r#"{"mode":"on"}"#)] {
         let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
         assert!(a.status.starts_with("501"), "{body}: {}", a.status);
     }
     assert_eq!(before, action_traces(&root2, &w.root));
+}
+
+#[test]
+fn closing_a_loose_chat_runs_as_a_job_like_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let chat = base.path().join("fake-chat");
+    fs::write(&chat, "#!/bin/sh\nprintf '{\"v\":1,\"event\":\"start\",\"session_id\":\"sess-%s\",\"cwd\":\"%s\",\"pid\":%s,\"project\":\"demo\",\"loose\":\"%s\",\"ts\":\"%s\"}\\n' \"$QM_LOOSE\" \"$(pwd)\" \"$$\" \"$QM_LOOSE\" \"$(date -u +%FT%TZ)\" >> \"$QM_ROOT/sessions.jsonl\"\nread -r line\necho \"$line\" > \"$QM_ROOT/typed-$QM_LOOSE\"\nexec sleep 300\n").unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&chat, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let (sock_ruby, sock_rust) = ("qm-test-close-ruby", "qm-test-close-rust");
+    for s in [sock_ruby, sock_rust] {
+        tmux_on(s, &["kill-server"]);
+    }
+    let env_for = |sock: &str| -> Vec<(&'static str, String)> { vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("QM_TMUX_SOCKET", sock.to_string()), ("QM_CHAT_COMMAND", chat.display().to_string())] };
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let ruby = start_env(false, &w.root, &w.home, &env_for(sock_ruby));
+    let rust = start_env(true, &root2, &w.home, &env_for(sock_rust));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let post = |server: &Server, body: &str| String::from_utf8_lossy(&request(server.port, "POST", "/api/action", &origin, body, true).body).into_owned();
+    let state = |server: &Server| -> serde_json::Value { serde_json::from_slice(&request(server.port, "GET", "/api/state", &[], "", true).body).expect("a state") };
+    let id_of = |reply: &str| serde_json::from_str::<serde_json::Value>(reply).unwrap()["id"].as_str().unwrap().to_string();
+    let act = |cmd: &str, args: &str| format!("{{\"cmd\":\"{cmd}\",\"slug\":null,\"args\":{args}}}");
+    let mut ids: Vec<(String, String)> = vec![];
+    for _ in 0..3 {
+        let (a, b) = (post(&ruby, &act("loose-start", "{}")), post(&rust, &act("loose-start", "{}")));
+        ids.push((id_of(&a), id_of(&b)));
+    }
+    for _ in 0..100 {
+        let seen = |root: &Path, pick: &dyn Fn(&(String, String)) -> String| ids.iter().all(|i| fs::read_to_string(root.join("sessions.jsonl")).unwrap_or_default().contains(&format!("sess-{}", pick(i))));
+        if seen(&w.root, &|i| i.0.clone()) && seen(&root2, &|i| i.1.clone()) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let norm = |text: String, side: usize| ids.iter().enumerate().fold(text, |t, (n, i)| t.replace(if side == 0 { &i.0 } else { &i.1 }, &format!("ID{n}")));
+    let both = |label: &str, fields: &[&str]| -> String {
+        let (a, b) = (state(&ruby), state(&rust));
+        let pick = |s: &serde_json::Value, side: usize| norm(fields.iter().map(|f| format!("{f}: {}", s[*f])).collect::<Vec<_>>().join("\n"), side);
+        assert_eq!(pick(&a, 0), pick(&b, 1), "{label}");
+        pick(&a, 0)
+    };
+    let close = |n: usize, side_body: &dyn Fn(&str) -> String| -> (String, String) { (post(&ruby, &side_body(&ids[n].0)), post(&rust, &side_body(&ids[n].1))) };
+    let closing = |id: &str| act("loose-close", &format!("{{\"id\":\"{id}\"}}"));
+    // two chats closing at once: running jobs show as badges, the same chat again is busy
+    let (a, b) = close(0, &closing);
+    assert_eq!((a.as_str(), b.as_str()), ("{\"ok\":true,\"background\":true}", "{\"ok\":true,\"background\":true}"));
+    let (a, b) = close(1, &closing);
+    assert_eq!(a, b);
+    let (a, b) = close(0, &closing);
+    assert_eq!(norm(a, 0), norm(b, 1));
+    let running = both("while closing", &["jobs"]);
+    assert!(running.contains("closing…") && running.contains("ID0") && running.contains("ID1"), "{running}");
+    // wait for both jobs to finish; every state build hands out what finished since the last one, so keep it
+    let (mut got_ruby, mut got_rust): (Vec<String>, Vec<String>) = (vec![], vec![]);
+    for _ in 0..200 {
+        let (a, b) = (state(&ruby), state(&rust));
+        got_ruby.extend(a["finished"].as_array().unwrap().iter().map(|v| norm(v.to_string(), 0)));
+        got_rust.extend(b["finished"].as_array().unwrap().iter().map(|v| norm(v.to_string(), 1)));
+        if a["jobs"].as_array().is_some_and(|j| j.is_empty()) && b["jobs"].as_array().is_some_and(|j| j.is_empty()) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    got_ruby.sort();
+    got_rust.sort();
+    assert_eq!(got_ruby, got_rust);
+    let fa = got_ruby.join("\n");
+    assert!(got_ruby.len() == 2 && fa.contains("loose chat closed") && fa.contains("\"key\":\"loose--ID0\"") && fa.contains("\"key\":\"loose--ID1\"") && fa.contains("\"label\":\"closing…\""), "{fa}");
+    let after = both("after closing", &["finished", "jobs", "loose", "inbox"]);
+    assert!(after.contains("finished: []") && after.contains("ID2") && !after.contains("loose--ID0"), "{after}");
+    assert_eq!(tmux_picture_with(sock_ruby, &|t| norm(t, 0)).lines().next(), tmux_picture_with(sock_rust, &|t| norm(t, 1)).lines().next());
+    // a chat that is not running closes at once, and still dismisses its sessions
+    let (a, b) = close(0, &closing);
+    assert_eq!(a, b);
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    let (fa, fb) = (norm(state(&ruby)["finished"].to_string(), 0), norm(state(&rust)["finished"].to_string(), 1));
+    assert_eq!(fa, fb);
+    assert!(fa.contains("\"key\":\"loose--ID0\""), "{fa}");
+    for body in [act("loose-close", r#"{"id":""}"#), act("loose-close", "{}"), act("loose-close", r#"{"id":null}"#)] {
+        assert_eq!(post(&ruby, &body), post(&rust, &body), "{body}");
+    }
+    let events = |root: &Path, side: usize| {
+        let stamp = regex::Regex::new(r#""ts":"[^"]*""#).unwrap();
+        let lines: std::collections::BTreeSet<String> = fs::read_to_string(root.join("sessions.jsonl")).unwrap().lines().filter(|l| l.contains("dismissed")).map(|l| norm(stamp.replace_all(l, "\"ts\":X").into_owned(), side)).collect();
+        lines.into_iter().collect::<Vec<_>>().join("\n")
+    };
+    assert_eq!(events(&w.root, 0), events(&root2, 1));
+    assert!(events(&root2, 1).contains("sess-ID0") && events(&root2, 1).contains("sess-ID1"));
+    // /exit and Enter were typed into the chats that were closed, and only those
+    for (n, (a, b)) in ids.iter().enumerate() {
+        let typed = |root: &Path, id: &str| fs::read_to_string(root.join(format!("typed-{id}"))).ok();
+        assert_eq!(typed(&w.root, a), typed(&root2, b), "chat {n}");
+        assert_eq!(typed(&root2, b), (n < 2).then(|| "/exit\n".to_string()), "chat {n}");
+    }
+    for s in [sock_ruby, sock_rust] {
+        tmux_on(s, &["kill-server"]);
+    }
 }

@@ -75,6 +75,24 @@ impl Tmux {
         Err(format!("tmux could not start {name}: {}", crate::ruby_text::strip(&mixed)))
     }
 
+    /// Types text into the session as if from the keyboard (`-l`: no key-name lookup).
+    pub fn send_text(&self, name: &str, text: &str) -> bool {
+        valid_name(name) && self.run(&["send-keys", "-t", &format!("={name}:"), "-l", text]).0
+    }
+
+    pub fn send_enter(&self, name: &str) -> bool {
+        valid_name(name) && self.run(&["send-keys", "-t", &format!("={name}:"), "Enter"]).0
+    }
+
+    /// Whether the pane's program has ended and the window stays (`remain-on-exit`).
+    pub fn pane_dead(&self, name: &str) -> bool {
+        if !valid_name(name) {
+            return false;
+        }
+        let (ok, out) = self.run(&["display-message", "-p", "-t", &format!("={name}:"), "#{pane_dead}"]);
+        ok && crate::ruby_text::strip(&out) == "1"
+    }
+
     /// Ends the session (`Tmux#kill`); false when it was not running.
     pub fn kill(&self, name: &str) -> bool {
         valid_name(name) && self.run(&["kill-session", "-t", &format!("={name}")]).0
