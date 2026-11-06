@@ -11,8 +11,11 @@ module Quartermaster
   # into a record + prompt; request bodies are RoutinesClient's to build.
   class AutomationStore
     VERSION = 1
-    FIELDS = %w[routine runner name cron model sources connectors allowed_tools environment_id enabled remote_updated_at].freeze
+    FIELDS = %w[routine runner name cron when flow cwd model sources connectors allowed_tools permission_mode
+                environment_id enabled timeout_minutes notify remote_updated_at].freeze
     SLUG = /\A[a-z0-9][a-z0-9-]*\z/
+    LOCAL_DEFAULTS = { "flow" => "chat", "timeout_minutes" => 30, "notify" => "attention" }.freeze
+    NOTIFY = %w[attention quiet].freeze
 
     Entry = Data.define(:slug, :record, :prompt)
 
@@ -43,15 +46,33 @@ module Quartermaster
     def write(slug, record, prompt)
       merged = exists?(slug) ? load_record(slug) : {}
       merged = merged.merge(record.transform_keys(&:to_s)).merge("v" => VERSION)
+      self.class.validate_local(merged) if merged["runner"] == "local"
       FileUtils.mkdir_p(@dir)
       replace(yml_path(slug), Psych.dump(ordered(merged)))
       replace(prompt_path(slug), prompt.to_s)
       Entry.new(slug: slug, record: merged, prompt: prompt.to_s)
     end
 
-    # Removes the two files; their `.bak`s stay as the last copy.
+    # Removes the two files and the run log; the `.bak`s stay as the last copy.
     def delete_local(slug)
-      FileUtils.rm_f([yml_path(slug), prompt_path(slug)])
+      FileUtils.rm_f([yml_path(slug), prompt_path(slug), RunLog.new(slug, dir: @dir).path])
+    end
+
+    # A local automation's record with the defaults of the fields it leaves unset.
+    def self.local_settings(record) = LOCAL_DEFAULTS.merge(record.compact)
+
+    # Raises ArgumentError naming every field a local automation can't run with.
+    def self.validate_local(record)
+      settings = local_settings(record)
+      problems = []
+      problems << "permission_mode bypassPermissions is refused for local automations" if settings["permission_mode"] == "bypassPermissions"
+      problems << "notify must be attention or quiet, got #{settings['notify'].inspect}" unless NOTIFY.include?(settings["notify"])
+      problems << "flow must be a flow name, got #{settings['flow'].inspect}" unless settings["flow"].is_a?(String) && !settings["flow"].empty?
+      timeout = settings["timeout_minutes"]
+      problems << "timeout_minutes must be a positive whole number, got #{timeout.inspect}" unless timeout.is_a?(Integer) && timeout.positive?
+      tools = settings["allowed_tools"]
+      problems << "allowed_tools must be a list of tool names" unless tools.nil? || (tools.is_a?(Array) && tools.all?(String))
+      raise ArgumentError, problems.join("; ") unless problems.empty?
     end
 
     def yml_path(slug) = File.join(@dir, "#{checked(slug)}.yml")

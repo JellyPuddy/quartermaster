@@ -89,6 +89,65 @@ class AutomationStoreTest < Minitest::Test
     assert_equal %w[a-review], store.list.map(&:slug)
   end
 
+  def local_record
+    { "runner" => "local", "name" => "Review PRs", "cron" => "*/15 9-17 * * 1-5", "enabled" => false,
+      "when" => "gh pr list --json url", "flow" => "pr-review", "cwd" => "/tmp/repo", "model" => "claude-sonnet-5-5",
+      "allowed_tools" => ["Bash(gh:*)", "Read"], "permission_mode" => "acceptEdits", "timeout_minutes" => 45, "notify" => "quiet" }
+  end
+
+  def test_a_local_record_round_trips_its_fields_in_order_with_unknown_keys_kept
+    store.write("review-prs", local_record.merge("my_note" => "keep"), "Review it.")
+
+    assert_equal local_record.merge("v" => 1, "my_note" => "keep"), store.read("review-prs").record
+    keys = YAML.safe_load(File.read(File.join(dir, "review-prs.yml"))).keys
+    assert_equal %w[v runner name cron when flow cwd model allowed_tools permission_mode enabled timeout_minutes notify my_note], keys
+  end
+
+  def test_local_settings_fill_flow_timeout_and_notify_defaults
+    settings = Quartermaster::AutomationStore.local_settings({ "runner" => "local", "name" => "X" })
+
+    assert_equal ["chat", 30, "attention"], settings.values_at("flow", "timeout_minutes", "notify")
+    assert_equal "quiet", Quartermaster::AutomationStore.local_settings(local_record)["notify"]
+  end
+
+  def test_a_local_record_refuses_bypass_permissions_and_bad_fields
+    {
+      { "permission_mode" => "bypassPermissions" } => /bypassPermissions/,
+      { "notify" => "loud" } => /notify must be attention or quiet/,
+      { "flow" => "" } => /flow must be a flow name/,
+      { "flow" => 3 } => /flow must be a flow name/,
+      { "timeout_minutes" => 0 } => /timeout_minutes must be a positive whole number/,
+      { "timeout_minutes" => "30" } => /timeout_minutes must be a positive whole number/,
+      { "allowed_tools" => "Bash" } => /allowed_tools must be a list/
+    }.each do |change, message|
+      error = assert_raises(ArgumentError, change.inspect) { store.write("review-prs", local_record.merge(change), "p") }
+      assert_match message, error.message
+      refute store.exists?("review-prs"), "nothing is written for #{change.inspect}"
+    end
+  end
+
+  def test_an_invalid_change_merged_onto_a_stored_local_record_is_refused_and_leaves_it_whole
+    store.write("review-prs", local_record, "p")
+
+    assert_raises(ArgumentError) { store.write("review-prs", { "permission_mode" => "bypassPermissions" }, "p") }
+    assert_equal "acceptEdits", store.read("review-prs").record["permission_mode"]
+  end
+
+  def test_cloud_records_are_not_held_to_local_rules
+    store.write("digest", record.merge("permission_mode" => "bypassPermissions", "notify" => "loud"), "x")
+
+    assert_equal "bypassPermissions", store.read("digest").record["permission_mode"]
+  end
+
+  def test_delete_local_also_removes_the_run_log
+    store.write("review-prs", local_record, "p")
+    Quartermaster::RunLog.new("review-prs").checked
+
+    store.delete_local("review-prs")
+
+    assert_empty Dir.children(dir)
+  end
+
   def test_refuses_a_slug_that_is_not_a_plain_name
     assert_raises(ArgumentError) { store.write("../evil", record, "x") }
     assert_raises(ArgumentError) { store.read("a/b") }

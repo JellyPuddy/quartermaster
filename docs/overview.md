@@ -33,7 +33,7 @@ worktrees — derives from these two layers plus a few more append-only hook log
 |---|---|---|
 | `sessions.jsonl` | session start/end events, append-only | [capture](areas/capture.md) |
 | `work-items/<slug>.md` | one work item each; `work-items/.lock` serialises writes | [work items](areas/work-items.md) |
-| `automations/<slug>.yml`, `<slug>.prompt.md` (+ `.bak`) | an automation's routine settings (`v: 1`) and its prompt, the source of truth push sends | [automations](areas/automations.md) |
+| `automations/<slug>.yml`, `<slug>.prompt.md` (+ `.bak`); `<slug>.runs.jsonl` | an automation's settings (`v: 1`) and its prompt, the source of truth push sends; a local one's run log, append-only ([local automations](areas/local-automations.md)) | [automations](areas/automations.md) |
 | `automations/tick.log` | the launchd tick's output; its LaunchAgent plist lives outside the root, in `~/Library/LaunchAgents/` | [local automations](areas/local-automations.md) |
 | `config.yml` (+ `.bak`) | projects and their settings (below), `prices:` overrides; `.bak` is the file before qm's last write | [settings](areas/settings.md) |
 | `qm.log` | hook and background errors with lib/ backtraces; network blips once per outage | [capture](areas/capture.md) |

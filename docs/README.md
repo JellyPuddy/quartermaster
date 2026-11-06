@@ -57,8 +57,9 @@ goes in the commit message.
   `RoutinesClient` and its token (`automations.token_source`), the local files, mapping to and
   from the routines API, API errors, their schedule (UTC cron ↔ local weekdays and time), the
   brief their chats start with, or the GUI's Automations tab.
-- [local-automations](areas/local-automations.md) — read when you touch automations that run on
-  this machine (`runner: local`): the launchd tick and its installer.
+- [local-automations](areas/local-automations.md) — read when you touch `runner: local`
+  automations: their yml fields and validation, the run log (`<slug>.runs.jsonl`, `RunLog`), and
+  the launchd tick's installer.
 - [cli](areas/cli.md) — read when you touch a `qm` command, the bare-`qm` fzf viewer or live
   sessions listing.
 

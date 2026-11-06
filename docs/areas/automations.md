@@ -97,15 +97,15 @@ for an answer that isn't JSON or lacks the expected fields; `Network` when the r
 complete; a plain `Error` naming any other status and the API's error message.
 
 **Local store** — `AutomationStore` keeps each automation as two files under
-`automations/`: `<slug>.yml` and `<slug>.prompt.md` (the prompt, nothing else). The yml holds
+`automations/`: `<slug>.yml` and `<slug>.prompt.md` (the prompt, nothing else). A cloud yml holds
 `v: 1` first, then `routine` (the trigger id, `trig_…`), `runner`, `name`, `cron` (UTC, as the
 API holds it), `model`, `sources` (the repos), `connectors` (the routine's `mcp_connections`),
-`allowed_tools`, `environment_id`, `enabled` and `remote_updated_at` (the routine's
-`updated_at` at the last sync), then any other keys. `read(slug)` gives an `Entry` (slug,
-record, prompt) or nil; `list` every entry by slug; `find_by_routine(id)` the entry holding a
-trigger id; `exists?`; `delete_local` removes both files and leaves their `.bak`s. `write(slug,
-record, prompt)` merges the record onto the stored keys, so keys a caller doesn't name (qm's
-or anyone's) survive, and returns the stored entry. A slug is `[a-z0-9-]`, refused otherwise.
+`allowed_tools`, `environment_id`, `enabled`, `remote_updated_at` (the routine's `updated_at` at
+the last sync), then any other keys; a `runner: local` yml's keys → [local automations](local-automations.md).
+`read(slug)` gives an `Entry` (slug, record, prompt) or nil; `list` every entry by slug;
+`find_by_routine(id)` the entry holding a trigger id; `exists?`; `delete_local` removes both files
+(and a local run log), leaving their `.bak`s. `write(slug, record, prompt)` merges the record onto
+the stored keys, so keys a caller doesn't name survive, and returns the stored entry. A slug is `[a-z0-9-]`, refused otherwise.
 
 **Mapping** — `AutomationStore.from_routine(routine)` turns a routine as the routines API
 returns it into `[record, prompt]` through `RoutinesClient.fields`, the one remote-to-local
