@@ -98,19 +98,19 @@ with a non-blocking flock (held: answers `{"locked" => true}` and does nothing),
    (default 80) or weekly ≥ `automations.local_hold_seven_day` (90) holds every start ("5h at
    84%"). A snapshot whose five-hour window has reset, or none, holds nothing. Guards still run.
 4. Lifecycle (`RunLifecycle`), paused, held or disabled alike, for every started run. A run is
-   busy while its session (`SessionLog`, by the `session_id` qm chose) is live and
-   `ChatAttention#turn_for` says working, waiting or none (no prompt reported yet); before the
-   session's SessionStart hook ran, while its tmux session lives. A run is typed into once its
-   session has had a second prompt (`EventLog`'s `prompts`; the first is the run's own).
-   - A live run whose turn says `your_turn` (Stop, no background work) gets `finished`.
-   - A finished run whose session has sat in `your_turn` for an hour (`CLOSE_AFTER`, from the
-     turn's `since`) has its tmux killed and gets `closed` — only a `--run-` chat, never one typed
-     into; a pr-review run (in its Review item's chat) stays `finished`.
-   - A live, busy run not typed into, `timeout_minutes` (default 30) after `started`: its `--run-`
-     tmux killed (a pr-review run's Review chat is left open), `timed_out`, a history note on the
-     automation's item ("run <id> timed out after 30 min", plus "(its Review chat stays open)"),
-     and `TurnNotifier#announce` through the runner (a pr-review one's click opens that chat). A
-     blocked run is not busy, so never times out.
+   busy while its session (`SessionLog`, by qm's `session_id`) is live and `ChatAttention#turn_for`
+   says working, waiting or none (no prompt yet); before its SessionStart hook ran, while its tmux
+   lives. A run is typed into once its session had a second prompt (`EventLog`'s `prompts`).
+   - A live run whose turn says `your_turn` (Stop, no background work) gets `finished`; one whose
+     chat is gone gets `failed` (nothing killed), even if typed into: its session ended mid-turn
+     ("session ended before the run finished"), or no session and no live tmux five minutes
+     (`START_GRACE`) after `started` ("its chat ended before the session started").
+   - A finished `--run-` chat not typed into, sat in `your_turn` for an hour (`CLOSE_AFTER`, from
+     the turn's `since`), is killed and gets `closed`; a pr-review run stays `finished`.
+   - A live, busy run not typed into, `timeout_minutes` (default 30) after `started`: `timed_out`,
+     its `--run-` tmux killed (a Review chat stays open), a history note on the automation's item
+     ("run <id> timed out after 30 min", plus "(its Review chat stays open)") and
+     `TurnNotifier#announce` (a pr-review one's click opens that chat). A blocked run never times out.
 5. Cap: `automations.local_max_running` (default 2) minus the live runs that are busy, counted
    after the lifecycle, so a run timed out frees its slot in the same tick.
 6. Unless paused or held, queued runs of enabled automations start oldest-first across
@@ -178,7 +178,7 @@ and a run notification's `qm open-chat` reach the chat pane.
 - One tick at a time (the flock); a tick starts runs and never waits for them, and never raises
   out: one automation's error is recorded in `problems` and the others go on.
 - qm only ever kills a `--run-` tmux session (closing or timing out), never an item's own chat,
-  and never a run the user typed into; a typed-into run is theirs for good.
+  and never a run the user typed into; a typed-into run is theirs until its session ends.
 - Lifecycle checks run every tick, paused or not: pausing stops new work, not the clean-up.
 - `notify: quiet` keeps an automation's run sessions out of `ChatAttention` and `TurnNotifier`
   (`RunLog.quiet_session_ids`, see [attention](attention.md)); its runs still list in the tab and

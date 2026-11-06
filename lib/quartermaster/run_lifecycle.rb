@@ -7,9 +7,12 @@ module Quartermaster
   # an untouched run still busy past its `timeout_minutes` is `timed_out` —
   # its `--run-` chat killed (a pr-review run's Review chat is left open),
   # a history note on the automation's item and a macOS notification. A run
-  # the user typed into (a second prompt) is theirs: never closed or stopped.
+  # whose chat is gone — its session ended, or no session and no tmux past
+  # START_GRACE — is `failed`. A run the user typed into (a second prompt) is
+  # theirs while its session lives: never closed or stopped.
   class RunLifecycle
     CLOSE_AFTER = 3600
+    START_GRACE = 300
     # A live run's session in these states holds a slot; "none" is a run
     # whose first prompt the hooks haven't reported yet.
     BUSY = %w[working waiting none].freeze
@@ -24,9 +27,9 @@ module Quartermaster
     end
 
     # Checks every started run of one automation; answers {"finished",
-    # "closed", "timed_out"} => run ids.
+    # "closed", "timed_out", "failed"} => run ids.
     def call(entry, now)
-      done = { "finished" => [], "closed" => [], "timed_out" => [] }
+      done = { "finished" => [], "closed" => [], "timed_out" => [], "failed" => [] }
       log = RunLog.new(entry.slug, dir: @dir)
       log.runs.each do |run|
         outcome = case run.status
@@ -56,6 +59,8 @@ module Quartermaster
         log.finished(run.id, at: now)
         return "finished"
       end
+      gone = chat_gone(run, session, now)
+      return mark_failed(log, run, gone, now) if gone
       return if typed_into?(run) || !busy?(run)
 
       minutes = AutomationStore.local_settings(entry.record)["timeout_minutes"].to_i
@@ -63,6 +68,18 @@ module Quartermaster
 
       stop(entry, log, run, minutes, now)
       "timed_out"
+    end
+
+    def chat_gone(run, session, now)
+      return session.live? ? nil : "session ended before the run finished" if session
+      return if @tmux.live?(run.tmux.to_s) || run.started_at.nil? || now - run.started_at <= START_GRACE
+
+      "its chat ended before the session started"
+    end
+
+    def mark_failed(log, run, error, now)
+      log.failed(run.id, error: error, at: now)
+      "failed"
     end
 
     def idle(log, run, now)

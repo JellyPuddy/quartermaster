@@ -41,6 +41,91 @@ class AutomationRunLifecycleTest < Minitest::Test
     id
   end
 
+  def end_session(session_id)
+    Quartermaster::SessionLog.new.append("event" => "end", "session_id" => session_id, "ts" => Time.now.iso8601)
+  end
+
+  # A started run whose SessionStart hook never reported.
+  def unreported_run(slug, ago:)
+    run_log = log(slug)
+    id = run_log.enqueue(key: "k-#{ago}", item: nil, flow: "chat", trigger: "manual", at: now - ago)
+    run_log.started(id, session_id: "never-#{id}", tmux: "#{slug}--run-#{id}", item_slug: slug, at: now - ago)
+    id
+  end
+
+  def test_a_run_whose_session_ended_mid_turn_fails_and_can_be_retried
+    slug = automation("Nightly")
+    id = started_run(slug, "s1", [600, "UserPromptSubmit"], [300, "PostToolUse", "Bash"])
+    end_session("s1")
+
+    summary = tick(tmux: FakeTmux.new).call(now: now)
+
+    run = log(slug).run(id)
+    assert_equal ["failed", "session ended before the run finished"], [run.status, run.error]
+    assert_includes summary["failed"], [slug, id]
+    assert log(slug).retry(id)
+  end
+
+  def test_a_run_whose_session_ended_on_its_turn_is_finished
+    slug = automation("Nightly")
+    id = started_run(slug, "s1", [600, "UserPromptSubmit"], [300, "Stop"])
+    end_session("s1")
+
+    tick(tmux: FakeTmux.new).call(now: now)
+
+    assert_equal "finished", log(slug).run(id).status
+  end
+
+  def test_a_typed_into_run_whose_session_ended_fails
+    slug = automation("Nightly")
+    id = started_run(slug, "s1", [600, "UserPromptSubmit"], [500, "Stop"], [400, "UserPromptSubmit"])
+    end_session("s1")
+
+    tick(tmux: FakeTmux.new).call(now: now)
+
+    assert_equal "failed", log(slug).run(id).status
+  end
+
+  def test_a_run_whose_chat_died_before_its_session_started_fails_after_five_minutes
+    slug = automation("Nightly")
+    id = unreported_run(slug, ago: 301)
+
+    tick(tmux: FakeTmux.new).call(now: now)
+
+    run = log(slug).run(id)
+    assert_equal ["failed", "its chat ended before the session started"], [run.status, run.error]
+  end
+
+  def test_a_run_without_a_session_or_chat_stays_live_within_five_minutes
+    slug = automation("Nightly")
+    id = unreported_run(slug, ago: 240)
+
+    tick(tmux: FakeTmux.new).call(now: now)
+
+    assert_equal "live", log(slug).run(id).status
+  end
+
+  def test_a_run_without_a_session_whose_chat_lives_stays_live
+    slug = automation("Nightly", "timeout_minutes" => 60)
+    id = unreported_run(slug, ago: 900)
+
+    tick(tmux: FakeTmux.new(["#{slug}--run-#{id}"])).call(now: now)
+
+    assert_equal "live", log(slug).run(id).status
+  end
+
+  def test_a_pr_review_run_whose_session_ended_fails_and_its_review_chat_stays
+    slug = automation("Reviews", "flow" => "pr-review")
+    id = started_run(slug, "s1", [600, "UserPromptSubmit"], tmux: "review-acme-app-1")
+    end_session("s1")
+    tmux = FakeTmux.new(["review-acme-app-1"])
+
+    tick(tmux: tmux).call(now: now)
+
+    assert_equal "failed", log(slug).run(id).status
+    assert tmux.live?("review-acme-app-1")
+  end
+
   def test_a_run_whose_turn_ended_is_finished_and_its_chat_stays_open_within_the_hour
     slug = automation("Nightly")
     id = started_run(slug, "s1", [600, "UserPromptSubmit"], [300, "Stop"])
