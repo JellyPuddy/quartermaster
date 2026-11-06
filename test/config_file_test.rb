@@ -223,6 +223,16 @@ class ConfigFileTest < Minitest::Test
     assert_equal new_digest, config.digest
   end
 
+  def test_a_write_keeps_the_file_mode_and_leaves_no_temp_file
+    config = load("projects: { App: /code/app }\n")
+    File.chmod(0o600, file)
+    config.set("projects.App.test_db", "app-test-db")
+    config.write!
+
+    assert_equal 0o600, File.stat(file).mode & 0o7777
+    assert_equal [file, "#{file}.bak"].sort, Dir.glob(File.join(File.dirname(file), "*config.yml*"), File::FNM_DOTMATCH).sort
+  end
+
   def test_a_missing_file_is_written_fresh
     FileUtils.rm_f(file)
     config = Quartermaster::ConfigFile.load(file, probe: ALL_THERE)

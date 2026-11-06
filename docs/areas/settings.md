@@ -40,8 +40,9 @@ path the schema doesn't know, `unset` also takes an unknown key under a governed
 drop a typo). `ConfigFile.parse_value` reads a CLI value as YAML (`[dev, ngrok]` a list, `true` a
 bool, `4` a number; unreadable text stays a string). `replace` swaps in a whole mapping (the GUI's
 draft). `write!(digest:)` refuses with `Invalid` (carrying the issues) while there are errors and
-with `Stale` when the file's digest isn't the one the editor loaded; otherwise it writes a temp
-file in the same folder, copies the old file to `config.yml.bak` and renames the temp file over.
+with `Stale` when the file's digest isn't the one the editor loaded; otherwise it copies the old
+file to `config.yml.bak` and replaces the file through `AtomicFile` (temp file beside it, renamed
+over, the file's mode kept).
 
 **Read** — `ConfigReader` is how code reads config: a reader over a mapping at a schema pattern
 hands out `reader[key]` (the raw value), `section(key)` (a reader one level down, opening a
@@ -128,7 +129,7 @@ edits. A file that doesn't parse shows its error and no form, so a save can't ov
   an unknown key under a governed mapping is an error, never silently dropped.
 - Errors block a write; warnings never do — a folder or command may be missing only on this
   machine or only right now.
-- A write is atomic (temp file + rename in the same folder), keeps the previous file as
+- A write is atomic and keeps the file's mode (`AtomicFile`), keeps the previous file as
   `config.yml.bak`, and is refused as stale when the file changed since the editor loaded it.
 - Projects are never renamed (work items store the name): renaming is remove + add.
 - Validation lives here only; the GUI never re-implements it in JS: the page posts its draft to

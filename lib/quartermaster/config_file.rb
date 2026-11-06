@@ -105,14 +105,10 @@ module Quartermaster
 
       text = self.class.emit(@data)
       FileUtils.mkdir_p(File.dirname(@file))
-      tmp = "#{@file}.tmp-#{Process.pid}-#{SecureRandom.hex(4)}"
-      File.write(tmp, text)
       File.write("#{@file}.bak", current) if File.exist?(@file)
-      File.rename(tmp, @file)
+      AtomicFile.write(@file, text)
       @text = text
       @digest = self.class.digest(text)
-    ensure
-      File.unlink(tmp) if tmp && File.exist?(tmp)
     end
 
     # The file text qm writes for a config mapping.
