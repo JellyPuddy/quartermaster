@@ -204,6 +204,19 @@ fn run(payload: &Value) -> R<Value> {
             }
             issues(&cmd, &slug, &args)
         }
+        "new" => new_item(&args),
+        "item-from-session" => item_from_session(&args),
+        "attach" => {
+            let mut item = find(&slug)?;
+            let session = args.string("session")?;
+            let vacated = item.claim_session(&session).map_err(error)?;
+            Ok(followed(json!({"ok": true, "detached": vacated}), &session, &vacated, &slug))
+        }
+        "dismiss" => {
+            let session = args.string("session")?;
+            crate::session_log::SessionLog::dismiss(&session).map_err(error)?;
+            Ok(ok())
+        }
         "pane-start" | "pane-resume" => pane(&slug, cmd == "pane-start", &args),
         "pf-mode" => {
             let mut item = find(&slug)?;
@@ -241,6 +254,51 @@ fn issues(cmd: &str, slug: &str, args: &Args) -> R<Value> {
         i::delete(slug, name).map_err(|_| Stop::Unported)?;
     }
     Ok(json!({"ok": true, "cleared": created}))
+}
+
+/// `Launcher`-free item creation: a title is required, the project defaults to "No project".
+fn new_item(args: &Args) -> R<Value> {
+    let title = strip(&args.text("title")?).to_string();
+    if title.is_empty() {
+        return Err(fail("title is required"));
+    }
+    let description = strip(&args.text("description")?).to_string();
+    let project = match args.get("project")? {
+        Value::Null | Value::Bool(false) => "No project".to_string(),
+        Value::String(s) => s.clone(),
+        _ => return Err(Stop::Unported),
+    };
+    let item = WorkItem::create(&title, &project, None, None, (!description.is_empty()).then_some(description.as_str()), None).map_err(error)?;
+    Ok(json!({"ok": true, "slug": item.slug}))
+}
+
+/// `WorkItem.from_session`: an item for a session, on its start event's project and branch.
+fn item_from_session(args: &Args) -> R<Value> {
+    let title = strip(&args.text("title")?).to_string();
+    if title.is_empty() {
+        return Err(fail("title is required"));
+    }
+    let session = args.string("session")?;
+    let log = crate::session_log::SessionLog::read();
+    let Some(start) = log.last_start_for(Some(&session)) else { return Err(fail(format!("unknown session {session}"))) };
+    let text_of = |key: &str| match start.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) => Ok(Some(s.clone())),
+        Some(_) => Err(Stop::Unported),
+    };
+    let branch = text_of("branch")?.filter(|b| !["main", "master", "develop"].contains(&b.as_str()));
+    let project = text_of("project")?.unwrap_or_else(|| "No project".to_string());
+    let item = WorkItem::create(&title, &project, branch.as_deref(), Some(&session), None, None).map_err(error)?;
+    let vacated = WorkItem::detach_session_elsewhere(&session, &item.slug).map_err(error)?;
+    Ok(followed(json!({"ok": true, "slug": item.slug, "detached": vacated}), &session, &vacated, &item.slug))
+}
+
+/// A chat pane running the moved session follows it to the new item; one that can't says so.
+fn followed(mut reply: Value, session: &str, vacated: &[String], to: &str) -> Value {
+    if let Some(warning) = crate::pane_follows_session::follow(session, vacated, to) {
+        reply.as_object_mut().unwrap().insert("warning".into(), json!(warning));
+    }
+    reply
 }
 
 /// `gui_pane`: the item's chat in a tmux session of its own — already running is `attached`, a live

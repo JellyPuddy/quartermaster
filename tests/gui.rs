@@ -1693,3 +1693,123 @@ fn the_pane_actions_open_the_same_chats_as_ruby() {
         tmux_on(s, &["kill-server"]);
     }
 }
+
+fn session_traces(root: &Path, other: &Path) -> String {
+    let log = fs::read_to_string(root.join("sessions.jsonl")).unwrap_or_default();
+    let log = regex::Regex::new(r#""(ts|pid|cwd)":("[^"]*"|[0-9]+)"#).unwrap().replace_all(&log, "\"$1\":X").into_owned();
+    format!("{}== sessions\n{log}", action_traces(root, other))
+}
+
+#[test]
+fn the_item_and_session_actions_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let stamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let mut log = fs::read_to_string(w.root.join("sessions.jsonl")).unwrap();
+    for (id, extra) in [("ifs-feature", ",\"project\":\"demo\",\"branch\":\"feat/x\""), ("ifs-main", ",\"project\":\"demo\",\"branch\":\"main\""), ("ifs-master", ",\"project\":\"demo\",\"branch\":\"master\""), ("ifs-develop", ",\"project\":\"demo\",\"branch\":\"develop\""), ("ifs-none", ""), ("ifs-claimed", ",\"project\":\"demo\""), ("ifs-odd", ",\"project\":\"demo\",\"branch\":\"a: b #c\"")] {
+        log += &format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"{id}\",\"cwd\":\"/srv/app\",\"pid\":999999,\"ts\":\"{stamp}\"{extra}}}\n");
+    }
+    fs::write(w.root.join("sessions.jsonl"), log).unwrap();
+    let item = |slug: &str, extra: &str| {
+        fs::write(w.root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: {slug}\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\n{extra}---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n")).unwrap();
+    };
+    item("owner", "sessions:\n- id: ifs-claimed\n");
+    item("pf-a", "sessions:\n- id: sess-pf-a\n");
+    item("pf-w", "sessions:\n- id: sess-pf-w\n");
+    item("pf-b", "");
+    item("pf-x", "");
+    let chat = base.path().join("fake-chat");
+    fs::write(&chat, "#!/bin/sh\nprintf '{\"v\":1,\"event\":\"start\",\"session_id\":\"sess-%s\",\"cwd\":\"%s\",\"pid\":%s,\"ts\":\"%s\"}\\n' \"$QM_ITEM\" \"$(pwd)\" \"$$\" \"$(date -u +%FT%TZ)\" >> \"$QM_ROOT/sessions.jsonl\"\ntouch \"$FAKE_REC/up-$QM_ITEM\"\nexec sleep 300\n").unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&chat, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let (rec_ruby, rec_rust) = (base.path().join("rec-ruby"), base.path().join("rec-rust"));
+    for d in [&rec_ruby, &rec_rust] {
+        fs::create_dir_all(d).unwrap();
+    }
+    let (sock_ruby, sock_rust) = ("qm-test-item-ruby", "qm-test-item-rust");
+    for s in [sock_ruby, sock_rust] {
+        tmux_on(s, &["kill-server"]);
+    }
+    let env_for = |sock: &str, rec: &Path| -> Vec<(&'static str, String)> {
+        vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("QM_TMUX_SOCKET", sock.to_string()), ("QM_CHAT_COMMAND", chat.display().to_string()), ("FAKE_REC", rec.display().to_string())]
+    };
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let ruby = start_env(false, &w.root, &w.home, &env_for(sock_ruby, &rec_ruby));
+    let rust = start_env(true, &root2, &w.home, &env_for(sock_rust, &rec_rust));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let step = |label: &str, body: &str, wait_for: Option<&str>| {
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, body, true), request(rust.port, "POST", "/api/action", &origin, body, true));
+        assert_eq!(shown(&a, ruby.port), shown(&b, rust.port), "{label}: reply to {body}");
+        if let Some(item) = wait_for {
+            for _ in 0..100 {
+                if rec_ruby.join(format!("up-{item}")).exists() && rec_rust.join(format!("up-{item}")).exists() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+        assert_eq!(session_traces(&w.root, &root2), session_traces(&root2, &w.root), "{label}: files after {body}");
+        let sessions = |s: &str| {
+            let mut v: Vec<String> = tmux_on(s, &["list-sessions", "-F", "#{session_name}"]).lines().map(String::from).collect();
+            v.sort();
+            v
+        };
+        assert_eq!(sessions(sock_ruby), sessions(sock_rust), "{label}: tmux after {body}");
+        (shown(&a, ruby.port), sessions(sock_rust))
+    };
+    let act = |cmd: &str, slug: &str, args: &str| format!("{{\"cmd\":\"{cmd}\",\"slug\":\"{slug}\",\"args\":{args}}}");
+    for (label, body) in [
+        ("new", act("new", "", r#"{"title":"Brand new"}"#)),
+        ("new again", act("new", "", r#"{"title":"Brand new"}"#)),
+        ("new with a description", act("new", "", r#"{"title":"  Described  ","description":"  line one\nline two  ","project":"demo"}"#)),
+        ("new with symbols", act("new", "", r#"{"title":"He said: \"hi\" — #1, ok?"}"#)),
+        ("new null project", act("new", "", r#"{"title":"Null project","project":null}"#)),
+        ("new false project", act("new", "", r#"{"title":"False project","project":false}"#)),
+        ("new quoted project", act("new", "", r#"{"title":"Quoted project","project":"a: b"}"#)),
+        ("new blank", act("new", "", r#"{"title":"   "}"#)),
+        ("new number title", act("new", "", r#"{"title":42}"#)),
+        ("new no args", r#"{"cmd":"new"}"#.to_string()),
+        ("attach", act("attach", "pf-b", r#"{"session":"ifs-feature"}"#)),
+        ("attach again", act("attach", "pf-b", r#"{"session":"ifs-feature"}"#)),
+        ("attach moves it", act("attach", "pf-x", r#"{"session":"ifs-claimed"}"#)),
+        ("attach unknown", act("attach", "pf-b", r#"{"session":"nobody"}"#)),
+        ("attach blank", act("attach", "pf-b", r#"{"session":""}"#)),
+        ("attach missing item", act("attach", "nowhere", r#"{"session":"ifs-none"}"#)),
+        ("item from a session", act("item-from-session", "", r#"{"session":"ifs-feature","title":"From feature"}"#)),
+        ("item from main", act("item-from-session", "", r#"{"session":"ifs-main","title":"From main"}"#)),
+        ("item from master", act("item-from-session", "", r#"{"session":"ifs-master","title":"From master"}"#)),
+        ("item from develop", act("item-from-session", "", r#"{"session":"ifs-develop","title":"From develop"}"#)),
+        ("item from nothing", act("item-from-session", "", r#"{"session":"ifs-none","title":"From nothing"}"#)),
+        ("item from an odd branch", act("item-from-session", "", r#"{"session":"ifs-odd","title":"From odd"}"#)),
+        ("item from a claimed session", act("item-from-session", "", r#"{"session":"ifs-claimed","title":"From claimed"}"#)),
+        ("item from unknown", act("item-from-session", "", r#"{"session":"nope","title":"Never"}"#)),
+        ("item from, no title", act("item-from-session", "", r#"{"session":"ifs-none","title":" "}"#)),
+        ("item from, taken title", act("item-from-session", "", r#"{"session":"ifs-none","title":"Brand new"}"#)),
+        ("dismiss", act("dismiss", "", r#"{"session":"ifs-none"}"#)),
+        ("dismiss again", act("dismiss", "", r#"{"session":"ifs-none"}"#)),
+        ("dismiss an unknown id", act("dismiss", "", r#"{"session":"who"}"#)),
+    ] {
+        step(label, &body, None);
+    }
+    // a chat pane follows its session to the item it moves to
+    step("open a pane", &act("pane-start", "pf-a", "{}"), Some("pf-a"));
+    let (_, panes) = step("move the session", &act("attach", "pf-b", r#"{"session":"sess-pf-a"}"#), None);
+    assert!(panes.contains(&"pf-b".to_string()) && !panes.contains(&"pf-a".to_string()), "the pane should follow: {panes:?}");
+    step("open the other pane", &act("pane-start", "pf-w", "{}"), Some("pf-w"));
+    step("open the target's pane", &act("pane-start", "pf-x", "{}"), Some("pf-x"));
+    let (reply, _) = step("move to an item with a chat", &act("attach", "pf-x", r#"{"session":"sess-pf-w"}"#), None);
+    assert!(reply.contains("\"warning\":\"pf-w's chat pane stays named pf-w: pf-x already has a chat running\""), "{reply}");
+    for s in [sock_ruby, sock_rust] {
+        tmux_on(s, &["kill-server"]);
+    }
+    // what is not read as Ruby reads it answers 501 with nothing written
+    let before = session_traces(&root2, &w.root);
+    for body in [act("new", "", r#"{"title":"Odd","project":5}"#), act("attach", "pf-b", r#"{"session":null}"#), act("dismiss", "", r#"{"session":5}"#), act("item-from-session", "", r#"{"session":null,"title":"x"}"#)] {
+        let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
+        assert!(a.status.starts_with("501"), "{body}: {}", a.status);
+    }
+    assert_eq!(before, session_traces(&root2, &w.root));
+}
