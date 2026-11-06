@@ -70,6 +70,34 @@ class RubyPinTest < Minitest::Test
     assert_equal ["asdf=3.4.7 mise=3.4.7", "argv=#{QM_BIN} list --all"], out.lines.map(&:chomp)
   end
 
+  def test_a_pinned_launch_remembers_the_versions_it_overrode
+    write_ruby_stub(<<~SH)
+      #!/bin/sh
+      echo "outer_asdf=${QM_OUTER_ASDF_RUBY_VERSION-unset} outer_mise=${QM_OUTER_MISE_RUBY_VERSION-unset}"
+    SH
+    write_pin("3.4.7\n")
+    out, = launch("list", env: { "ASDF_RUBY_VERSION" => "9.9.9" })
+
+    assert_equal "outer_asdf=9.9.9 outer_mise=", out.chomp
+  end
+
+  # Chats, dev servers and IDEs qm starts must run on their project's Ruby,
+  # not on the one qm pinned for itself.
+  def test_qm_hands_its_children_the_ruby_versions_it_overrode
+    env = { "ASDF_RUBY_VERSION" => "3.4.7", "MISE_RUBY_VERSION" => "3.4.7",
+            "QM_OUTER_ASDF_RUBY_VERSION" => "9.9.9", "QM_OUTER_MISE_RUBY_VERSION" => "" }
+    Quartermaster::RubyPin.hand_back_outer_env(env)
+
+    assert_equal({ "ASDF_RUBY_VERSION" => "9.9.9" }, env)
+  end
+
+  def test_an_unpinned_launch_leaves_the_ruby_versions_alone
+    env = { "ASDF_RUBY_VERSION" => "9.9.9" }
+    Quartermaster::RubyPin.hand_back_outer_env(env)
+
+    assert_equal({ "ASDF_RUBY_VERSION" => "9.9.9" }, env)
+  end
+
   def test_an_empty_pin_file_pins_nothing
     stub_ruby_reporting
     write_pin("  \n")

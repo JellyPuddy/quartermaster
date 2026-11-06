@@ -6,6 +6,19 @@ module Quartermaster
   # ASDF_RUBY_VERSION. Absent, qm runs on the Ruby the cwd resolves.
   class RubyPin
     FILE = File.join(ROOT, "ruby-version")
+    PINNED_VARS = %w[ASDF_RUBY_VERSION MISE_RUBY_VERSION].freeze
+
+    # qm already runs on the pinned Ruby; the processes it starts (chats, dev
+    # servers, IDEs) get back the versions the launcher overrode, so they run
+    # on the Ruby their own directory pins. Empty means it was unset.
+    def self.hand_back_outer_env(env)
+      PINNED_VARS.each do |var|
+        next unless env.key?("QM_OUTER_#{var}")
+
+        outer = env.delete("QM_OUTER_#{var}")
+        outer.empty? ? env.delete(var) : env[var] = outer
+      end
+    end
 
     def initialize(path: FILE, asdf_dir: ENV.fetch("ASDF_DATA_DIR", File.expand_path("~/.asdf")))
       @path = path

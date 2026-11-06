@@ -9,7 +9,9 @@
 `qm` is shared by the user, Claude and the hooks. `./quartermaster` is a launcher only, one
 file that is both `sh` and Ruby. Run directly, its `sh` half reads `$QM_ROOT/ruby-version`
 (`RubyPin`) and, when it names a version asdf has installed (or there is no asdf), exports it as
-`ASDF_RUBY_VERSION` and `MISE_RUBY_VERSION`, overriding any inherited value; then it execs
+`ASDF_RUBY_VERSION` and `MISE_RUBY_VERSION`, overriding any inherited value (kept in
+`QM_OUTER_*`, which the Ruby half restores before running anything, so the chats, dev servers and
+IDEs qm starts run on their own directory's Ruby); then it execs
 `ruby` on the same file, which starts at the `#!ruby` line. No file, an empty one, or a version
 asdf lacks: plain `ruby`, resolved as the cwd pins it. Loaded by Ruby (tests, `RbConfig.ruby
 EXECUTABLE`), the `sh` half is a `=begin` comment. The Ruby half runs `RubyFloor` before anything

@@ -9,9 +9,11 @@ version=
 [ -f "$pin" ] && read -r version < "$pin"
 installs="${ASDF_DATA_DIR:-$HOME/.asdf}/installs/ruby"
 if [ -n "$version" ] && { [ ! -d "$installs" ] || [ -d "$installs/$version" ]; }; then
+  QM_OUTER_ASDF_RUBY_VERSION=${ASDF_RUBY_VERSION-}
+  QM_OUTER_MISE_RUBY_VERSION=${MISE_RUBY_VERSION-}
   ASDF_RUBY_VERSION=$version
   MISE_RUBY_VERSION=$version
-  export ASDF_RUBY_VERSION MISE_RUBY_VERSION
+  export QM_OUTER_ASDF_RUBY_VERSION QM_OUTER_MISE_RUBY_VERSION ASDF_RUBY_VERSION MISE_RUBY_VERSION
 fi
 exec ruby "$0" "$@"
 =end
@@ -25,4 +27,7 @@ require File.join(qm_lib, "quartermaster", "ruby_floor")
 Quartermaster::RubyFloor.enforce(ARGV.first) if $PROGRAM_NAME == __FILE__
 require File.join(qm_lib, "quartermaster")
 
-Quartermaster::CLI.new.run(ARGV) if $PROGRAM_NAME == __FILE__
+if $PROGRAM_NAME == __FILE__
+  Quartermaster::RubyPin.hand_back_outer_env(ENV)
+  Quartermaster::CLI.new.run(ARGV)
+end
