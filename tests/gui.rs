@@ -1035,3 +1035,115 @@ fn the_state_matches_ruby_over_a_richer_world() {
     }
     compare_state(&ruby, &rust, "second build");
 }
+
+/// What the data actions leave behind: the item files and the error log, without its stamps.
+fn action_traces(root: &Path, other: &Path) -> String {
+    let mut out = String::new();
+    let mut names: Vec<_> = fs::read_dir(root.join("work-items")).unwrap().map(|e| e.unwrap().path()).collect();
+    names.sort();
+    for p in names {
+        out += &format!("== {}\n{}\n", p.file_name().unwrap().to_string_lossy(), fs::read_to_string(&p).unwrap());
+    }
+    let log = fs::read_to_string(root.join("qm.log")).unwrap_or_default();
+    let log = regex::Regex::new(r"(?m)^\S+ \[").unwrap().replace_all(&log, "[").into_owned();
+    out += &format!("== qm.log\n{}", log.replace(&other.display().to_string(), &root.display().to_string()));
+    out
+}
+
+#[test]
+fn the_data_actions_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let env: Vec<(&str, String)> = vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string())];
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let ruby = start_env(false, &w.root, &w.home, &env);
+    let rust = start_env(true, &root2, &w.home, &env);
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let mut step = |label: &str, body: &str| {
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, body, true), request(rust.port, "POST", "/api/action", &origin, body, true));
+        assert_eq!(shown(&a, ruby.port), shown(&b, rust.port), "{label}: reply to {body}");
+        assert_eq!(action_traces(&w.root, &root2), action_traces(&root2, &w.root), "{label}: files after {body}");
+        shown(&a, ruby.port)
+    };
+    let act = |cmd: &str, slug: &str, args: &str| format!("{{\"cmd\":\"{cmd}\",\"slug\":\"{slug}\",\"args\":{args}}}");
+    let cases: Vec<(&str, String)> = vec![
+        ("note", act("note", "stale", r#"{"text":"first note"}"#)),
+        ("note kind", act("note", "stale", r#"{"text":"an open question","kind":"open"}"#)),
+        ("note empty kind", act("note", "stale", r#"{"text":"  padded  ","kind":""}"#)),
+        ("note history", act("note", "stale", r#"{"text":"it happened","kind":"history"}"#)),
+        ("note stamped", act("note", "stale", r#"{"text":"2026-01-01 stamped text"}"#)),
+        ("note numeric", act("note", "stale", r#"{"text":5}"#)),
+        ("note multi-line", act("note", "stale", r#"{"text":"line one\nline two: colon"}"#)),
+        ("note bad kind", act("note", "stale", r#"{"text":"x","kind":"bogus"}"#)),
+        ("note blank", act("note", "stale", r#"{"text":"   "}"#)),
+        ("note blank missing item", act("note", "nowhere", r#"{"text":" "}"#)),
+        ("retitle blank missing item", act("retitle", "nowhere", r#"{"title":" "}"#)),
+        ("note no args", r#"{"cmd":"note","slug":"stale"}"#.into()),
+        ("note missing item", act("note", "nowhere", r#"{"text":"x"}"#)),
+        ("note null slug", r#"{"cmd":"note","slug":null,"args":{"text":"x"}}"#.into()),
+        ("note traversal", act("note", "../x", r#"{"text":"x"}"#)),
+        ("retag", act("retag", "stale", r#"{"position":2,"kind":"decision"}"#)),
+        ("retag string", act("retag", "stale", r#"{"position":"3","kind":"history"}"#)),
+        ("retag past the end", act("retag", "stale", r#"{"position":99,"kind":"open"}"#)),
+        ("retag null position", act("retag", "stale", r#"{"position":null,"kind":"open"}"#)),
+        ("retag zero", act("retag", "stale", r#"{"position":0,"kind":"open"}"#)),
+        ("retag bad kind", act("retag", "stale", r#"{"position":1,"kind":"nope"}"#)),
+        ("retag missing item", act("retag", "nowhere", r#"{"position":1,"kind":"open"}"#)),
+        ("describe", act("describe", "stale", r#"{"text":"  A new description.\n\nTwo paragraphs.  "}"#)),
+        ("describe empty", act("describe", "stale", r#"{"text":""}"#)),
+        ("describe numeric", act("describe", "stale", r#"{"text":42}"#)),
+        ("describe missing", act("describe", "nowhere", r#"{"text":"x"}"#)),
+        ("retitle", act("retitle", "stale", r#"{"title":"  A better title  "}"#)),
+        ("retitle colon", act("retitle", "stale", r#"{"title":"Fix: the thing # not a comment"}"#)),
+        ("retitle empty", act("retitle", "stale", r#"{"title":"  "}"#)),
+        ("retitle missing", act("retitle", "nowhere", r#"{"title":"x"}"#)),
+        ("move", act("move", "stale", r#"{"project":"elsewhere"}"#)),
+        ("move quoted", act("move", "stale", r#"{"project":"a: b"}"#)),
+        ("move back", act("move", "stale", r#"{"project":"demo"}"#)),
+        ("move missing", act("move", "nowhere", r#"{"project":"demo"}"#)),
+        ("state fridge", act("state", "stale", r#"{"state":"fridge"}"#)),
+        ("state back", act("state", "stale", r#"{"state":"in_progress"}"#)),
+        ("state bogus", act("state", "stale", r#"{"state":"bogus"}"#)),
+        ("state number", act("state", "stale", r#"{"state":5}"#)),
+        ("state missing", act("state", "nowhere", r#"{"state":"fridge"}"#)),
+        ("snooze days", act("snooze", "stale", r#"{"duration":"3d"}"#)),
+        ("snooze zero", act("snooze", "stale", r#"{"duration":"0d"}"#)),
+        ("snooze turn", act("snooze", "stale", r#"{"duration":"turn"}"#)),
+        ("snooze clear", act("snooze", "stale", r#"{"duration":"clear"}"#)),
+        ("snooze bogus", act("snooze", "stale", r#"{"duration":"soon"}"#)),
+        ("snooze number", act("snooze", "stale", r#"{"duration":5}"#)),
+        ("snooze null", act("snooze", "stale", r#"{"duration":null}"#)),
+        ("snooze missing", act("snooze", "nowhere", r#"{"duration":"1d"}"#)),
+        ("ack", act("ack", "degrade", "{}")),
+        ("ack again", act("ack", "degrade", "{}")),
+        ("ack none", act("ack", "stale", "{}")),
+        ("ack missing", act("ack", "nowhere", "{}")),
+        ("detach", act("detach", "degrade", r#"{"session":"d-soon"}"#)),
+        ("detach again", act("detach", "degrade", r#"{"session":"d-soon"}"#)),
+        ("detach null", act("detach", "degrade", r#"{"session":null}"#)),
+        ("detach unattached", act("detach", "degrade", r#"{"session":"zzz"}"#)),
+        ("detach missing", act("detach", "nowhere", r#"{"session":"d-soon"}"#)),
+        ("unknown", act("frobnicate", "stale", "{}")),
+        ("unknown empty", act("", "stale", "{}")),
+        ("no cmd", r#"{"slug":"stale"}"#.into()),
+        ("number cmd", r#"{"cmd":5}"#.into()),
+        ("null cmd", r#"{"cmd":null}"#.into()),
+        ("string payload", r#""note""#.into()),
+        ("array payload", "[1]".into()),
+        ("empty array payload", "[]".into()),
+        ("number payload", "7".into()),
+        ("junk payload", "not json".into()),
+        ("empty payload", "".into()),
+    ];
+    for (label, body) in &cases {
+        step(label, body);
+    }
+    // what is not ported answers 501 before anything happens, with the files untouched
+    let before = action_traces(&root2, &w.root);
+    for body in [act("state", "stale", r#"{"state":"resolved"}"#), act("start", "stale", "{}"), act("draft-put", "stale", "{}")] {
+        let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
+        assert!(a.status.starts_with("501"), "{body}: {}", a.status);
+    }
+    assert_eq!(before, action_traces(&root2, &w.root));
+}

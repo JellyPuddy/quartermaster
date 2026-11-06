@@ -326,6 +326,13 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
             return json_reply(diff_file_payload(slug, query));
         }
     }
+    if method == "POST" && route == "/api/action" {
+        let payload = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+        return match crate::gui_actions::dispatch(&payload) {
+            Some(v) => json_reply(v),
+            None => text_reply("501 Not Implemented", "not ported yet: this action"),
+        };
+    }
     text_reply("501 Not Implemented", &format!("not ported yet: {method} {route}"))
 }
 
