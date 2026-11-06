@@ -38,3 +38,11 @@ pub fn now_f64() -> f64 {
     let d = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
     d.as_nanos() as f64 / 1e9
 }
+
+/// `Time#to_f` of a file time: the nanosecond count as a double divided by 1e9.
+pub fn epoch_f64(t: std::time::SystemTime) -> f64 {
+    match t.duration_since(std::time::UNIX_EPOCH) {
+        Ok(d) => d.as_nanos() as f64 / 1e9,
+        Err(e) => -(e.duration().as_nanos() as f64 / 1e9),
+    }
+}

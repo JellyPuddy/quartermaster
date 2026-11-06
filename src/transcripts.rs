@@ -34,7 +34,7 @@ fn joined_text(v: &Value) -> String {
 
 /// The human-typed text of a user entry: not tool results, meta entries or injected content.
 /// `Err(())` where Ruby's `dig` would raise and abandon the whole search.
-fn prompt_text(entry: &serde_json::Map<String, Value>) -> Result<Option<String>, ()> {
+pub(crate) fn prompt_text(entry: &serde_json::Map<String, Value>) -> Result<Option<String>, ()> {
     if truthy(entry.get("isMeta")) || truthy(entry.get("toolUseResult")) {
         return Ok(None);
     }
