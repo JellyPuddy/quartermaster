@@ -35,7 +35,7 @@ pub struct Session {
     start: Event,
     last: Event,
     pub live: bool,
-    captured: bool,
+    pub captured: bool,
 }
 
 impl Session {

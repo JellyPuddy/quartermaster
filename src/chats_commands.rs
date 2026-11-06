@@ -84,7 +84,7 @@ fn pane(cmd: &str, a: &[String]) -> Outcome {
 }
 
 /// `Quartermaster.process_lineage`: this process and its parents, up to 16, through `ps`.
-fn process_lineage(mut pid: i64) -> Vec<i64> {
+pub fn process_lineage(mut pid: i64) -> Vec<i64> {
     let mut pids = vec![];
     while pid > 1 && pids.len() < 16 {
         pids.push(pid);

@@ -445,3 +445,15 @@ pub fn call(item: &mut WorkItem, p: &Params) -> R<Map<String, Value>> {
     result.insert("lineLimit".into(), json!(MAX_LINES));
     Ok(result)
 }
+
+/// `BranchDiff#require_checkout`: the prompt scope diffs the chat's folder, which is no ref-only
+/// branch's, so a requested branch that is one is refused.
+pub fn require_checkout(item: &WorkItem, branch: Option<&str>) -> R<()> {
+    let Some(branch) = branch.filter(|b| !b.is_empty()) else { return Ok(()) };
+    let project = item.project();
+    let Some(root) = crate::project_map::root_for(project.as_deref()).filter(|r| std::path::Path::new(r).is_dir()) else { return Ok(()) };
+    match choices_for(item, &root).iter().find(|c| c.branch.as_deref() == Some(branch)) {
+        Some(c) if !c.checkout => arg(format!("{branch} is not checked out anywhere: Uncommitted and Since prompt need a checkout")),
+        _ => Ok(()),
+    }
+}

@@ -198,7 +198,21 @@ fn diff_payload(slug: &str, query: Option<&str>) -> Option<Value> {
         }
     };
     if get("scope").as_deref() == Some("prompt") {
-        return None;
+        use crate::branch_diff::require_checkout;
+        let step = require_checkout(&item, get("branch").as_deref()).and_then(|_| crate::prompt_diff::call(&item, &crate::prompt_diff::Params { prompt: get("prompt"), moved: get("moved"), rebase: get("rebase").as_deref() != Some("show") }));
+        return match step {
+            Ok(mut result) => {
+                if let Some(Value::Array(files)) = result.get_mut("files") {
+                    crate::viewed_marks::apply(&item.slug, files);
+                }
+                let mut out = Map::new();
+                out.insert("ok".into(), json!(true));
+                out.extend(result);
+                Some(Value::Object(out))
+            }
+            Err(Failure::Arg(m)) => fail(m),
+            Err(Failure::Unported) => None,
+        };
     }
     let params = Params { branch: get("branch"), scope: get("scope"), from: get("from"), to: get("to"), base: get("base") };
     match call(&mut item, &params) {

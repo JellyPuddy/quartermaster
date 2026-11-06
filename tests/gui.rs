@@ -418,3 +418,194 @@ fn the_diff_payload_matches_ruby_scope_by_scope() {
         assert!(seen.contains(expected), "the payloads should contain {expected}");
     }
 }
+
+fn git_at(dir: &Path, when: &str, args: &[&str]) -> String {
+    let out = Command::new("git")
+        .args(["-c", "commit.gpgsign=false", "-c", "user.name=t", "-c", "user.email=t@t.test", "-c", "init.defaultBranch=main"])
+        .args(args)
+        .env("GIT_AUTHOR_DATE", when)
+        .env("GIT_COMMITTER_DATE", when)
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// Records the worktree as the UserPromptSubmit hook does, then dates the line `at`.
+fn snapshot(root: &Path, wt: &Path, session: &str, at: &str) {
+    let mut child = Command::new("sh")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("hooks/snapshot-worktree.sh"))
+        .env("QM_ROOT", root)
+        .env_remove("QM_SKIP")
+        .env_remove("QM_ASIDE")
+        .stdin(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(format!("{{\"session_id\":\"{session}\",\"cwd\":\"{}\"}}", wt.display()).as_bytes()).unwrap();
+    child.wait().unwrap();
+    let file = root.join("prompt-snapshots.jsonl");
+    let text = fs::read_to_string(&file).unwrap();
+    let mut lines: Vec<String> = text.lines().map(String::from).collect();
+    let last = lines.pop().unwrap();
+    lines.push(regex::Regex::new(r#""at":"[^"]+""#).unwrap().replace(&last, format!("\"at\":\"{at}\"")).into_owned());
+    fs::write(file, lines.join("\n") + "\n").unwrap();
+}
+
+fn prompt_world(base: &Path) -> (PathBuf, PathBuf) {
+    let (root, home, repo) = (base.join("root"), base.join("home"), base.join("repo"));
+    fs::create_dir_all(&home).unwrap();
+    fs::create_dir_all(&repo).unwrap();
+    fs::create_dir_all(root.join("work-items")).unwrap();
+    let d = |t: &str| format!("2026-04-01T{t}+00:00");
+    git_at(&repo, &d("09:00:00"), &["init", "-q", "-b", "main"]);
+    fs::write(repo.join("a.txt"), lines("alpha", 10)).unwrap();
+    fs::write(repo.join("c.txt"), lines("gamma", 6)).unwrap();
+    fs::write(repo.join("d.txt"), lines("delta", 6)).unwrap();
+    fs::write(repo.join("gone.txt"), "going away\n").unwrap();
+    git_at(&repo, &d("09:00:00"), &["add", "-A"]);
+    git_at(&repo, &d("09:00:00"), &["commit", "-q", "-m", "base"]);
+    let wt = base.join("wt-chat");
+    git_at(&repo, &d("09:01:00"), &["worktree", "add", "-q", "-b", "feat", wt.to_str().unwrap(), "main"]);
+    git_at(&repo, &d("09:02:00"), &["branch", "refonly", "main"]);
+    git_at(&repo, &d("10:05:00"), &["branch", "before-only", "main"]);
+    snapshot(&root, &wt, "s1", "2026-04-01T10:00:00Z");
+    fs::write(wt.join("a.txt"), lines("alpha", 10).replace("alpha 3\n", "alpha three changed\n")).unwrap();
+    fs::write(wt.join("new.txt"), "a new file\n").unwrap();
+    fs::remove_file(wt.join("gone.txt")).unwrap();
+    snapshot(&root, &wt, "s1", "2026-04-01T10:10:00Z");
+    git_at(&wt, &d("10:15:00"), &["add", "-A"]);
+    git_at(&wt, &d("10:15:00"), &["commit", "-q", "-m", "feat one"]);
+    fs::write(wt.join("a.txt"), fs::read_to_string(wt.join("a.txt")).unwrap().replace("alpha 7\n", "alpha seven uncommitted\n")).unwrap();
+    snapshot(&root, &wt, "s1", "2026-04-01T10:20:00Z");
+    fs::write(wt.join("c.txt"), lines("gamma", 6).replace("gamma 2\n", "gamma two mine\n")).unwrap();
+    snapshot(&root, &wt, "s1", "2026-04-01T10:30:00Z");
+    // work elsewhere: branches that moved since the prompts
+    let tree = git_at(&repo, &d("10:31:00"), &["rev-parse", "main^{tree}"]);
+    let parent = git_at(&repo, &d("10:31:00"), &["rev-parse", "main"]);
+    let other = git_at(&repo, &d("10:32:00"), &["commit-tree", &tree, "-p", &parent, "-m", "other work"]);
+    git_at(&repo, &d("10:32:00"), &["update-ref", "-m", "other moves", "refs/heads/other", &other]);
+    git_at(&repo, &d("10:33:00"), &["update-ref", "-m", "branch: Created", "refs/heads/created-later", &other]);
+    let before_only = git_at(&repo, &d("10:05:00"), &["commit-tree", &tree, "-p", &parent, "-m", "before only"]);
+    git_at(&repo, &d("10:06:00"), &["update-ref", "-m", "moved early", "refs/heads/before-only", &before_only]);
+    let (mut tip, mut n) = (parent.clone(), 0);
+    for (when, name) in [("10:20:00", "a"), ("10:30:00", "b"), ("10:34:00", "c")] {
+        n += 1;
+        tip = git_at(&repo, &d(when), &["commit-tree", &tree, "-p", &tip, "-m", &format!("at prompt {name}{n}")]);
+        git_at(&repo, &d(when), &["update-ref", "-m", "step", "refs/heads/at-prompt", &tip]);
+    }
+    git_at(&repo, &d("10:30:00"), &["update-ref", "-m", "exactly at the prompt", "refs/heads/at-exact", &parent]);
+    // the trunk moves on, and the chat's branch is rebased onto it
+    fs::write(repo.join("d.txt"), lines("delta", 6).replace("delta 5\n", "delta five upstream\n")).unwrap();
+    git_at(&repo, &d("10:35:00"), &["commit", "-q", "-a", "-m", "m1"]);
+    fs::write(repo.join("c.txt"), lines("gamma", 6).replace("gamma 2\n", "gamma two theirs\n")).unwrap();
+    git_at(&repo, &d("10:36:00"), &["commit", "-q", "-a", "-m", "m2"]);
+    git_at(&wt, &d("10:39:00"), &["stash", "-q"]);
+    git_at(&wt, &d("10:40:00"), &["rebase", "-q", "main"]);
+    git_at(&wt, &d("10:41:00"), &["stash", "drop", "-q"]);
+    fs::write(wt.join("a.txt"), fs::read_to_string(wt.join("a.txt")).unwrap().replace("alpha 9\n", "alpha nine after\n")).unwrap();
+    fs::write(wt.join("after.txt"), "after the rebase\n").unwrap();
+
+    // the transcript the prompts come from, and the log of sessions
+    let transcript = base.join("s1.jsonl");
+    let user = |ts: &str, text: &str| serde_json::json!({"type": "user", "timestamp": ts, "message": {"content": text}}).to_string();
+    let long = format!("{}\nsecond line of the prompt", "A very long first line of a prompt that goes on and on past the eighty character limit for labels ");
+    fs::write(
+        &transcript,
+        [
+            serde_json::json!({"type": "user", "timestamp": "2026-04-01T10:00:00.500Z", "isSidechain": true, "message": {"content": "a sidechain prompt that comes first"}}).to_string(),
+            user("2026-04-01T10:00:01.000Z", "first prompt"),
+            serde_json::json!({"type": "user", "timestamp": "2026-04-01T10:05:00.000Z", "isSidechain": true, "message": {"content": "a sidechain prompt"}}).to_string(),
+            user("2026-04-01T10:10:02.500Z", &long),
+            user("2026-04-01T10:20:01.000Z", "[Request interrupted by user]"),
+            serde_json::json!({"type": "user", "timestamp": "2026-04-01T10:21:00.000Z", "isCompactSummary": true, "message": {"content": "summary"}}).to_string(),
+            serde_json::json!({"type": "user", "timestamp": "2026-04-01T10:22:00.000Z", "toolUseResult": {"x": 1}, "message": {"content": "tool output"}}).to_string(),
+            user("2026-04-01T10:29:57.500Z", "fourth prompt, a couple of seconds before its snapshot"),
+            "not json at all".to_string(),
+        ]
+        .join("\n")
+            + "\n",
+    )
+    .unwrap();
+    let me = std::process::id();
+    let start = |id: &str, pid: u32, cwd: &Path, ts: &str, transcript: &str| format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"{id}\",\"cwd\":\"{}\",\"pid\":{pid},\"transcript_path\":\"{transcript}\",\"ts\":\"{ts}\"}}\n", cwd.display());
+    fs::write(
+        root.join("sessions.jsonl"),
+        start("s1", me, &wt, "2026-04-01T10:00:00+00:00", transcript.to_str().unwrap())
+            + &start("s0", 999_999, &wt, "2026-03-01T10:00:00+00:00", "/nonexistent.jsonl")
+            + &start("s2", 999_999, &wt, "2026-03-02T10:00:00+00:00", "/nonexistent.jsonl")
+            + &start("s3", 999_999, &wt, "2026-03-03T10:00:00+00:00", "/nonexistent.jsonl")
+            + &start("s4", 999_999, &wt, "2026-03-04T10:00:00+00:00", "/nonexistent.jsonl")
+            + &start("s5", me, &wt, "2026-03-10T10:00:00+00:00", "/nonexistent.jsonl")
+            + &start("s6", 999_999, &wt, "2026-03-11T10:00:00+00:00", "/nonexistent.jsonl"),
+    )
+    .unwrap();
+    let mut snaps = fs::read_to_string(root.join("prompt-snapshots.jsonl")).unwrap();
+    let t0 = git_at(&wt, &d("11:00:00"), &["rev-parse", "HEAD^{tree}"]);
+    snaps += &format!("{{\"v\":1,\"session_id\":\"s0\",\"cwd\":\"{w}\",\"toplevel\":\"{w}\",\"tree\":\"{t0}\",\"at\":\"2026-03-01T10:00:00Z\"}}\n", w = wt.display());
+    for s in ["s5", "s6"] {
+        snaps += &format!("{{\"v\":1,\"session_id\":\"{s}\",\"cwd\":\"{w}\",\"toplevel\":\"{w}\",\"tree\":\"{t0}\",\"at\":\"2026-03-12T10:00:00Z\"}}\n", w = wt.display());
+    }
+    snaps += &format!("{{\"v\":1,\"session_id\":\"s3\",\"cwd\":\"/nowhere/at/all\",\"toplevel\":\"/nowhere/at/all\",\"tree\":\"{t0}\",\"at\":\"2026-03-03T10:00:00Z\"}}\n");
+    snaps += &format!("{{\"v\":1,\"session_id\":\"s4\",\"cwd\":\"{w}\",\"toplevel\":\"{w}\",\"tree\":\"{}\",\"at\":\"2026-03-04T10:00:00Z\"}}\n", "ab".repeat(20), w = wt.display());
+    snaps += &format!("{{\"v\":1,\"session_id\":\"s1\",\"toplevel\":\"{w}\",\"tree\":\"not a tree\",\"at\":\"2026-04-01T10:40:00Z\"}}\n{{\"v\":1,\"session_id\":\"s1\",\"tree\":\"{t0}\",\"at\":\"nonsense\"}}\n{{\"v\":1,\"session_id\":\"s1\",\"toplevel\":\"{w}\",\"tre", w = wt.display());
+    fs::write(root.join("prompt-snapshots.jsonl"), snaps).unwrap();
+    fs::write(root.join("config.yml"), format!("projects:\n  demo: {}\n", repo.display())).unwrap();
+    let item = |slug: &str, sessions: &[&str], branches: &[&str]| {
+        let s: String = sessions.iter().map(|s| format!("- id: {s}\n")).collect();
+        let s = if s.is_empty() { String::new() } else { format!("sessions:\n{s}") };
+        let b: String = branches.iter().map(|b| format!("- {b}\n")).collect();
+        let b = if b.is_empty() { String::new() } else { format!("branches:\n{b}") };
+        fs::write(root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: {slug}\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\n{b}{s}---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n")).unwrap();
+    };
+    item("chat-item", &["s1", "s0"], &["feat", "refonly"]);
+    item("nosession", &[], &["feat"]);
+    item("nosnap", &["s2"], &[]);
+    item("gone-item", &["s3"], &[]);
+    item("pruned-item", &["s4"], &[]);
+    item("uncaptured-item", &["never-logged"], &[]);
+    item("live-older", &["s6", "s5"], &[]);
+    (root, home)
+}
+
+#[test]
+fn the_prompt_scope_matches_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let (root, home) = prompt_world(base.path());
+    let ruby = start(false, &root, &home);
+    let rust = start(true, &root, &home);
+    let mut seen = String::new();
+    let mut compared = 0;
+    let mut check = |path: &str| {
+        let (a, b) = (request(ruby.port, "GET", path, &[], "", true), request(rust.port, "GET", path, &[], "", true));
+        assert!(!b.status.starts_with("501"), "{path} should be served: {}", String::from_utf8_lossy(&b.body));
+        let (sa, sb) = (shown(&a, ruby.port), shown(&b, rust.port));
+        if sa != sb {
+            let at = sa.bytes().zip(sb.bytes()).position(|(x, y)| x != y).unwrap_or(sa.len().min(sb.len()));
+            let from = at.saturating_sub(200);
+            let cut = |s: &str| s.get(from..(from + 500).min(s.len())).unwrap_or("").to_string();
+            panic!("{path}: first difference at byte {at}\nRuby: …{}\nRust: …{}", cut(&sa), cut(&sb));
+        }
+        compared += 1;
+        seen.push_str(&sa);
+    };
+    let q = "/api/diff/chat-item?scope=prompt";
+    for extra in [
+        "", "&prompt=s1:1", "&prompt=s1:2", "&prompt=s1:3", "&prompt=s1:4", "&prompt=s1:5", "&prompt=s1:0", "&prompt=s1:%2B2", "&prompt=s1:0x2", "&prompt=s1:_2", "&prompt=s1:2_", "&prompt=s1:2_0", "&prompt=s9:1", "&prompt=nonsense",
+        "&prompt=s1:1&rebase=show", "&prompt=s1:2&rebase=show", "&prompt=s1:4&rebase=show", "&rebase=show",
+        "&prompt=s1:1&moved=other", "&prompt=s1:2&moved=other", "&prompt=s1:2&moved=created-later", "&prompt=s1:1&moved=before-only", "&prompt=s1:2&moved=before-only", "&prompt=s1:2&moved=feat", "&prompt=s1:2&moved=nope",
+        "&prompt=s1:2&moved=at-prompt", "&prompt=s1:4&moved=at-prompt", "&prompt=s1:2&moved=other&rebase=show", "&prompt=s1:2&moved=main", "&branch=feat", "&branch=refonly", "&branch=unlinked",
+    ] {
+        check(&format!("{q}{extra}"));
+    }
+    for slug in ["nosession", "nosnap", "gone-item", "pruned-item", "uncaptured-item", "live-older", "nosuch"] {
+        check(&format!("/api/diff/{slug}?scope=prompt"));
+    }
+    assert!(compared > 30);
+    // git 2.43 refuses a tree where `merge-tree --write-tree` wants a commit, so replaying the prompt's
+    // tree onto the new base fails here, in Ruby too ("hidden": true and the conflict notice need a
+    // git that accepts it); the failure path and the unhidden (`rebase=show`) one are what is compared.
+    for expected in ["\"kind\":\"prompt\"", "\"kind\":\"prompt-branch\"", "\"rebase\":{\"onto\":", "\"hidden\":false", "\"rebaseNotice\":\"Couldn't hide the rebase: git merge-tree failed.\"", "\"movedBranches\":[{\"branch\":\"feat\",\"commits\":3},{\"branch\":\"main\"", "\"branch\":\"created-later\",\"commits\":0", "\"prompt\":null", "before “first prompt”", "before the prompt at 2026-04-01T10:20:00Z", "…\"", "\"notice\":\"This item has no captured chat session", "\"notice\":\"No prompt snapshots", "is gone — nothing to diff.", "snapshot is gone: git pruned it", "\"oldRev\":\"", "is not checked out anywhere"] {
+        assert!(seen.contains(expected), "the payloads should contain {expected}");
+    }
+}
