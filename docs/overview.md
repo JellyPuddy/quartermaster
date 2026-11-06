@@ -118,8 +118,7 @@ cache_read, output}` ([side panel](areas/side-panel.md)), `overview_artifact` ([
   bump on a breaking schema change, readers tolerate unknown fields. A per-line JSONL reader
   takes each line through `Quartermaster.json_object`, so a line that doesn't parse or isn't an
   object (`5`, `[]`, `null`) is skipped, never raised.
-- One file per class, named by intent (`SessionLog`, `WorkItem`, `HookHandler`, `CLI`, …).
-- Rationale lives in commit messages, not code comments or these pages.
+- One intent-named file per class (`SessionLog`, `WorkItem`, …); rationale goes in commit messages only.
 
 ## Cross-area invariants
 
