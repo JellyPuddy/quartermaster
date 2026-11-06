@@ -4,10 +4,17 @@ module Quartermaster
   # Commands about how qm itself runs on this machine.
   module CliSetup
     COMMANDS = {
-      "pin-ruby" => :cmd_pin_ruby
+      "pin-ruby" => :cmd_pin_ruby,
+      "doctor" => :cmd_doctor
     }.freeze
 
     private
+
+    def cmd_doctor(_argv)
+      doctor = Doctor.new
+      doctor.checks.each { |check| puts check.line }
+      exit(1) if doctor.failed?
+    end
 
     def cmd_pin_ruby(argv)
       pin = RubyPin.new

@@ -1,7 +1,7 @@
 # CLI and viewer
 
-**Code:** `lib/quartermaster/cli.rb`, `lib/quartermaster/cli_format.rb`, `lib/quartermaster/cli_viewer.rb`, `lib/quartermaster/cli_attention.rb`, `lib/quartermaster/cli_chats.rb`, `lib/quartermaster/cli_prs.rb`, `lib/quartermaster/cli_cleanup.rb`, `lib/quartermaster/cli_workspace.rb`, `lib/quartermaster/cli_setup.rb`, `lib/quartermaster/viewer.rb`, `lib/quartermaster/feature_use.rb`, `lib/quartermaster/ruby_pin.rb`, `lib/quartermaster/ruby_floor.rb`, `quartermaster`
-**Tests:** `test/viewer_test.rb`, `test/feature_use_test.rb`, `test/ruby_pin_test.rb`
+**Code:** `lib/quartermaster/cli.rb`, `lib/quartermaster/cli_format.rb`, `lib/quartermaster/cli_viewer.rb`, `lib/quartermaster/cli_attention.rb`, `lib/quartermaster/cli_chats.rb`, `lib/quartermaster/cli_prs.rb`, `lib/quartermaster/cli_cleanup.rb`, `lib/quartermaster/cli_workspace.rb`, `lib/quartermaster/cli_setup.rb`, `lib/quartermaster/viewer.rb`, `lib/quartermaster/feature_use.rb`, `lib/quartermaster/ruby_pin.rb`, `lib/quartermaster/ruby_floor.rb`, `lib/quartermaster/doctor.rb`, `quartermaster`
+**Tests:** `test/viewer_test.rb`, `test/feature_use_test.rb`, `test/ruby_pin_test.rb`, `test/doctor_test.rb`
 **Depends on:** [work-items](work-items.md), [linking](linking.md), [gui-shell](gui-shell.md)
 
 ## What it does
@@ -67,6 +67,15 @@ settings snippet) — see [capture](capture.md).
 - `qm pin-ruby [VERSION|--clear]` — write `ruby-version` (default: the running `RUBY_VERSION`),
   refusing a version below the floor or one asdf has not installed (checked against
   `$ASDF_DATA_DIR/installs/ruby`, default `~/.asdf`); `--clear` removes it.
+- `qm doctor` — one `✓`/`!`/`✗` line per check, a fix hint on the others, exit 1 on any `✗`
+  (`Doctor`): the SessionStart, SessionEnd and record-event.sh hooks registered (record-event.sh
+  on every event `qm install-hooks` gives it) in `$QM_CLAUDE_SETTINGS` (default
+  `~/.claude/settings.json`) and pointing at existing files; the Ruby pin (`!` when absent, `✗`
+  when below the floor or not installed); the running Ruby against `RubyFloor::FLOOR`; the data
+  root writable; unseen `qm.log` errors (`!` with the newest, counted by `ErrorLog`: header
+  lines that are neither `transient` nor `recovered`, newer than `errors-seen-at` or else the
+  last day, from the log's last 256 KB; [capture](capture.md) owns it); and capture (`!` when neither `sessions.jsonl` nor
+  `events.jsonl`'s tail has an event from the last day).
 
 Internal, called by the viewer's fzf bindings: `viewer-rows`, `sessions-view`, `inbox-view`,
 `cycle-filter`, `session-rows`, `inbox-rows`, `choose-state`, `choose-project`,
@@ -77,7 +86,7 @@ Internal, called by the viewer's fzf bindings: `viewer-rows`, `sessions-view`, `
 one file each: `CliViewer` (viewer rows and pickers, `show`, sessions), `CliAttention` (inbox,
 attention, overview, ack, snooze, distill), `CliChats` (commands acting on the running GUI),
 `CliPrs` (pr, pr-requires, draft), `CliCleanup` (cleanup, sweep), `CliWorkspace` (resume, start,
-pf, IDE, terminal), `CliSetup` (how qm itself runs: pin-ruby), and `CliFormat` (shared output helpers and the help text). Each group's frozen
+pf, IDE, terminal), `CliSetup` (how qm itself runs: pin-ruby, doctor), and `CliFormat` (shared output helpers and the help text). Each group's frozen
 `COMMANDS` maps a word to the method `CLI#run` calls with argv; `CLI.commands` merges them and
 refuses a word claimed twice. A new command touches only its group's file (and `qm help`). Hooks
 and commands called otherwise (no argv, extra arguments, another class) stay explicit `when`
@@ -117,6 +126,7 @@ refused ("switch to its Warp tab"): it would fork the conversation.
 - The viewer's actions are plain `qm` subcommands, so the viewer, the GUI and Claude share one implementation; mouse support is double-click resume only — fzf's `click-header` + `execute` handoff didn't reliably hand the terminal to picker actions, so clickable actions live in the GUI.
 - The feature-use log holds a kind and a name only — never a slug, argument, path or session id — is only appended to, and recording is best-effort: a failed write goes to `qm.log` and never fails the command or request.
 - `FeatureUse.known_names` reads `CLI.commands`, plus `when "…" then` branches and `method == … && route …` conditions; a dispatcher reshaped away from that loses its names from the never-used lists (the known-names test pins a few).
+- `qm doctor` writes nothing of its own (its feature-use line aside): `events.jsonl` is read from its tail through `EventLog#last_ts`, never folded, so not even `events-fold.json` changes.
 - `ArgumentError` from any command becomes `qm: <message>` and exit 1, never a backtrace.
 
 ## Data

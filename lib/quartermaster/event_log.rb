@@ -32,6 +32,23 @@ module Quartermaster
 
     def turn_for(session_id) = turns[session_id]
 
+    # The newest event's ts, from the file's last few KB; touches no fold.
+    def last_ts
+      tail = File.open(path, "rb") do |f|
+        f.seek([f.size - 8192, 0].max)
+        f.read
+      end
+      tail.force_encoding(Encoding::UTF_8).scrub.lines.reverse_each do |line|
+        event = JSON.parse(line)
+        return event["ts"] if event.is_a?(Hash) && event["ts"]
+      rescue JSON::ParserError
+        next
+      end
+      nil
+    rescue Errno::ENOENT
+      nil
+    end
+
     # One event folded into its session's turn. Only the order of events
     # matters (spike, 2026-10-21): UserPromptSubmit and PostToolUse mean
     # working, PermissionRequest (permissions and AskUserQuestion alike) means

@@ -86,7 +86,8 @@ Says whose move it is in every chat, and tells the user when one needs them.
 
 **EventLog**
 - Read `events.jsonl` only through `EventLog`: it grows forever, and the fold persists with its
-  byte offset in `events-fold.json`, so a read parses only appended bytes.
+  byte offset in `events-fold.json`, so a read parses only appended bytes. `last_ts` (for
+  `qm doctor`) reads only the file's last 8 KB and touches no fold.
 - A partial last line waits for its newline; a replaced (new inode) or shrunk log refolds from 0.
 - Sessions quiet for 30 days are dropped from the fold (`FORGET_AFTER`).
 
