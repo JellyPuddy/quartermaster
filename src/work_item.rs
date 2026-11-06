@@ -504,6 +504,21 @@ impl WorkItem {
         self.edit(|_, lines, _| Self::set_pair(lines, "title", title).map(|_| true)).map(|_| ())
     }
 
+    /// A deleted temp branch has nothing left to point at.
+    pub fn unlink_temp_branch(&mut self, branch: &str) -> Res<()> {
+        let branch = branch.to_string();
+        self.edit(move |fresh, lines, _| {
+            let temps: Vec<String> = fresh.temp_branches().into_iter().filter(|b| *b != branch).collect();
+            if temps.is_empty() {
+                front_edit::delete(lines, "temp_branches");
+            } else {
+                Self::set_list(lines, "temp_branches", &temps)?;
+            }
+            Ok(true)
+        })
+        .map(|_| ())
+    }
+
     fn store_branches(lines: &mut Vec<String>, list: &[String]) -> Res<()> {
         front_edit::delete(lines, "branch");
         Self::set_list(lines, "branches", list)

@@ -1,7 +1,7 @@
 //! Worktree hygiene, planning only (docs/areas/worktrees.md): which worktrees and local branches of
 //! one item could go. The plan is data a checklist renders: one entry per worktree or branch, with
 //! a status (ok / warn / blocked), the reasons for it, and whether it starts ticked. Only ok entries
-//! start ticked. Removing anything stays in Ruby: nothing in this module changes a repo.
+//! start ticked. Planning changes nothing; `cleanup_run` carries a plan out.
 //!
 //! The sweep (every repo's `.claude/worktrees` worktrees and `worktree-*` branches) is planned here too.
 
@@ -26,7 +26,15 @@ const MAINLINE_BRANCHES: [&str; 3] = ["main", "master", "develop"];
 
 #[derive(Clone)]
 pub struct Entry {
+    /// `worktree:<path>`, `branch:<root>#<branch>`, `issue:<slug>/<file>`.
+    pub id: String,
     pub kind: &'static str,
+    /// The repo root a worktree or branch belongs to.
+    pub repo: Option<String>,
+    /// The id of the worktree entry a branch waits on.
+    pub requires: Option<String>,
+    /// "ok" (the test-DB dry run answered), "unknown", or "n/a".
+    pub db_status: &'static str,
     pub path: Option<String>,
     pub branch: Option<String>,
     pub status: &'static str,
@@ -42,6 +50,15 @@ pub struct Entry {
 impl Entry {
     pub fn is_worktree(&self) -> bool {
         self.kind == "worktree"
+    }
+
+    pub fn is_branch(&self) -> bool {
+        self.kind == "branch"
+    }
+
+    /// A worktree whose directory is already gone.
+    pub fn gone(&self) -> bool {
+        self.is_worktree() && !self.path.as_deref().is_some_and(|p| std::path::Path::new(p).is_dir())
     }
 
     pub fn is_issue_draft(&self) -> bool {
@@ -130,9 +147,10 @@ struct Built {
     entry: Entry,
 }
 
-fn build(kind: &'static str, path: Option<String>, branch: Option<String>, blocked: Vec<String>, warn: Vec<String>, notes: Vec<String>, db_names: Option<Vec<String>>) -> Entry {
+#[allow(clippy::too_many_arguments)]
+fn build(kind: &'static str, id: String, repo: &str, path: Option<String>, branch: Option<String>, blocked: Vec<String>, warn: Vec<String>, notes: Vec<String>, db_names: Option<Vec<String>>, db_status: &'static str) -> Entry {
     let status = if !blocked.is_empty() { "blocked" } else if !warn.is_empty() { "warn" } else { "ok" };
-    Entry { kind, path, branch, status, reasons: blocked.into_iter().chain(warn).collect(), notes, ticked: status == "ok", db_names, item: None, title: None }
+    Entry { id, repo: Some(repo.to_string()), requires: None, db_status, kind, path, branch, status, reasons: blocked.into_iter().chain(warn).collect(), notes, ticked: status == "ok", db_names, item: None, title: None }
 }
 
 impl Planner {
@@ -189,6 +207,7 @@ impl Planner {
             blocked.push(format!("live session {} works here", id.chars().take(8).collect::<String>()));
         }
         let mut db_names: Option<Vec<String>> = Some(vec![]);
+        let mut db_status = "n/a";
         if wt.prunable || !std::path::Path::new(&wt.path).is_dir() {
             notes.push("directory already gone (git worktree prune)".into());
         } else {
@@ -199,8 +218,9 @@ impl Planner {
                 warn.push(lost_reason(repo.unpreserved_commits(head, bases, &targets)));
             }
             if let Some(db) = test_db {
-                let (names, _status, note) = test_databases(db, &wt.path);
+                let (names, status, note) = test_databases(db, &wt.path);
                 db_names = names;
+                db_status = status;
                 if let Some(n) = note {
                     notes.push(n);
                 }
@@ -208,16 +228,20 @@ impl Planner {
         }
         let mut warn: Vec<String> = warn.into_iter().flatten().collect();
         warn.extend(warn_owners.iter().map(|slug| format!("also used by open item '{slug}'")));
-        build("worktree", Some(wt.path.clone()), wt.branch.clone(), blocked, warn, notes, db_names)
+        build("worktree", format!("worktree:{}", wt.path), &repo.root, Some(wt.path.clone()), wt.branch.clone(), blocked, warn, notes, db_names, db_status)
     }
 
     #[allow(clippy::too_many_arguments)]
     fn branch_entry(&mut self, repo: &mut GitRepo, branch: &str, bases: &[String], why: &str, checked_out: &[(String, Worktree)], worktree_entries: &[Entry], warn_owners: &[String]) -> Built {
         let mut blocked: Vec<String> = vec![];
         let mut holder_ticked = None;
+        let mut requires = None;
         if let Some((_, wt)) = checked_out.iter().find(|(b, _)| b == branch) {
             match worktree_entries.iter().find(|e| e.path.as_deref() == Some(wt.path.as_str())) {
-                Some(holder) => holder_ticked = Some(holder.ticked),
+                Some(holder) => {
+                    holder_ticked = Some(holder.ticked);
+                    requires = Some(holder.id.clone());
+                }
                 None => blocked.push(format!("checked out at {}", crate::cli_format::short_path(Some(&wt.path)))),
             }
         }
@@ -226,7 +250,8 @@ impl Planner {
         targets.extend(upstream(Some(branch)));
         let mut warn: Vec<String> = lost_reason(repo.unpreserved_commits(branch, &rest, &targets)).into_iter().collect();
         warn.extend(warn_owners.iter().map(|slug| format!("also linked to open item '{slug}'")));
-        let mut entry = build("branch", None, Some(branch.to_string()), blocked, warn, vec![why.to_string()], None);
+        let mut entry = build("branch", format!("branch:{}#{branch}", repo.root), &repo.root, None, Some(branch.to_string()), blocked, warn, vec![why.to_string()], None, "n/a");
+        entry.requires = requires;
         // deleting it waits on its worktree going first, so it starts ticked only when that worktree does
         entry.ticked = entry.ticked && holder_ticked.unwrap_or(true);
         Built { entry }
@@ -256,6 +281,10 @@ fn issue_entries(slug: &str) -> Res<Vec<Entry>> {
             let warn: Vec<String> = if number.is_some() { vec![] } else { [Some(problem.unwrap_or_else(|| "never created on GitHub".into())), comments_note.clone()].into_iter().flatten().collect() };
             let notes: Vec<String> = if let Some(n) = number { [Some(format!("#{n}")), comments_note].into_iter().flatten().collect() } else { vec![] };
             Entry {
+                id: format!("issue:{slug}/{file}"),
+                repo: None,
+                requires: None,
+                db_status: "n/a",
                 kind: "issue-draft",
                 path: Some(issue_drafts::dir(slug).join(&file).to_string_lossy().into_owned()),
                 branch: None,
@@ -281,7 +310,7 @@ fn protect(mut entry: Entry, slugs: Vec<String>) -> Entry {
 }
 
 /// Slugs with an issue-drafts directory, as the sweep lists them. `None` when a name is not UTF-8.
-fn swept_issue_slugs() -> Option<Vec<String>> {
+pub fn swept_slugs() -> Option<Vec<String>> {
     let Ok(entries) = std::fs::read_dir(data_root::root().join("issues")) else { return Some(vec![]) };
     let mut slugs = vec![];
     for e in entries.filter_map(|e| e.ok()) {
@@ -296,7 +325,7 @@ fn swept_issue_slugs() -> Option<Vec<String>> {
 
 /// Whether the sweep's issue-draft part is something `issue_drafts::load` can answer for (nothing written).
 pub fn sweep_supported() -> bool {
-    swept_issue_slugs().is_some_and(|slugs| slugs.iter().all(|s| issue_drafts::supported(s)))
+    swept_slugs().is_some_and(|slugs| slugs.iter().all(|s| issue_drafts::supported(s)))
 }
 
 /// Every `.claude/worktrees/*` worktree and `worktree-*` branch across the repos qm knows, checked
@@ -353,7 +382,7 @@ pub fn plan_sweep() -> Res<Plan> {
         entries.extend(branch_entries);
     }
     let open_slugs: Vec<&str> = items.iter().map(|i| i.slug.as_str()).collect();
-    for slug in swept_issue_slugs().ok_or_else(unreadable)? {
+    for slug in swept_slugs().ok_or_else(unreadable)? {
         let owners = if open_slugs.contains(&slug.as_str()) { vec![slug.clone()] } else { vec![] };
         for entry in issue_entries(&slug)? {
             entries.push(protect(entry, owners.clone()));
@@ -432,7 +461,7 @@ mod tests {
     use super::*;
 
     fn entry(kind: &'static str, status: &'static str) -> Entry {
-        Entry { kind, path: None, branch: None, status, reasons: vec![], notes: vec![], ticked: status == "ok", db_names: None, item: None, title: None }
+        Entry { id: String::new(), repo: None, requires: None, db_status: "n/a", kind, path: None, branch: None, status, reasons: vec![], notes: vec![], ticked: status == "ok", db_names: None, item: None, title: None }
     }
 
     fn plan(entries: Vec<Entry>) -> Plan {

@@ -144,6 +144,8 @@ fn world(base: &Path) -> (World, Vec<String>) {
     wt("t1", "b-t1");
     wt("t2", "b-t2");
     wt("failtdb", "b-fail");
+    wt("dropfail", "b-dropfail");
+    wt("pair", "b-pair");
     wt("dbok", "b-dbok");
 
     // main moves on: a squash merge of b-squash, and b-cherry's commits cherry-picked
@@ -166,13 +168,13 @@ fn world(base: &Path) -> (World, Vec<String>) {
     g.run(&repo2, &["checkout", "-q", "-b", "feat-co"]);
 
     let gh_data = base.join("gh-data");
-    for b in ["b-pr", "b-pr2", "b-pr3", "feat-co", "b-clean", "b-hold"] {
+    for b in ["b-pr", "b-pr2", "b-pr3", "feat-co", "b-clean", "b-hold", "b-pair"] {
         fs::create_dir_all(&gh_data).unwrap();
         fs::write(gh_data.join(b), format!("{{\"number\":1,\"state\":\"MERGED\",\"url\":\"https://example.test/pull/{b}\"}}")).unwrap();
     }
     script(&w.bin.join("gh"), "#!/bin/sh\necho \"$3\" >> \"$FAKE_GH_LOG\"\nf=\"$FAKE_GH_DATA/$3\"\nif [ -f \"$f\" ]; then cat \"$f\"; exit 0; fi\nexit 1\n");
     script(&w.bin.join("devsrv"), "#!/bin/sh\necho \"$@\" >> \"$DEVSRV_LOG\"\n[ \"$1\" = status ] && exit 0\nexit 1\n");
-    script(&w.bin.join("tdb"), "#!/bin/sh\ncase \"$2\" in *failtdb*) echo boom >&2; echo second >&2; exit 1;; esac\necho \"db_$(basename \"$2\")_a\"\necho\necho \"  db_$(basename \"$2\")_b  \"\n");
+    script(&w.bin.join("tdb"), "#!/bin/sh\n[ -n \"$TDB_LOG\" ] && echo \"$@\" >> \"$TDB_LOG\"\ncase \"$2\" in *dropfail*) [ \"$3\" = \"--dry-run\" ] || { echo cannot drop >&2; exit 1; };; esac\ncase \"$2\" in *failtdb*) echo boom >&2; echo second >&2; exit 1;; esac\necho \"db_$(basename \"$2\")_a\"\necho\necho \"  db_$(basename \"$2\")_b  \"\n");
     fs::write(base.join("devstate"), format!("dev   {}\n", served.display())).unwrap();
     fs::create_dir_all(&w.root).unwrap();
     fs::write(
@@ -218,6 +220,8 @@ fn world(base: &Path) -> (World, Vec<String>) {
     item("two-wt-item", "demo", &["b-t1", "b-t2"], &[], &[]);
     item("empty-item", "demo", &["b-ema", "b-emb"], &[], &[]);
     item("db-item", "demo", &["b-dbok"], &[], &[]);
+    item("dropfail-item", "demo", &["b-dropfail"], &[], &[]);
+    item("pair-item", "demo", &["b-pair"], &[], &[]);
     item("co-item", "second", &["feat-co"], &[], &[]);
     item("no-root-item", "elsewhere", &["x"], &[], &[]);
     item("nothing-item", "demo", &[], &[], &[]);
@@ -243,6 +247,7 @@ fn run(bin: &Path, w: &World, args: &[&str]) -> (i32, String, String) {
         .env("FAKE_GH_DATA", w.base.join("gh-data"))
         .env("FAKE_GH_LOG", w.base.join("gh.log"))
         .env("DEVSRV_LOG", w.base.join("devsrv.log"))
+        .env("TDB_LOG", w.base.join("tdb.log"))
         .env("QM_TMUX_SOCKET", "qm-test-cleanup")
         .env("LANG", "C.UTF-8")
         .env("LC_ALL", "C.UTF-8")
@@ -348,5 +353,125 @@ fn rust_and_ruby_plan_the_same_sweep() {
     assert!(!plain.contains("outside-wt"), "only .claude/worktrees is swept");
     for expected in ["sweep: ", "is not a git repo", "belongs to unresolved item", "worktree branch", "issue-draft ghost-item/x.md", "issue-item/c.md"] {
         assert!(plain.contains(expected), "the sweep should show {expected:?}\n{plain}");
+    }
+}
+
+
+/// What removal leaves behind: every repo's worktrees and branches, the item files, the issue drafts
+/// and their comments, and what the helper commands were asked.
+fn leftovers(w: &World) -> String {
+    let mut out = String::new();
+    for repo in ["repo", "repo2"] {
+        let dir = w.base.join(repo);
+        let git = |args: &[&str]| String::from_utf8_lossy(&Command::new("git").args(args).current_dir(&dir).output().unwrap().stdout).into_owned();
+        out.push_str(&format!("=== {repo} worktrees\n{}=== {repo} branches\n{}", git(&["worktree", "list", "--porcelain"]), git(&["branch", "--format=%(refname:short)"])));
+        if let Ok(rd) = fs::read_dir(dir.join(".claude/worktrees")) {
+            let mut names: Vec<String> = rd.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+            names.sort();
+            out.push_str(&format!("=== {repo} worktree dirs: {names:?}\n"));
+        }
+    }
+    fn walk(dir: &Path, base: &Path, out: &mut String) {
+        let mut entries: Vec<_> = fs::read_dir(dir).map(|r| r.filter_map(|e| e.ok()).collect()).unwrap_or_default();
+        entries.sort_by_key(|e| e.file_name());
+        for e in entries {
+            let p = e.path();
+            let rel = p.strip_prefix(base).unwrap().display().to_string();
+            if p.is_dir() {
+                out.push_str(&format!("{rel}/\n"));
+                walk(&p, base, out);
+            } else if !rel.ends_with(".lock") {
+                let text = fs::read_to_string(&p).unwrap_or_default();
+                let text = regex::Regex::new(r#""seen_at":[0-9.e+-]+"#).unwrap().replace_all(&text, "\"seen_at\":T").into_owned();
+                out.push_str(&format!("{rel}: {text}\n"));
+            }
+        }
+    }
+    for sub in ["work-items", "issues", "drafts"] {
+        out.push_str(&format!("=== {sub}\n"));
+        walk(&w.root.join(sub), &w.root, &mut out);
+    }
+    for log in ["tdb.log", "devsrv.log", "gh.log"] {
+        out.push_str(&format!("=== {log}\n{}", fs::read_to_string(w.base.join(log)).unwrap_or_default()));
+    }
+    out.replace(w.base.to_str().unwrap(), "BASE")
+}
+
+fn run_steps(bin: &Path, w: &World, steps: &[Vec<String>]) -> String {
+    let mut out = String::new();
+    for step in steps {
+        let args: Vec<String> = step.iter().map(|s| s.replace("{base}", w.base.to_str().unwrap())).collect();
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let (code, stdout, stderr) = run(bin, w, &refs);
+        out.push_str(&format!("$ qm {}\nexit {code}\n{stdout}{}\n", step.join(" "), if stderr.is_empty() { String::new() } else { format!("stderr: {stderr}") }));
+    }
+    out.push_str(&leftovers(w));
+    out.replace(w.base.to_str().unwrap(), "BASE")
+}
+
+fn compare_removal(steps: impl Fn(&[String]) -> Vec<Vec<String>>) -> String {
+    let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let ((wa, slugs), (wb, _)) = (world(a.path()), world(b.path()));
+    let steps = steps(&slugs);
+    let ruby_text = run_steps(&ruby(), &wa, &steps);
+    let rust_text = run_steps(rust(), &wb, &steps);
+    if rust_text != ruby_text {
+        let (r, y): (Vec<&str>, Vec<&str>) = (rust_text.lines().collect(), ruby_text.lines().collect());
+        let at = (0..r.len().max(y.len())).find(|i| r.get(*i) != y.get(*i)).unwrap();
+        let show = |v: &Vec<&str>| v.iter().skip(at.saturating_sub(3)).take(8).map(|l| l.chars().take(240).collect::<String>()).collect::<Vec<_>>().join("\n  ");
+        panic!("removal differs at line {at}\nRust:\n  {}\nRuby:\n  {}", show(&r), show(&y));
+    }
+    regex::Regex::new("\x1b\\[[0-9;]*m").unwrap().replace_all(&ruby_text, "").into_owned()
+}
+
+fn s(parts: &[&str]) -> Vec<String> {
+    parts.iter().map(|p| p.to_string()).collect()
+}
+
+#[test]
+fn rust_and_ruby_remove_the_same_things_from_cleanup_slug() {
+    let text = compare_removal(|slugs| {
+        let wt = |name: &str| format!("{{base}}/repo/.claude/worktrees/{name}");
+        let mut steps = vec![
+            s(&["cleanup", "dirty-item", "--force", &wt("dirty")]),
+            s(&["cleanup", "dirty-item", "--yes"]),
+            s(&["cleanup", "dirty-item", "--yes", "--force", &wt("dirty")]),
+            s(&["cleanup", "dirty-item", "--force", "nothing-like-this"]),
+            s(&["cleanup", "--yes"]),
+            s(&["cleanup"]),
+            s(&["cleanup", "ghost-nobody", "--yes"]),
+            s(&["cleanup", "issue-item", "--yes"]),
+            s(&["cleanup", "issue-item", "--yes", "--force", "issue-item/a.md", "--force", "{base}/root/issues/issue-item/c.md"]),
+            s(&["cleanup", "hold-item", "--yes", "--force", "b-hold"]),
+            s(&["cleanup", "locked-item", "--yes", "--force", &wt("locked")]),
+            s(&["cleanup", "failtdb-item", "--yes", "--force", &wt("failtdb")]),
+            s(&["cleanup", "dropfail-item", "--yes"]),
+        ];
+        for slug in slugs {
+            steps.push(s(&["--yes-placeholder"]));
+            steps.pop();
+            steps.push(vec!["cleanup".into(), slug.clone(), "--yes".into()]);
+        }
+        steps
+    });
+    for expected in ["removed", "pruned", "deleted", "already gone", "dropping test DBs failed", "no cleanup entry matches", "usage: qm cleanup SLUG", "and test DBs", "BASE/repo#b-pair: deleted"] {
+        assert!(text.contains(expected), "the removals should show {expected:?}\n{text}");
+    }
+}
+
+#[test]
+fn rust_and_ruby_remove_the_same_things_in_a_sweep() {
+    let text = compare_removal(|_| {
+        vec![
+            s(&["sweep"]),
+            s(&["sweep", "--force", "nothing-like-this"]),
+            s(&["sweep", "--yes"]),
+            s(&["sweep", "--yes", "--force", "{base}/repo/.claude/worktrees/dirty", "--force", "b-unmerged"]),
+            s(&["sweep", "--yes", "--force", "{base}/repo/.claude/worktrees/unmerged"]),
+            s(&["sweep"]),
+        ]
+    });
+    for expected in ["removed", "worktree branch", "belongs to unresolved item"] {
+        assert!(text.contains(expected), "the sweep should show {expected:?}\n{text}");
     }
 }

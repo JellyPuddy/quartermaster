@@ -315,3 +315,19 @@ pub fn unsent_comments(slug: &str) -> Option<std::collections::HashMap<String, u
     }
     Some(counts)
 }
+
+/// `IssueDrafts#delete`: removes one issue file and its snapshot, drops its unsent comments, and
+/// takes the directory with the last file. True when the file was there.
+pub fn delete(slug: &str, name: &str) -> std::io::Result<bool> {
+    let dir = dir(slug);
+    let path = dir.join(name);
+    let existed = path.is_file();
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(snapshot_path(&dir, name));
+    crate::drafts::forget_issue(slug, name)?;
+    if files(slug).is_some_and(|f| f.is_empty()) {
+        let _ = std::fs::remove_dir_all(dir.join(".prev"));
+        let _ = std::fs::remove_dir(&dir);
+    }
+    Ok(existed)
+}

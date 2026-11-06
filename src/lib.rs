@@ -8,6 +8,7 @@ pub mod cli_format;
 pub mod chat_attention;
 pub mod cleanup;
 pub mod cleanup_command;
+pub mod cleanup_run;
 pub mod clock;
 pub mod data_root;
 pub mod delegate;

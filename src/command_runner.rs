@@ -27,9 +27,33 @@ fn resolve(name: &str) -> String {
 }
 
 pub fn call(argv: &[&str]) -> CmdResult {
+    run(argv, None)
+}
+
+/// As `call`, in `chdir` (Ruby's `CommandRunner#call(argv, chdir:)`).
+pub fn call_in(argv: &[&str], chdir: &str) -> CmdResult {
+    run(argv, Some(chdir))
+}
+
+/// What Ruby's `SystemCallError#message` says for a command that would not start.
+fn spawn_error(e: &std::io::Error, name: &str) -> String {
+    match e.kind() {
+        std::io::ErrorKind::NotFound => format!("No such file or directory - {name}"),
+        std::io::ErrorKind::PermissionDenied => format!("Permission denied - {name}"),
+        _ => e.to_string(),
+    }
+}
+
+fn run(argv: &[&str], chdir: Option<&str>) -> CmdResult {
     let Some((first, rest)) = argv.split_first() else { return CmdResult { out: String::new(), err: "empty command".into(), success: false } };
-    match Command::new(resolve(first)).args(rest).stdin(Stdio::null()).output() {
+    let program = resolve(first);
+    let mut cmd = Command::new(&program);
+    cmd.args(rest).stdin(Stdio::null());
+    if let Some(dir) = chdir {
+        cmd.current_dir(dir);
+    }
+    match cmd.output() {
         Ok(o) => CmdResult { out: String::from_utf8_lossy(&o.stdout).into_owned(), err: String::from_utf8_lossy(&o.stderr).into_owned(), success: o.status.success() },
-        Err(e) => CmdResult { out: String::new(), err: e.to_string(), success: false },
+        Err(e) => CmdResult { out: String::new(), err: spawn_error(&e, &program), success: false },
     }
 }

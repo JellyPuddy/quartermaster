@@ -1,5 +1,5 @@
-//! `qm cleanup SLUG` (the plan only) and the resolve hint `state … resolved` prints. Removing anything
-//! — `--yes`, `--force`, the sweep — stays in Ruby.
+//! `qm cleanup SLUG` and `qm sweep` — the plan, and with `--yes` carrying it out (`cleanup_run`) — and
+//! the resolve hint `state … resolved` prints. A terminal's progress bar is Ruby's: `--yes` on a tty goes there.
 
 use crate::cleanup::{plan_item, plan_sweep, Entry};
 use crate::cli_format::{paint, puts, short_path};
@@ -32,7 +32,7 @@ pub fn offer(item: &WorkItem) -> String {
     }
 }
 
-fn line(entry: &Entry) -> String {
+fn line(entry: &Entry, force: &[String]) -> String {
     let (mark, color) = match entry.status {
         "warn" => ("⚠ ", 33),
         "blocked" => ("⛔ ", 31),
@@ -58,13 +58,53 @@ fn line(entry: &Entry) -> String {
         _ => String::new(),
     };
     let details = entry.reasons.iter().chain(&entry.notes).cloned().collect::<Vec<_>>().join("; ");
-    let line = format!("  [{}] {} {target}{head}{dbs}", if entry.ticked { "x" } else { " " }, paint(&format!("{mark}{}", entry.kind), color));
+    let line = format!("  [{}] {} {target}{head}{dbs}", if entry.ticked || force.contains(&entry.id) { "x" } else { " " }, paint(&format!("{mark}{}", entry.kind), color));
     if details.is_empty() { line } else { format!("{line} — {details}") }
 }
 
+struct Options {
+    yes: bool,
+    force: Vec<String>,
+    rest: Vec<String>,
+}
+
+/// `--yes` and `--force KEY` anywhere among the arguments; any other flag shape (abbreviated,
+/// `=`-joined, `--`, a `~user` key) is read differently by Ruby's `OptionParser`.
+fn options(a: &[String]) -> Option<Options> {
+    let mut o = Options { yes: false, force: vec![], rest: vec![] };
+    let mut i = 0;
+    while i < a.len() {
+        match a[i].as_str() {
+            "--yes" => {
+                o.yes = true;
+                i += 1;
+            }
+            "--force" => {
+                let key = a.get(i + 1)?;
+                if key.starts_with('~') && key != "~" && !key.starts_with("~/") {
+                    return None;
+                }
+                o.force.push(key.clone());
+                i += 2;
+            }
+            s if s.starts_with('-') && s != "-" => return None,
+            s => {
+                o.rest.push(s.to_string());
+                i += 1;
+            }
+        }
+    }
+    Some(o)
+}
+
+fn tty() -> bool {
+    unsafe { libc::isatty(1) == 1 }
+}
+
 pub fn cleanup(a: &[String]) -> Outcome {
-    let [slug] = a else { return Outcome::Delegate };
-    if slug.starts_with('-') || leaves_to_ruby(slug) {
+    let Some(o) = options(a) else { return Outcome::Delegate };
+    let Some(slug) = o.rest.first() else { return abort("usage: qm cleanup SLUG [--yes] [--force PATH|BRANCH ...]") };
+    if leaves_to_ruby(slug) || (o.yes && (tty() || !crate::drafts::writable(slug))) {
         return Outcome::Delegate;
     }
     let item = match WorkItem::find(slug) {
@@ -75,31 +115,60 @@ pub fn cleanup(a: &[String]) -> Outcome {
         Ok(p) => p,
         Err(e) => return abort(&format!("qm: {}", e.message)),
     };
-    done(print_plan(&plan))
+    carry_out(&plan, &o)
 }
 
-/// `qm sweep` with no flags: the plan over every repo. `--yes` and `--force` stay Ruby.
+/// `qm sweep [--yes] [--force KEY]`: the plan over every repo, and with `--yes` carrying it out.
 pub fn sweep(a: &[String]) -> Outcome {
-    if !a.is_empty() || !crate::cleanup::sweep_supported() {
+    let Some(o) = options(a) else { return Outcome::Delegate };
+    let writable = || crate::cleanup::swept_slugs().is_some_and(|s| s.iter().all(|slug| crate::drafts::writable(slug)));
+    if !crate::cleanup::sweep_supported() || (o.yes && (tty() || !writable())) {
         return Outcome::Delegate;
     }
     match plan_sweep() {
-        Ok(plan) => done(print_plan(&plan)),
+        Ok(plan) => carry_out(&plan, &o),
         Err(e) if e.class == crate::error::UNEMITTABLE => Outcome::Delegate,
         Err(e) => abort(&format!("qm: {}", e.message)),
     }
 }
 
-fn print_plan(plan: &crate::cleanup::Plan) -> String {
+/// Prints the plan; `--yes` removes what is ticked plus every `--force` entry.
+fn carry_out(plan: &crate::cleanup::Plan, o: &Options) -> Outcome {
+    let force = match crate::cleanup_run::resolve_ids(plan, &o.force) {
+        Ok(f) => f,
+        Err(message) => return abort(&format!("qm: {message}")),
+    };
+    let mut out = print_plan(plan, &force, o.yes);
+    if plan.is_empty() || !o.yes {
+        return done(out);
+    }
+    let selected: Vec<String> = plan.entries.iter().filter(|e| e.ticked).map(|e| e.id.clone()).collect();
+    let outcomes = crate::cleanup_run::execute(plan, &selected, &force);
+    if outcomes.is_empty() {
+        out.push_str(&puts(&paint("nothing ticked", 90)));
+    }
+    for outcome in &outcomes {
+        let color = match outcome.result {
+            "removed" => 32,
+            "skipped" => 33,
+            _ => 31,
+        };
+        let shown = regex::Regex::new(r"\A[A-Za-z0-9_]+:").unwrap().replace(&outcome.id, "").into_owned();
+        out.push_str(&puts(&format!("{} {shown}: {}", paint(&crate::cli_format::ljust(outcome.result, 7), color), outcome.message)));
+    }
+    Outcome::Done { code: if outcomes.iter().any(|o| o.result == "failed") { 1 } else { 0 }, stdout: out, stderr: String::new() }
+}
+
+fn print_plan(plan: &crate::cleanup::Plan, force: &[String], yes: bool) -> String {
     let mut out = String::new();
     for note in &plan.notes {
         out.push_str(&puts(&paint(note, 90)));
     }
     out.push_str(&puts(&format!("{}: {}", plan.scope, plan.summary())));
     for e in &plan.entries {
-        out.push_str(&puts(&line(e)));
+        out.push_str(&puts(&line(e, force)));
     }
-    if !plan.is_empty() {
+    if !plan.is_empty() && !yes {
         out.push_str(&puts(&paint("--yes removes the [x] entries; --force PATH|BRANCH|SLUG/FILE adds a ⚠ one", 90)));
     }
     out

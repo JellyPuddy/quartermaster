@@ -78,3 +78,55 @@ fn write(v: &Value, depth: usize, out: &mut String) {
         scalar => out.push_str(&serde_json::to_string(scalar).unwrap()),
     }
 }
+
+/// Whether `forget_issue` can rewrite this item's drafts file exactly as Ruby does.
+pub fn writable(slug: &str) -> bool {
+    let path = data_root::root().join("drafts").join(format!("{slug}.json"));
+    if !path.exists() {
+        return true;
+    }
+    match std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
+        Some(Value::Object(data)) => match data.get("entries") {
+            Some(Value::Array(list)) => list.iter().all(Value::is_object) && !has_float(&Value::Object(data.clone())),
+            _ => true, // reads as empty: the file goes
+        },
+        _ => true,
+    }
+}
+
+/// `Drafts#forget_issue`: the issue comments on a deleted issue file go with it, under the item's
+/// drafts lock; a file left with no drafts and no clipboard load ids is removed.
+pub fn forget_issue(slug: &str, file: &str) -> std::io::Result<()> {
+    use std::os::unix::io::AsRawFd;
+    let dir = data_root::root().join("drafts");
+    let path = dir.join(format!("{slug}.json"));
+    if !path.exists() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(&dir)?;
+    let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(dir.join(format!(".{slug}.lock")))?;
+    unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) };
+    let mut data = match std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
+        Some(Value::Object(d)) if d.get("entries").is_some_and(Value::is_array) => d,
+        _ => Map::from_iter([("v".to_string(), Value::from(1)), ("entries".to_string(), Value::Array(vec![]))]),
+    };
+    if let Some(Value::Array(list)) = data.get_mut("entries") {
+        list.retain(|e| !(e.get("kind").and_then(Value::as_str) == Some("issue-comment") && e.get("file").and_then(Value::as_str) == Some(file)));
+    }
+    let no_entries = matches!(data.get("entries"), Some(Value::Array(l)) if l.is_empty());
+    let no_loaded = match data.get("loaded") {
+        None | Some(Value::Null) => true,
+        Some(Value::Array(l)) => l.is_empty(),
+        Some(Value::Object(o)) => o.is_empty(),
+        Some(_) => false,
+    };
+    if no_entries && no_loaded {
+        let _ = std::fs::remove_file(&path);
+    } else {
+        data.insert("v".into(), Value::from(1));
+        let temp = format!("{}.{}.{:?}.tmp", path.display(), std::process::id(), std::thread::current().id());
+        std::fs::write(&temp, pretty(&Value::Object(data)))?;
+        std::fs::rename(&temp, &path)?;
+    }
+    Ok(())
+}
