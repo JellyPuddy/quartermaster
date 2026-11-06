@@ -1,7 +1,7 @@
 # PRs
 
-**Code:** `lib/quartermaster/pr_inbox.rb`, `lib/quartermaster/pr_items.rb`, `lib/quartermaster/pr_status.rb`, `lib/quartermaster/pr_prerequisites.rb`, `lib/quartermaster/pr_deployment.rb`, `lib/quartermaster/gui/js/prs.js`, `lib/quartermaster/gui/css/prs.css`
-**Tests:** `test/prs_view_test.rb`, `test/pr_prerequisites_test.rb`, `test/pr_deployment_test.rb`
+**Code:** `lib/quartermaster/pr_inbox.rb`, `lib/quartermaster/pr_items.rb`, `lib/quartermaster/pr_review_start.rb`, `lib/quartermaster/pr_status.rb`, `lib/quartermaster/pr_prerequisites.rb`, `lib/quartermaster/pr_deployment.rb`, `lib/quartermaster/gui/js/prs.js`, `lib/quartermaster/gui/css/prs.css`
+**Tests:** `test/prs_view_test.rb`, `test/pr_review_start_test.rb`, `test/pr_prerequisites_test.rb`, `test/pr_deployment_test.rb`
 **Depends on:** [work-items](work-items.md), [gui-shell](gui-shell.md), [worktrees](worktrees.md), [review](review.md)
 
 ## What it does
@@ -17,7 +17,7 @@
 - **Mode tally** on the PRs toggle: the user's own non-draft PRs as ✓approved / ✗changes / open, then the count waiting on them (review requested, or assigned and not a draft).
 - **Actions** (buttons and keys; `j`/`k`/arrows move, `c` new item):
   - **Chat** (⏎, `pr-chat`): opens the chat of the item holding the PR's branch; with none, creates item `<repo>#<n>: <title>` with the branch linked and the PR summarised in its description.
-  - **Review** (`w`, `pr-review`): a separate item `Review <repo>#<n>: <title>`, found again by slug prefix, no branch linked, a resolved one reopened to in_progress; started fresh in the main checkout with the project's `review_skill` (config.yml, default `/code-review`; the PR payload's `reviewSkill`) and `<url>` plus the instruction to record each finding with `qm draft add <slug> …` instead of posting to GitHub (`PrItems#review_kickoff`). `PrItems#review_pr` reads a Review item's PR back from its description.
+  - **Review** (`w`, `pr-review`): a separate item `Review <repo>#<n>: <title>`, found again by slug prefix, no branch linked, a resolved one reopened to in_progress; started fresh in the main checkout with the project's `review_skill` (config.yml, default `/code-review`; the PR payload's `reviewSkill`) and `<url>` plus the instruction to record each finding with `qm draft add <slug> …` instead of posting to GitHub (`PrItems#review_kickoff`). A pane already running is attached to; a session of the item running outside one refuses. `PrItems#review_pr` reads a Review item's PR back from its description. The logic is `PrReviewStart`, which needs no GUI (tmux, `PrItems` and project map injected) so the pr-review automation flow calls it too: `start(pr, extra_argv:, kickoff_suffix:)` puts extra flags before the kickoff (still the last argument) and appends a non-blank suffix as its own paragraph; `live?(pr)` says whether the Review chat runs, in a pane or outside, creating and starting nothing.
   - **<IDE label>** / **<dev-server command>** (`pr-ide` / `pr-pf`, the former only when an `ide_command:` applies to the PR's project, payload `ide` (its label), the latter only when it has a `dev_server:`, payload `devServer`): act on the PR's own head branch — its existing worktree, else a new one (`TargetWorktree#materialize_branch`) — as a background job keyed by the PR's item when it has one, else by the label. The switch uses the item's `pf_mode` or the server's default mode.
   - **GitHub ↗** (`o`): a plain link; the row's label links there too. The item links open that item's chat.
 - `prs.js` also holds the page's `setMode`, `openChat` and `pulseTick` (the ~1 s `/api/pulse` poll; see [gui-shell](gui-shell.md) and [attention](attention.md)).

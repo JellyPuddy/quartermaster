@@ -693,25 +693,8 @@ module Quartermaster
       gui_pane(item.slug, fresh: false).merge("slug" => item.slug)
     end
 
-    # A review runs in a chat of its own — a separate item, so it never lands
-    # in the PR's own chat — with the review skill as its first prompt. The
-    # item links no branch: auto-matching a branch to two items is ambiguous.
-    # It starts in the main checkout; the skill reads the PR from GitHub.
     def gui_pr_review(url)
-      pr = PrInbox.new.find(url)
-      project = @pr_items.project_for_repo(pr["repo"], ProjectMap.new) || ProjectMap::NO_PROJECT
-      item = @pr_items.review_item(pr, WorkItem.all) ||
-             @pr_items.find_or_create_item("Review #{@pr_items.pr_label(pr)}: #{pr["title"]}", project: project,
-                                           description: "Review of pull request #{@pr_items.pr_summary(pr)}.")
-      return ok.merge("slug" => item.slug, "attached" => true) if @tmux.live?(item.slug)
-
-      item.update_state("in_progress") if item.state == "resolved"
-      plan = Launcher.new.chat_plan(item, fresh: true)
-      raise ArgumentError, "#{item.slug} has a chat running outside the GUI — review from there, or end it first" if plan[:mode] == :live
-
-      skill = ProjectMap.new.settings_for(project).review_skill
-      @tmux.open(item.slug, cwd: plan[:cwd], argv: [*plan[:argv], @pr_items.review_kickoff(skill, pr, item.slug)], env: plan[:env])
-      ok.merge("slug" => item.slug, "mode" => "start")
+      ok.merge(PrReviewStart.new(tmux: @tmux, pr_items: @pr_items).start(PrInbox.new.find(url)))
     end
 
     # Start work on a GitHub issue. An item already holding it gets its chat
