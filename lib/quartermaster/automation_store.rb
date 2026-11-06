@@ -34,7 +34,7 @@ module Quartermaster
     def list
       return [] unless Dir.exist?(@dir)
 
-      Dir.children(@dir).filter_map { |f| f.delete_suffix(".yml") if f.match?(/\A[a-z0-9][a-z0-9-]*\.yml\z/) }.sort.map { |slug| read(slug) }
+      Dir.children(@dir).filter_map { |f| f.delete_suffix(".yml") if f.end_with?(".yml") }.grep(SLUG).sort.map { |slug| read(slug) }
     end
 
     def find_by_routine(id) = list.find { |entry| entry.record["routine"] == id }
