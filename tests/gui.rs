@@ -2193,3 +2193,118 @@ fn closing_a_loose_chat_runs_as_a_job_like_ruby() {
         tmux_on(s, &["kill-server"]);
     }
 }
+
+/// The world the resolving and cleanup tests share: worktrees merged, dirty and with unpreserved
+/// commits, items on them, issue drafts, and fresh PR answers so no plan waits on a lookup.
+fn cleanup_world(base: &Path) -> common::AttentionWorld {
+    let w = attention_world(base, std::time::SystemTime::now(), None);
+    let repo = &w.repo;
+    git(repo, &["worktree", "add", base.join("wt-merged").to_str().unwrap(), "merged-b"]);
+    let dirty = base.join("wt-dirty");
+    git(repo, &["worktree", "add", "-b", "dirty-b", dirty.to_str().unwrap()]);
+    fs::write(dirty.join("loose.txt"), "uncommitted\n").unwrap();
+    let unpushed = base.join("wt-unpushed");
+    git(repo, &["worktree", "add", "-b", "unpushed-b", unpushed.to_str().unwrap()]);
+    fs::write(unpushed.join("work.txt"), "work\n").unwrap();
+    git(&unpushed, &["add", "."]);
+    git(&unpushed, &["commit", "-q", "-m", "work nobody has"]);
+    git(repo, &["branch", "spare-b"]);
+    let item = |slug: &str, extra: &str, state: &str| {
+        fs::write(w.root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: {slug}\nstate: {state}\nproject: demo\ncreated: '2026-01-01'\n{extra}---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n")).unwrap();
+    };
+    item("res-merged", "branches:\n- merged-b\n", "resolved");
+    item("res-dirty", "branches:\n- dirty-b\n", "resolved");
+    item("res-unpushed", "branches:\n- unpushed-b\n", "resolved");
+    item("res-spare", "branches:\n- spare-b\n", "resolved");
+    item("res-issues", "", "resolved");
+    item("res-nothing", "", "resolved");
+    for (name, front) in [("01-made.md", "title: Made\nkind: bug\nnumber: 9\n"), ("02-open.md", "title: Open\nkind: feature\n")] {
+        let p = w.root.join(format!("issues/res-issues/{name}"));
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, format!("---\n{front}---\n\nbody\n")).unwrap();
+    }
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    let entry = |state: &str, n: u32| format!("{{\"state\":{state},\"number\":{n},\"url\":\"https://example.test/pull/{n}\",\"ts\":{now}}}");
+    fs::write(
+        w.root.join("pr-cache.json"),
+        format!("{{\"demo#merged-b\":{},\"demo#dirty-b\":{},\"demo#unpushed-b\":{{\"state\":null,\"ts\":{now}}},\"demo#spare-b\":{},\"demo#nopr-exists\":{{\"state\":null,\"ts\":{now}}}}}", entry("\"MERGED\"", 6), entry("\"OPEN\"", 7), entry("\"MERGED\"", 8)),
+    )
+    .unwrap();
+    w
+}
+
+#[test]
+fn the_cleanup_dialog_and_job_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let (base_a, base_b) = (base.path().join("a"), base.path().join("b"));
+    let (wa, wb) = (cleanup_world(&base_a), cleanup_world(&base_b));
+    let env_for = |w: &common::AttentionWorld, tag: &str| -> Vec<(&'static str, String)> {
+        vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("PATH", format!("{}:{}", w.bin.display(), std::env::var("PATH").unwrap())), ("FAKE_GH_DATA", w.gh_data.display().to_string()), ("FAKE_GH_LOG", base.path().join(format!("gh-{tag}.log")).display().to_string()), ("QM_TMUX_SOCKET", format!("qm-test-clean-{tag}"))]
+    };
+    let ruby = start_env(false, &wa.root, &wa.home, &env_for(&wa, "ruby"));
+    let rust = start_env(true, &wb.root, &wb.home, &env_for(&wb, "rust"));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let sha = regex::Regex::new(r"\b[0-9a-f]{7,40}\b").unwrap();
+    let norm = |text: String, side: usize| {
+        let text = text.replace(&(if side == 0 { &base_a } else { &base_b }).display().to_string(), "BASE");
+        sha.replace_all(&text, "SHA").into_owned()
+    };
+    let post = |server: &Server, path: &str, body: &str| String::from_utf8_lossy(&request(server.port, "POST", path, &origin, body, true).body).into_owned();
+    let state = |server: &Server| -> serde_json::Value { serde_json::from_slice(&request(server.port, "GET", "/api/state", &[], "", true).body).expect("a state") };
+    // the plan the dialog shows, and the ids in it (they carry each world's paths)
+    let plan = |scope: &str| -> (String, String, serde_json::Value, serde_json::Value) {
+        let body = format!("{{\"scope\":\"{scope}\"}}");
+        let (a, b) = (post(&ruby, "/api/cleanup-plan", &body), post(&rust, "/api/cleanup-plan", &body));
+        assert_eq!(norm(a.clone(), 0), norm(b.clone(), 1), "plan for {scope}");
+        (norm(a.clone(), 0), scope.to_string(), serde_json::from_str(&a).unwrap(), serde_json::from_str(&b).unwrap())
+    };
+    let ids = |v: &serde_json::Value, suffix: &str| -> Vec<String> { v["plan"]["entries"].as_array().map(|e| e.iter().filter_map(|x| x["id"].as_str()).filter(|i| i.ends_with(suffix)).map(String::from).collect()).unwrap_or_default() };
+    let (mut got_ruby, mut got_rust): (Vec<String>, Vec<String>) = (vec![], vec![]);
+    let mut run = |label: &str, scope: &str, select: &[&str], force: &[&str]| {
+        let (_, _, pa, pb) = plan(scope);
+        let body = |p: &serde_json::Value| {
+            let pick = |suffixes: &[&str]| suffixes.iter().flat_map(|s| match s.strip_prefix('=') { Some(literal) => vec![literal.to_string()], None => ids(p, s) }).map(serde_json::Value::String).collect::<Vec<_>>();
+            serde_json::json!({"cmd": "cleanup", "slug": null, "args": {"scope": scope, "selected": pick(select), "force": pick(force)}}).to_string()
+        };
+        let (a, b) = (post(&ruby, "/api/action", &body(&pa)), post(&rust, "/api/action", &body(&pb)));
+        assert_eq!(norm(a.clone(), 0), norm(b.clone(), 1), "{label}: reply");
+        if a.contains("background") {
+            for _ in 0..300 {
+                let (sa, sb) = (state(&ruby), state(&rust));
+                got_ruby.extend(sa["finished"].as_array().unwrap().iter().map(|v| norm(v.to_string(), 0)));
+                got_rust.extend(sb["finished"].as_array().unwrap().iter().map(|v| norm(v.to_string(), 1)));
+                if sa["jobs"].as_array().is_some_and(|j| j.is_empty()) && sb["jobs"].as_array().is_some_and(|j| j.is_empty()) {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+        assert_eq!(got_ruby, got_rust, "{label}: what the job reported");
+        let left = |w: &common::AttentionWorld, side: usize| {
+            let mut tree = String::new();
+            tree_text(&w.root.join("issues"), "issues", &mut tree);
+            norm(format!("{}\n{}\n{tree}", git(&w.repo, &["worktree", "list", "--porcelain"]), git(&w.repo, &["branch", "--list", "--format=%(refname:short)"])), side)
+        };
+        assert_eq!(left(&wa, 0), left(&wb, 1), "{label}: what is left");
+    };
+    run("plan only: nothing selected", "res-merged", &[], &[]);
+    run("a warned entry without force", "res-merged", &["wt-merged", "#merged-b"], &[]);
+    run("forced", "res-merged", &[], &["wt-merged", "#merged-b"]);
+    run("dirty, unforced", "res-dirty", &["wt-dirty"], &[]);
+    run("dirty, forced", "res-dirty", &[], &["wt-dirty"]);
+    run("unpreserved commits, forced", "res-unpushed", &[], &["wt-unpushed"]);
+    run("a merged spare branch", "res-spare", &["#spare-b"], &[]);
+    run("issue drafts", "res-issues", &["01-made.md"], &[]);
+    run("an uncreated issue draft, forced", "res-issues", &[], &["02-open.md"]);
+    run("nothing matches", "res-nothing", &["=worktree:/nowhere"], &[]);
+    run("an item that is not there", "nowhere", &["x"], &[]);
+    run("the sweep, nothing selected", "sweep", &[], &[]);
+    let seen = got_rust.join("\n");
+    for needle in ["needs force", "\"result\":\"removed\"", "cleaning up", "\"ok\":true", "nothing to do"] {
+        assert!(seen.contains(needle), "the world should reach {needle}: {seen}");
+    }
+    let a = plan("sweep");
+    assert!(a.0.contains("\"ok\":true"));
+    let missing = plan("nowhere");
+    assert!(missing.0.contains("no work item"), "{}", missing.0);
+}

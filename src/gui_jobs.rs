@@ -74,6 +74,13 @@ pub fn background(key: &str, label: &str, pf: bool, work: impl FnOnce() -> Resul
     json!({"ok": true, "background": true})
 }
 
+/// A running job's badge says what it waits on now.
+pub fn relabel(key: &str, label: &str) {
+    if let Some(job) = lock().running.iter_mut().find(|j| j.key == key) {
+        job.label = label.to_string();
+    }
+}
+
 /// The running jobs, as the state lists them.
 pub fn running() -> Vec<Value> {
     lock().running.iter().map(|j| json!({"key": j.key, "label": j.label, "pf": j.pf})).collect()

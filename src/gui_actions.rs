@@ -221,6 +221,7 @@ fn run(payload: &Value) -> R<Value> {
         "loose-start" => loose_start(&args),
         "loose-promote" => loose_promote(&args),
         "loose-close" => loose_close(&args),
+        "cleanup" => cleanup(&args),
         "pane-start" | "pane-resume" => pane(&slug, cmd == "pane-start", &args),
         "pf-mode" => {
             let mut item = find(&slug)?;
@@ -377,6 +378,100 @@ fn loose_start(args: &Args) -> R<Value> {
     match crate::tmux::Tmux::new().open(&name, &cwd, &argv, &[("QM_LOOSE".to_string(), id.clone()), ("QM_ITEM".to_string(), String::new())]) {
         Ok(_) => Ok(json!({"ok": true, "name": name, "id": id})),
         Err(message) => Err(fail(message)),
+    }
+}
+
+/// `Array(value).map(&:to_s)` for the scalars a page sends.
+fn strings_of(v: &Value) -> R<Vec<String>> {
+    match v {
+        Value::Null => Ok(vec![]),
+        Value::Array(items) => items.iter().map(to_s).collect(),
+        Value::Object(_) => Err(Stop::Unported),
+        other => Ok(vec![to_s(other)?]),
+    }
+}
+
+/// Whether the cleanup of this scope involves anything only Ruby reads or writes exactly.
+fn cleanup_leaves_to_ruby(scope: &str) -> bool {
+    if scope == "sweep" {
+        return !crate::cleanup::sweep_supported() || !crate::cleanup::swept_slugs().is_some_and(|s| s.iter().all(|slug| crate::drafts::writable(slug)));
+    }
+    crate::cleanup_command::leaves_to_ruby(scope) || !crate::drafts::writable(scope)
+}
+
+/// `Cleanup::Outcome#to_h`, and the result the dialog shows (`cleanup_result`).
+fn cleanup_result(outcomes: &[crate::cleanup_run::Outcome]) -> Value {
+    let mut counts: Vec<(&str, usize)> = vec![];
+    for o in outcomes {
+        match counts.iter_mut().find(|(r, _)| *r == o.result) {
+            Some((_, n)) => *n += 1,
+            None => counts.push((o.result, 1)),
+        }
+    }
+    let summary = if counts.is_empty() { "nothing to do".to_string() } else { counts.iter().map(|(r, n)| format!("{n} {r}")).collect::<Vec<_>>().join(", ") };
+    let failed: Vec<&crate::cleanup_run::Outcome> = outcomes.iter().filter(|o| o.result != "removed").collect();
+    let ok = !outcomes.iter().any(|o| o.result == "failed");
+    let list: Vec<Value> = outcomes.iter().map(|o| json!({"id": o.id, "kind": o.kind, "result": o.result, "message": o.message})).collect();
+    let mut result = json!({"ok": ok, "message": format!("cleanup: {summary}"), "outcomes": list});
+    if !ok {
+        let prefix = regex::Regex::new(r"\A[A-Za-z0-9_]+:").unwrap();
+        let why: Vec<String> = failed.iter().map(|o| format!("{}: {}", prefix.replace(&o.id, ""), o.message)).collect();
+        result["error"] = json!(format!("cleanup: {summary} — {}", why.join("; ")));
+    }
+    result
+}
+
+/// `cleanup`: the checked entries of a fresh plan, removed on a job keyed by the scope.
+fn cleanup(args: &Args) -> R<Value> {
+    let scope = args.text("scope")?;
+    let selected = strings_of(args.get("selected")?)?;
+    let force = strings_of(args.get("force")?)?;
+    if selected.is_empty() && force.is_empty() {
+        return Err(fail("nothing selected to clean up"));
+    }
+    if scope != "sweep" {
+        find(&scope)?;
+    }
+    if cleanup_leaves_to_ruby(&scope) {
+        return Err(Stop::Unported);
+    }
+    let key = scope.clone();
+    let name = scope.clone();
+    Ok(crate::gui_jobs::background(&name, "cleaning up…", false, move || {
+        let planned = if scope == "sweep" {
+            crate::cleanup::plan_sweep()
+        } else {
+            WorkItem::find(&scope).and_then(|item| crate::cleanup::plan_item(&item))
+        };
+        let plan = planned.map_err(|e| crate::gui_jobs::Failure::Other(e.message, e.class))?;
+        let outcomes = crate::cleanup_run::execute_with(&plan, &selected, &force, &mut |index, total| crate::gui_jobs::relabel(&key, &format!("cleaning up {index}/{total}…")));
+        Ok(cleanup_result(&outcomes))
+    }))
+}
+
+/// The checklist a cleanup or sweep dialog shows (`/api/cleanup-plan`); `None` for what is Ruby's.
+pub fn cleanup_plan(scope: &Value) -> Option<Value> {
+    let scope = to_s(scope).ok()?;
+    if cleanup_leaves_to_ruby(&scope) && (scope == "sweep" || WorkItem::find(&scope).is_ok()) {
+        return None;
+    }
+    let planned = if scope == "sweep" {
+        crate::cleanup::plan_sweep()
+    } else {
+        match WorkItem::find(&scope) {
+            Ok(item) => crate::cleanup::plan_item(&item),
+            Err(e) => return Some(json!({"ok": false, "error": e.message})),
+        }
+    };
+    match planned {
+        Ok(plan) => Some(json!({"ok": true, "plan": plan_payload(&plan)})),
+        Err(e) if e.class == UNEMITTABLE => None,
+        Err(e) => {
+            if e.class != "ArgumentError" {
+                data_root::log_error("gui-cleanup-plan", e.class, &e.message);
+            }
+            Some(json!({"ok": false, "error": e.message}))
+        }
     }
 }
 

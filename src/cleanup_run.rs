@@ -15,13 +15,14 @@ use crate::work_item::WorkItem;
 
 pub struct Outcome {
     pub id: String,
+    pub kind: &'static str,
     pub result: &'static str,
     pub message: String,
 }
 
 impl Outcome {
     fn new(entry: &Entry, result: &'static str, message: impl Into<String>) -> Outcome {
-        Outcome { id: entry.id.clone(), result, message: message.into() }
+        Outcome { id: entry.id.clone(), kind: entry.kind, result, message: message.into() }
     }
     fn removed(&self) -> bool {
         self.result == "removed"
@@ -147,10 +148,17 @@ fn delete_issue_draft(entry: &Entry) -> Outcome {
 /// Removes the selected entries (ids) of a plan; a warn entry also needs its id in `force`, which
 /// implies selecting it. One outcome per entry acted on, in the order they ran.
 pub fn execute(plan: &Plan, selected: &[String], force: &[String]) -> Vec<Outcome> {
+    execute_with(plan, selected, force, &mut |_, _| {})
+}
+
+/// `execute`, telling `on_start(index, total)` (1-based over the entries acted on) before each one.
+pub fn execute_with(plan: &Plan, selected: &[String], force: &[String], on_start: &mut dyn FnMut(usize, usize)) -> Vec<Outcome> {
     let wanted: Vec<&String> = selected.iter().chain(force).collect();
     let ordered = plan.entries.iter().filter(|e| e.is_worktree()).chain(plan.entries.iter().filter(|e| e.is_branch())).chain(plan.entries.iter().filter(|e| e.is_issue_draft()));
+    let todo: Vec<&Entry> = ordered.filter(|e| wanted.contains(&&e.id)).collect();
     let mut outcomes: Vec<Outcome> = vec![];
-    for entry in ordered.filter(|e| wanted.contains(&&e.id)) {
+    for (index, entry) in todo.iter().copied().enumerate() {
+        on_start(index + 1, todo.len());
         let forced = force.contains(&entry.id);
         let outcome = if entry.status == "blocked" {
             Outcome::new(entry, "skipped", format!("blocked: {}", entry.reasons.join("; ")))
