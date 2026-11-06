@@ -57,7 +57,7 @@ class RunAttentionTest < Minitest::Test
     assert_empty Quartermaster::ChatAttention.new.runs
   end
 
-  def test_a_run_without_a_subject_is_titled_by_its_id
+  def test_a_run_without_an_item_title_is_titled_by_its_key
     automation("nightly")
     id = run_of("nightly", "s-run", item: { "key" => "cron:x" })
 
