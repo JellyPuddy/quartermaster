@@ -316,6 +316,12 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
                 Err(_) => text_reply("501 Not Implemented", "not ported yet: this state (status boards, benchmarks, loose chats, build progress)"),
             };
         }
+        if let Some(rest) = route.strip_prefix("/api/history/") {
+            return match history_payload(rest, &params(query)) {
+                Some(v) => json_reply(v),
+                None => text_reply("501 Not Implemented", "not ported yet: this history"),
+            };
+        }
         if let Some(slug) = route.strip_prefix("/api/workspace/") {
             return match crate::gui_issues::workspace(slug, query, &params(query)) {
                 Some(v) => json_reply(v),
@@ -523,4 +529,45 @@ fn asides_payload(slug: &str) -> Option<Value> {
         row["when"] = json!(when);
     }
     Some(json!({"asides": rows}))
+}
+
+/// `Gui#history_payload`: the chat view's history above the live pane — the timeline, or one page of a
+/// session's entries (`?before=N`).
+fn history_payload(rest: &str, params: &Map<String, Value>) -> Option<Value> {
+    let mut parts = rest.splitn(2, '/').map(decode);
+    let slug = parts.next().unwrap_or_default();
+    let session = parts.next();
+    let failed = |class: &str, message: String| {
+        if class != "ArgumentError" {
+            data_root::log_error("gui-history", class, &message);
+        }
+        Some(json!({"ok": false, "error": message}))
+    };
+    let item = match crate::work_item::WorkItem::find(&slug) {
+        Ok(i) => i,
+        Err(e) => return failed(e.class, e.message),
+    };
+    let outcome = match session {
+        None => crate::chat_history::timeline(&item).map(|t| json!({"ok": true, "timeline": t})),
+        Some(id) => {
+            let before = match params.get("before").and_then(Value::as_str) {
+                None => None,
+                Some(b) if !b.is_empty() && b.trim_start_matches('-').bytes().all(|c| c.is_ascii_digit()) && b.matches('-').count() <= 1 && (b.starts_with('-') || !b.contains('-')) => b.parse::<i64>().ok(),
+                Some(b) if !b.bytes().any(|c| c.is_ascii_digit()) => None,
+                Some(_) => return None,
+            };
+            crate::chat_history::page(&item, &id, before).map(|p| {
+                let mut out = json!({"ok": true});
+                for (k, v) in p.as_object().cloned().unwrap_or_default() {
+                    out[k] = v;
+                }
+                out
+            })
+        }
+    };
+    match outcome {
+        Ok(v) => Some(v),
+        Err(crate::chat_history::Stop::Refuse(m)) => failed("ArgumentError", m),
+        Err(crate::chat_history::Stop::Unported) => None,
+    }
 }

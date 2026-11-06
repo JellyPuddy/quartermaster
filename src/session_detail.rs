@@ -11,7 +11,7 @@ const TURN_PROMPT_CHARS: usize = 700;
 const TURN_REPLY_CHARS: usize = 360;
 const TURN_FILES_SHOWN: usize = 6;
 
-fn clip(text: &str, limit: usize) -> String {
+pub(crate) fn clip(text: &str, limit: usize) -> String {
     if text.chars().count() > limit {
         format!("{}…", crate::ruby_text::rstrip(&text.chars().take(limit).collect::<String>()))
     } else {

@@ -13,7 +13,7 @@ use crate::transcript_usage::to_i;
 const TAIL_BYTES: u64 = 256 * 1024;
 const CACHE_TTL_1H: f64 = 3600.0;
 const CACHE_TTL_5M: f64 = 300.0;
-const INTERRUPT_MARK: &str = "[Request interrupted by user";
+pub(crate) const INTERRUPT_MARK: &str = "[Request interrupted by user";
 
 #[derive(Default)]
 pub struct Vitals {

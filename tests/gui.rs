@@ -3154,3 +3154,74 @@ fn the_workspace_route_matches_ruby() {
         tmux_on(s, &["kill-server"]);
     }
 }
+
+#[test]
+fn the_history_route_matches_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let me = std::process::id();
+    let j = |v: serde_json::Value| format!("{v}\n");
+    let user = |text: &str, ts: &str| j(serde_json::json!({"type": "user", "timestamp": ts, "message": {"role": "user", "content": text}}));
+    let asst = |id: Option<&str>, ts: &str, blocks: serde_json::Value| j(serde_json::json!({"type": "assistant", "timestamp": ts, "message": {"id": id, "content": blocks}}));
+    let home = w.home.display().to_string();
+    let mut shapes = String::new();
+    shapes += &user("first", "2026-03-01T10:00:00.000Z");
+    shapes += &asst(Some("m1"), "2026-03-01T10:00:05.000Z", serde_json::json!([{"type": "text", "text": "  part one  "}, {"type": "tool_use", "name": "Bash", "input": {"command": "git   status\n--short", "description": "ignored"}}, {"type": "text", "text": "after the tool"}]));
+    shapes += &asst(Some("m1"), "2026-03-01T10:00:06.000Z", serde_json::json!([{"type": "text", "text": "same message, next block"}]));
+    shapes += &asst(Some("m2"), "2026-03-01T10:00:07.000Z", serde_json::json!([{"type": "tool_use", "name": "Read", "input": {"file_path": format!("{home}/proj/file.rs")}}, {"type": "tool_use", "name": "Odd", "input": {"zzz": "  only value  ", "n": 5}}, {"type": "tool_use", "input": {}}, {"type": "tool_use", "name": "Grep", "input": {"pattern": "p".repeat(300)}}, {"type": "tool_use", "name": "Nothing", "input": "text"}]));
+    shapes += &asst(Some("m3"), "2026-03-01T10:00:08.000Z", serde_json::json!("content as a string"));
+    shapes += &asst(None, "2026-03-01T10:00:09.000Z", serde_json::json!([{"type": "text", "text": "no id"}]));
+    shapes += &asst(None, "2026-03-01T10:00:10.000Z", serde_json::json!([{"type": "text", "text": "no id again"}, {"type": "text", "text": ""}, {"type": "text", "text": null}, {"type": "thinking", "text": "hmm"}]));
+    shapes += &user("[Request interrupted by user for tool use]", "2026-03-01T10:01:00.000Z");
+    shapes += &j(serde_json::json!({"type": "user", "isCompactSummary": true, "message": {"content": "compact"}}));
+    shapes += &j(serde_json::json!({"type": "user", "isSidechain": true, "message": {"content": "side"}}));
+    shapes += &j(serde_json::json!({"type": "user", "isMeta": true, "message": {"content": "meta"}}));
+    shapes += &j(serde_json::json!({"type": "user", "toolUseResult": {}, "message": {"content": "result"}}));
+    shapes += &user("<local-command>x</local-command>", "2026-03-01T10:02:00.000Z");
+    shapes += "junk\n[1]\n\"s\"\n";
+    shapes += &user("last", "2026-03-01T10:03:00.000Z");
+    let mut long = String::new();
+    for i in 0..130 {
+        long += &user(&format!("prompt {i}"), &format!("2026-03-02T10:{:02}:00.000Z", i % 60));
+    }
+    let mut log = fs::read_to_string(w.root.join("sessions.jsonl")).unwrap();
+    let mut session = |id: &str, text: Option<String>, pid: u32, started: &str, last: Option<&str>| {
+        let path = w.transcripts.join(format!("p/{id}.jsonl"));
+        if let Some(t) = text {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, t).unwrap();
+        }
+        log += &format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"{id}\",\"cwd\":\"/srv/app\",\"pid\":{pid},\"transcript_path\":\"{}\",\"ts\":\"{started}\"}}\n", path.display());
+        if let Some(l) = last {
+            log += &format!("{{\"v\":1,\"event\":\"end\",\"session_id\":\"{id}\",\"ts\":\"{l}\"}}\n");
+        }
+    };
+    session("h-shapes", Some(shapes), 999999, "2026-03-01T09:59:00+00:00", Some("2026-03-01T10:05:00+00:00"));
+    session("h-long", Some(long), 999999, "2026-03-02T09:59:00+01:00", Some("2026-03-02T12:05:00+01:00"));
+    session("h-snap", None, 999999, "2026-02-20T09:00:00+00:00", Some("2026-02-20T10:00:00+00:00"));
+    session("h-gone", None, 999999, "2026-02-10T09:00:00+00:00", Some("2026-02-10T10:00:00+00:00"));
+    session("h-live", Some(user("running", "2026-03-05T10:00:00.000Z")), me as u32, "2026-03-05T09:59:00+00:00", None);
+    fs::write(w.root.join("sessions.jsonl"), log).unwrap();
+    fs::write(
+        w.root.join("work-items/hist.md"),
+        "---\nv: 1\ntitle: hist\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\nrotations:\n- at: '2026-03-01T11:00:00+00:00'\n  from: h-shapes\n  via: wrap\n  carried: [1, 3, 99]\n  decisions: 2\n  open: 1\n- at: '2026-02-25T00:00:00Z'\n  from: h-snap\n- at: '2026-03-04T00:00:00+00:00'\n  from: h-long\n  via: clear\n  carried: []\nsessions:\n- id: h-shapes\n- id: h-long\n- id: h-snap\n- id: h-gone\n- id: h-live\n- id: h-unknown\n---\n\n## Description\n\nd\n\n## Notes\n\n- 2026-02-01: first decision\n- 2026-02-02 [open]: a question\n- 2026-02-03 [history]: mechanics\n\n## Snapshots\n\n### 2026-02-21 — session h-snap\n\nthe distilled text\n"
+    ).unwrap();
+    fs::write(w.root.join("work-items/hist-bare.md"), "---\nv: 1\ntitle: hist-bare\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\n---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n").unwrap();
+    let env: Vec<(&str, String)> = vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string())];
+    let ruby = start_env(false, &w.root, &w.home, &env);
+    let rust = start_env(true, &w.root, &w.home, &env);
+    let mut seen = String::new();
+    let mut paths: Vec<String> = ["hist", "hist-bare", "nowhere", ""].iter().map(|s| format!("/api/history/{s}")).collect();
+    for (session, query) in [("h-shapes", ""), ("h-long", ""), ("h-long", "?before=70"), ("h-long", "?before=10"), ("h-long", "?before=0"), ("h-long", "?before=-5"), ("h-long", "?before=1000"), ("h-long", "?before=abc"), ("h-long", "?before="), ("h-snap", ""), ("h-gone", ""), ("h-live", ""), ("h-unknown", ""), ("nope", ""), ("", "")] {
+        paths.push(format!("/api/history/hist/{session}{query}"));
+    }
+    paths.push("/api/history/hist-bare/x".to_string());
+    for path in &paths {
+        let (a, b) = (request(ruby.port, "GET", path, &[], "", true), request(rust.port, "GET", path, &[], "", true));
+        assert_eq!(shown(&a, ruby.port), shown(&b, rust.port), "{path}");
+        seen += &String::from_utf8_lossy(&a.body);
+    }
+    for needle in ["\"type\":\"divider\"", "\"source\":\"snapshot\"", "\"source\":\"none\"", "\"source\":\"transcript\"", "part one", "after the tool\\n\\nsame message, next block", "Bash  git status --short", "Read  ~/proj/file.rs", "Odd  only value", "\"kind\":\"event\"", "\"kind\":\"snapshot\"", "nothing of this session survives", "\"before\":70", "\"total\":130", "not an earlier session", "\"decisions\":2", "first decision"] {
+        assert!(seen.contains(needle), "the world should reach {needle}");
+    }
+}

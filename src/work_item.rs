@@ -129,6 +129,11 @@ impl WorkItem {
         array(get(&self.front, "sessions")).len()
     }
 
+    /// The rotation entries as the front matter holds them.
+    pub fn rotations(&self) -> Vec<Value> {
+        array(get(&self.front, "rotations")).into_iter().cloned().collect()
+    }
+
     /// How many times the item's chat was handed over.
     pub fn rotation_count(&self) -> usize {
         array(get(&self.front, "rotations")).len()
