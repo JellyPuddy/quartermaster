@@ -15,6 +15,8 @@ module Quartermaster
   class UsageLedger
     FILE = "usage-cache.json"
     VERSION = 1
+    # Logged when a save finds a file that isn't a ledger and sets it aside.
+    class CorruptLedger < StandardError; end
 
     def initialize(path = File.join(ROOT, FILE))
       @path = path
@@ -41,17 +43,20 @@ module Quartermaster
     end
 
     # Writes the ledger when a lookup changed it; atomic, and merged over what
-    # another qm process saved meanwhile (its sessions aren't dropped).
+    # another qm process saved meanwhile (its sessions aren't dropped). The
+    # read-merge-write holds a flock, so a second saver merges over the first's
+    # ledger. A file there that isn't a ledger is never overwritten: it moves
+    # aside to `<file>.corrupt-<UTC time>` first, and qm.log says so.
     def save
       @mutex.synchronize do
         return unless @dirty
 
-        on_disk = read_file["sessions"]
-        payload = { "v" => VERSION, "sessions" => on_disk.merge(sessions) }
         FileUtils.mkdir_p(File.dirname(@path))
-        tmp = "#{@path}.#{Process.pid}.tmp"
-        File.write(tmp, JSON.generate(payload))
-        File.rename(tmp, @path)
+        File.open(File.join(File.dirname(@path), ".#{File.basename(@path)}.lock"), File::RDWR | File::CREAT) do |lock|
+          lock.flock(File::LOCK_EX)
+          payload = { "v" => VERSION, "sessions" => ledger_on_disk.merge(sessions) }
+          AtomicFile.write(@path, JSON.generate(payload))
+        end
         @dirty = false
       end
     rescue StandardError => e
@@ -65,12 +70,38 @@ module Quartermaster
       @data["sessions"]
     end
 
+    # Lenient: anything unreadable counts as no ledger yet. Only #save, under
+    # its lock, decides what to do with such a file.
     def read_file
-      data = File.exist?(@path) ? JSON.parse(File.read(@path)) : {}
-      data = {} unless data.is_a?(Hash) && data["sessions"].is_a?(Hash)
-      { "v" => VERSION, "sessions" => {} }.merge(data)
+      { "v" => VERSION, "sessions" => parse(File.read(@path)) || {} }
     rescue StandardError
       { "v" => VERSION, "sessions" => {} }
+    end
+
+    def parse(content)
+      data = JSON.parse(content)
+      data["sessions"] if data.is_a?(Hash) && data["sessions"].is_a?(Hash)
+    rescue JSON::ParserError
+      nil
+    end
+
+    # The sessions saved on disk; a file that can't be read raises (nothing is
+    # saved), one that reads but isn't a ledger is set aside.
+    def ledger_on_disk
+      content = begin
+        File.read(@path)
+      rescue Errno::ENOENT
+        return {}
+      end
+      parse(content) || set_aside_corrupt
+    end
+
+    def set_aside_corrupt
+      aside = "#{@path}.corrupt-#{Time.now.utc.strftime("%Y%m%dT%H%M%SZ")}"
+      aside = "#{aside}-#{Process.pid}" if File.exist?(aside)
+      File.rename(@path, aside)
+      Quartermaster.log_error("usage-ledger", CorruptLedger.new("#{@path} is not a ledger; kept as #{aside}"))
+      {}
     end
 
     def refresh(session_id, transcript, entry)

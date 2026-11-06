@@ -273,6 +273,114 @@ class ItemUsageTest < Minitest::Test
   end
 end
 
+class UsageLedgerKeepTest < Minitest::Test
+  include QmTestHelpers
+  include UsageHelpers
+
+  OLD_LEDGER = %q({"v":1,"sessions":{"old-session":{"main":["/x",1,1.0],"files":{}}}})
+  TRUNCATED = OLD_LEDGER[0..-5]
+
+  def ledger_path = File.join(Quartermaster::ROOT, Quartermaster::UsageLedger::FILE)
+  def asides = Dir[File.join(Quartermaster::ROOT, "#{Quartermaster::UsageLedger::FILE}.corrupt-*")]
+
+  def write_ledger(content)
+    FileUtils.mkdir_p(Quartermaster::ROOT)
+    File.write(ledger_path, content)
+  end
+
+  def tallied_ledger(session_id)
+    log_start(session_id, transcript: write_session(session_id, [spend("#{session_id}-m", output: 10)]))
+    ledger = Quartermaster::UsageLedger.new
+    ledger.session_usage(Quartermaster::SessionLog.new.sessions.find { |s| s.id == session_id })
+    ledger
+  end
+
+  def test_saving_over_an_unparseable_ledger_keeps_it_aside_and_logs_why
+    write_ledger(TRUNCATED)
+
+    tallied_ledger("s1").save
+
+    assert_equal 1, asides.size
+    assert_match(/\.corrupt-\d{8}T\d{6}Z\z/, asides.first)
+    assert_equal TRUNCATED, File.read(asides.first), "the unreadable record is kept byte for byte"
+    assert_equal ["s1"], JSON.parse(File.read(ledger_path))["sessions"].keys
+    log = File.read(Quartermaster::LOG_FILE)
+    assert_match(/\[usage-ledger\] \S+: .*corrupt-/, log)
+    refute_match(/\[usage-ledger\] transient/, log)
+  end
+
+  def test_a_json_file_not_shaped_as_a_ledger_is_kept_aside_too
+    write_ledger("[1, 2]")
+
+    tallied_ledger("s1").save
+
+    assert_equal ["[1, 2]"], asides.map { |path| File.read(path) }
+  end
+
+  def test_reading_an_unparseable_ledger_leaves_it_in_place
+    write_ledger(TRUNCATED)
+    ledger = tallied_ledger("s1")
+
+    assert_empty asides
+    assert_equal TRUNCATED, File.read(ledger_path)
+    ledger.save
+    ledger.save
+
+    assert_equal 1, asides.size, "a second save finds a ledger, not the corrupt file"
+  end
+
+  def test_an_unchanged_ledger_never_saves_so_never_moves_a_corrupt_file
+    write_ledger(TRUNCATED)
+
+    Quartermaster::UsageLedger.new.save
+
+    assert_empty asides
+    assert_equal TRUNCATED, File.read(ledger_path)
+  end
+
+  # Two processes that both read the corrupt file before either saved: the
+  # second save must merge over the first's fresh ledger, not move it aside.
+  def test_two_savers_who_both_saw_the_corrupt_file_keep_each_others_sessions
+    write_ledger(TRUNCATED)
+    first = tallied_ledger("s1")
+    second = tallied_ledger("s2")
+
+    first.save
+    second.save
+
+    assert_equal [TRUNCATED], asides.map { |path| File.read(path) }
+    assert_equal %w[s1 s2], JSON.parse(File.read(ledger_path))["sessions"].keys.sort
+  end
+
+  def test_concurrent_savers_set_the_corrupt_file_aside_once_and_lose_no_session
+    ids = (1..6).map { |n| "s#{n}" }
+    ids.each { |id| log_start(id, transcript: write_session(id, [spend("#{id}-m", output: 10)])) }
+    write_ledger(TRUNCATED)
+
+    pids = ids.map do |id|
+      fork do
+        ledger = Quartermaster::UsageLedger.new
+        ledger.session_usage(Quartermaster::SessionLog.new.session_for(id))
+        ledger.save
+        exit!(0)
+      end
+    end
+    pids.each { |pid| Process.wait(pid) }
+
+    assert_equal [TRUNCATED], asides.map { |path| File.read(path) }
+    assert_equal ids, JSON.parse(File.read(ledger_path))["sessions"].keys.sort
+  end
+
+  def test_saving_over_a_valid_ledger_merges_and_sets_nothing_aside
+    write_ledger(OLD_LEDGER)
+
+    tallied_ledger("s1").save
+
+    assert_empty asides
+    assert_equal %w[old-session s1], JSON.parse(File.read(ledger_path))["sessions"].keys.sort
+  end
+end
+
 class UsageSurfacesTest < Minitest::Test
   include QmTestHelpers
   include UsageHelpers
