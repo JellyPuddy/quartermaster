@@ -216,6 +216,9 @@ class RoutinesClientTest < Minitest::Test
     changed = assert_raises(Quartermaster::RoutinesClient::ApiChanged) { client(StubTransport.new([404, "{}"])).list }
     assert_equal "routines API changed — check the `ccr-triggers-*` beta in the claude binary", changed.message
 
+    created = assert_raises(Quartermaster::RoutinesClient::ApiChanged) { client(StubTransport.new([404, "{}"])).create("name" => "x") }
+    assert_equal changed.message, created.message
+
     assert_raises(Quartermaster::RoutinesClient::BadShape) { client(StubTransport.new([200, "<html>"])).list }
     assert_raises(Quartermaster::RoutinesClient::BadShape) { client(StubTransport.new([200, '{"items":[]}'])).list }
     assert_raises(Quartermaster::RoutinesClient::BadShape) { client(StubTransport.new([200, '{"data":[1]}'])).list }
@@ -225,6 +228,16 @@ class RoutinesClientTest < Minitest::Test
 
     other = assert_raises(Quartermaster::RoutinesClient::Error) { client(StubTransport.new([500, '{"error":{"message":"boom"}}'])).list }
     assert_match(/500.*boom/, other.message)
+  end
+
+  def test_a_404_on_one_routine_means_it_is_missing
+    calls = { get: ->(api) { api.get(ID) }, update: ->(api) { api.update(ID, "enabled" => false) },
+              run: ->(api) { api.run(ID) }, runs: ->(api) { api.runs(ID) } }
+    calls.each do |name, call|
+      missing = assert_raises(Quartermaster::RoutinesClient::RoutineMissing, name.to_s) { call.call(client(StubTransport.new([404, "{}"]))) }
+      assert_equal "routine #{ID} isn't on claude.ai any more — delete the automation in qm", missing.message
+      refute_includes missing.message, TOKEN
+    end
   end
 
   def test_off_by_default_and_then_the_keychain_is_never_read

@@ -175,6 +175,16 @@ class GuiAutomationsTest < Minitest::Test
     assert_equal true, row(get("/api/automations"))["missing"]
   end
 
+  def test_pushing_a_routine_gone_from_claude_ai_says_so_not_that_the_api_changed
+    adopt
+    @client.routines.clear
+    post("/api/automations/push", "slug" => "digest")
+    job = settle.first
+    assert_equal false, job["ok"]
+    assert_equal "digest: routine #{ID} isn't on claude.ai any more — delete the automation in qm " \
+                 "(`qm automation delete digest`)", job["error"]
+  end
+
   def test_force_push_overwrites_a_drifted_routine
     adopt
     @client.touch(ID)

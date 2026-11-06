@@ -35,7 +35,7 @@ class AutomationCliTest < Minitest::Test
 
     def get(id)
       record(:get, id)
-      copy(@routines.fetch(id) { raise Quartermaster::RoutinesClient::ApiChanged })
+      copy(routine!(id))
     end
 
     # Like the API, a created routine is enabled and gets a model unless the
@@ -50,7 +50,7 @@ class AutomationCliTest < Minitest::Test
 
     def update(id, fields)
       record(:update, id, fields)
-      apply(@routines.fetch(id), Quartermaster::RoutinesClient.request_body(fields))
+      apply(routine!(id), Quartermaster::RoutinesClient.request_body(fields))
     end
 
     def run(id)
@@ -73,6 +73,8 @@ class AutomationCliTest < Minitest::Test
     def touch(id) = @routines[id]["updated_at"] = "2026-11-06T10:00:00Z"
 
     private
+
+    def routine!(id) = @routines.fetch(id) { raise Quartermaster::RoutinesClient::RoutineMissing, id }
 
     def record(*call)
       raise fail_with if fail_with
@@ -375,6 +377,28 @@ class AutomationCliTest < Minitest::Test
     assert_includes out, "routine: https://claude.ai/code/routines/#{ID}"
     assert_includes out, "completed  2026-11-05 07:10 UTC  Digest run  https://claude.ai/code/cse_1"
     assert_includes @client.calls, [:runs, ID, 10]
+  end
+
+  def test_push_of_a_routine_deleted_on_claude_ai_says_it_is_gone
+    adopt
+    @client.routines.delete(ID)
+    _, err = qm_fails("push", "digest")
+
+    assert_includes err, "digest: routine #{ID} isn't on claude.ai any more — delete the automation in qm " \
+                         "(`qm automation delete digest`)"
+    refute_includes err, "API changed"
+    assert_equal [[:get, ID]], @client.calls
+    assert_equal ID, store.read("digest").record["routine"]
+  end
+
+  def test_delete_of_a_routine_already_gone_from_claude_ai_removes_it_from_qm
+    adopt
+    @client.routines.delete(ID)
+    out, = qm("delete", "digest", "--yes")
+
+    assert_equal "digest: deleted\n", out
+    assert_nil store.read("digest")
+    assert_equal "resolved", item.state
   end
 
   def test_client_errors_print_their_message_and_exit_non_zero

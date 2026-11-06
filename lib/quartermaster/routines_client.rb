@@ -37,6 +37,16 @@ module Quartermaster
       def initialize(msg = "routines API changed — check the `ccr-triggers-*` beta in the claude binary") = super
     end
 
+    # A 404 on one routine's path: the routine was deleted on claude.ai.
+    class RoutineMissing < Error
+      attr_reader :id
+
+      def initialize(id)
+        @id = id
+        super("routine #{id} isn't on claude.ai any more — delete the automation in qm")
+      end
+    end
+
     class BadShape < Error; end
 
     class Network < Error; end
@@ -117,18 +127,18 @@ module Quartermaster
 
     def list = routines(request("GET", "/v1/code/triggers"))
 
-    def get(id) = routine(request("GET", "/v1/code/triggers/#{id}"))
+    def get(id) = routine(request("GET", "/v1/code/triggers/#{id}", missing: id))
 
     def create(fields) = routine(request("POST", "/v1/code/triggers", self.class.request_body(fields)))
 
-    def update(id, fields) = routine(request("POST", "/v1/code/triggers/#{id}", self.class.request_body(fields)))
+    def update(id, fields) = routine(request("POST", "/v1/code/triggers/#{id}", self.class.request_body(fields), missing: id))
 
-    def run(id) = request("POST", "/v1/code/triggers/#{id}/run", {})
+    def run(id) = request("POST", "/v1/code/triggers/#{id}/run", {}, missing: id)
 
     # The routine's sessions, most recent first: id, title, status, the
     # timestamps given and the claude.ai link; missing fields stay nil.
     def runs(id, limit: 10)
-      answer = request("GET", "/v1/code/sessions?#{URI.encode_www_form(trigger_id: id, limit: limit)}")
+      answer = request("GET", "/v1/code/sessions?#{URI.encode_www_form(trigger_id: id, limit: limit)}", missing: id)
       list = answer.is_a?(Hash) ? answer["data"] : answer
       raise BadShape, "routines API answered runs that aren't a list" unless list.is_a?(Array)
 
@@ -160,13 +170,15 @@ module Quartermaster
       routine.tap { self.class.fields(routine) }
     end
 
-    def request(method, path, body = nil, unsupported: [])
+    # missing: the routine id a per-routine path names, so its 404 reads as
+    # that routine being gone rather than the API having moved.
+    def request(method, path, body = nil, unsupported: [], missing: nil)
       token = token!
       headers = HEADERS.merge("Authorization" => "Bearer #{token}", "x-organization-uuid" => organization!)
       status, text = send_request(method, path, headers, body, token)
       return :unsupported if unsupported.include?(status)
 
-      check_status(status, text, token)
+      check_status(status, text, token, missing)
       parse(text)
     end
 
@@ -176,8 +188,9 @@ module Quartermaster
       raise Network, scrub("can't reach api.anthropic.com: #{e.class.name.split("::").last}: #{e.message}", token)
     end
 
-    def check_status(status, text, token)
+    def check_status(status, text, token, missing)
       raise TokenExpired if status == 401
+      raise RoutineMissing, missing if status == 404 && missing
       raise ApiChanged if status == 404
       return if (200..299).cover?(status)
 

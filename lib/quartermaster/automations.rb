@@ -90,7 +90,11 @@ module Quartermaster
       id = entry.record["routine"]
       return create(entry) unless id
 
-      remote = @client.get(id)
+      remote = begin
+        @client.get(id)
+      rescue RoutinesClient::RoutineMissing => e
+        raise ArgumentError, "#{slug}: #{e.message} (`qm automation delete #{slug}`)"
+      end
       check_fresh!(entry, remote) unless force
       changes = pushable_changes(fields_of(entry), RoutinesClient.fields(remote))
       updated = changes.empty? ? remote : @client.update(id, update_fields(entry, changes))
@@ -125,16 +129,14 @@ module Quartermaster
     end
 
     # Deletes the routine, or pauses it when the API has no delete; the item
-    # is resolved either way. Answers :deleted, :paused or :local (never pushed).
+    # is resolved either way. Answers :deleted (also when the routine was
+    # already gone), :paused or :local (never pushed).
     def delete(slug)
       entry = entry!(slug)
       id = entry.record["routine"]
       outcome = if id.nil? then :local
                 elsif @client.delete(id) == :deleted then :deleted
-                else
-                  updated = @client.update(id, { "enabled" => false }.merge(connectors_of(entry)))
-                  @store.write(slug, { "enabled" => false, "remote_updated_at" => updated["updated_at"] }, entry.prompt)
-                  :paused
+                else pause_for_delete(entry, id)
                 end
       @store.delete_local(slug) unless outcome == :paused
       item = item_or_nil(slug)
@@ -148,6 +150,14 @@ module Quartermaster
     private
 
     def entry!(slug) = @store.read(slug) || raise(ArgumentError, "no automation '#{slug}'")
+
+    def pause_for_delete(entry, id)
+      updated = @client.update(id, { "enabled" => false }.merge(connectors_of(entry)))
+      @store.write(entry.slug, { "enabled" => false, "remote_updated_at" => updated["updated_at"] }, entry.prompt)
+      :paused
+    rescue RoutinesClient::RoutineMissing
+      :deleted
+    end
 
     def item_or_nil(slug)
       File.exist?(WorkItem.path_for(slug)) ? WorkItem.find(slug) : nil

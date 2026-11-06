@@ -23,6 +23,8 @@ the `kind: automation` work item of the same slug (`routine:`, `runner: cloud` i
   drifted (unless forced), and `update` only what differs from it: changed name / cron /
   enabled as they are, the stored connectors always, and all job fields when any of prompt /
   model / repos / tools / environment differs. A field unset locally is no change. Stores the answer's `updated_at`; nothing differing writes nothing.
+  A routine gone from claude.ai (`RoutineMissing`) fails the push with "<slug>: routine … isn't on
+  claude.ai any more — delete the automation in qm (`qm automation delete <slug>`)", writing nothing.
 - Each push with changes appends one `history` note (`pushed: schedule → Mon 07:00 (0 6 * * 1
   UTC); prompt changed`, `paused`, `resumed`, `created routine trig_…`), and the item's state
   follows `enabled`: `active`, or `fridge` while paused (`in_progress` until the first push).
@@ -32,7 +34,8 @@ the `kind: automation` work item of the same slug (`routine:`, `runner: cloud` i
   (title the routine's name, slug by default its slug, description the name and the prompt's
   first paragraph), state from `enabled`. `create_item` makes such an item under any slug.
 - `delete` — the API's delete removes the routine and the local files; without one
-  (`:unsupported`) the routine is paused and its files stay, so it isn't "unmanaged"; never
+  (`:unsupported`) the routine is paused and its files stay, so it isn't "unmanaged"; when that
+  pause finds the routine already gone (`RoutineMissing`) it counts as deleted; never
   pushed, only the files go. The item is resolved either way, its notes kept.
 
 **CLI** — `qm automation list | show | adopt | push | pull | pause | resume | run | delete`
@@ -82,10 +85,12 @@ before any request.
 **Errors** — every failure is a `RoutinesClient::Error` (an `ArgumentError`, qm's user-facing
 channel), its message for the user: `NotEnabled`; `TokenExpired` on a 401, an expired, missing
 or unreadable login, or no organization ("Claude Code's login token expired — open any Claude
-Code session, then refresh"); `ApiChanged` on a 404 ("routines API changed — check the
-`ccr-triggers-*` beta in the claude binary"); `BadShape` for an answer that isn't JSON or lacks
-the expected fields; `Network` when the request doesn't complete; a plain `Error` naming any
-other status and the API's error message.
+Code session, then refresh"); `ApiChanged` on a 404 from the collection endpoints (`GET`/`POST
+/v1/code/triggers`: "routines API changed — check the `ccr-triggers-*` beta in the claude
+binary"); `RoutineMissing` (with its `id`) on a 404 from one routine's paths (get, update, run,
+runs): "routine <id> isn't on claude.ai any more — delete the automation in qm"; `BadShape`
+for an answer that isn't JSON or lacks the expected fields; `Network` when the request doesn't
+complete; a plain `Error` naming any other status and the API's error message.
 
 **Local store** — `AutomationStore` keeps each automation as two files under
 `automations/`: `<slug>.yml` and `<slug>.prompt.md` (the prompt, nothing else). The yml holds
