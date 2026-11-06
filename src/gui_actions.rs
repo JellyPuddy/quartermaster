@@ -300,9 +300,55 @@ fn state(slug: &str, args: &Args) -> R<Value> {
         Value::String(s) => s.clone(),
         _ => return Err(fail(format!("state must be one of: {}", STATES.join(", ")))),
     };
-    if state == "resolved" {
-        return Err(Stop::Unported); // the reply carries the cleanup plan
+    if state == "resolved" && crate::cleanup_command::leaves_to_ruby(&item.slug) {
+        return Err(Stop::Unported); // the plan lists issue drafts, and only Ruby reads some of those
     }
     item.update_state(&state).map_err(error)?;
-    Ok(ok())
+    if state != "resolved" {
+        return Ok(ok());
+    }
+    // the plan is the page's offer to clean up: a failing plan must never fail the resolve
+    let plan = match crate::cleanup::plan_item(&item) {
+        Ok(plan) => plan,
+        Err(e) => {
+            data_root::log_error("cleanup-offer", e.class, &e.message);
+            return Ok(ok());
+        }
+    };
+    if plan.is_empty() {
+        return Ok(ok());
+    }
+    let mut reply = ok();
+    reply.as_object_mut().unwrap().insert("cleanup".into(), plan_payload(&plan));
+    Ok(reply)
+}
+
+/// `Cleanup::Plan#to_h` with each entry's path also shown short, as the dialog prints it.
+pub(crate) fn plan_payload(plan: &crate::cleanup::Plan) -> Value {
+    let entries: Vec<Value> = plan
+        .entries
+        .iter()
+        .map(|e| {
+            let mut m = Map::new();
+            m.insert("id".into(), json!(e.id));
+            m.insert("kind".into(), json!(e.kind));
+            m.insert("repo".into(), json!(e.repo));
+            m.insert("path".into(), json!(e.path));
+            m.insert("branch".into(), json!(e.branch));
+            m.insert("item".into(), json!(e.item));
+            m.insert("status".into(), json!(e.status));
+            m.insert("reasons".into(), json!(e.reasons));
+            m.insert("notes".into(), json!(e.notes));
+            m.insert("ticked".into(), json!(e.ticked));
+            m.insert("db_names".into(), json!(e.db_names));
+            m.insert("db_status".into(), if e.is_worktree() { json!(e.db_status) } else { Value::Null });
+            m.insert("requires".into(), json!(e.requires));
+            m.insert("title".into(), json!(e.title));
+            if let Some(path) = &e.path {
+                m.insert("short".into(), json!(crate::cli_format::short_path(Some(path))));
+            }
+            Value::Object(m)
+        })
+        .collect();
+    json!({"scope": plan.scope, "summary": plan.summary(), "notes": plan.notes, "entries": entries})
 }

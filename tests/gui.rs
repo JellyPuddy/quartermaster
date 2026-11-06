@@ -1141,7 +1141,7 @@ fn the_data_actions_match_ruby() {
     }
     // what is not ported answers 501 before anything happens, with the files untouched
     let before = action_traces(&root2, &w.root);
-    for body in [act("state", "stale", r#"{"state":"resolved"}"#), act("start", "stale", "{}"), act("rotate", "stale", "{}")] {
+    for body in [act("pr-chat", "stale", "{}"), act("start", "stale", "{}"), act("rotate", "stale", "{}")] {
         let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
         assert!(a.status.starts_with("501"), "{body}: {}", a.status);
     }
@@ -1479,4 +1479,79 @@ fn the_issue_draft_actions_match_ruby() {
         assert!(a.status.starts_with("501"), "{body}: {}", a.status);
     }
     assert_eq!(before, issue_traces(&root2, &w.root));
+}
+
+#[test]
+fn resolving_offers_the_cleanup_plan_as_ruby_does() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let repo = &w.repo;
+    // worktrees in several states: merged and clean, dirty, with a commit found nowhere else
+    git(repo, &["worktree", "add", base.path().join("wt-merged").to_str().unwrap(), "merged-b"]);
+    let dirty = base.path().join("wt-dirty");
+    git(repo, &["worktree", "add", "-b", "dirty-b", dirty.to_str().unwrap()]);
+    fs::write(dirty.join("loose.txt"), "uncommitted\n").unwrap();
+    let unpushed = base.path().join("wt-unpushed");
+    git(repo, &["worktree", "add", "-b", "unpushed-b", unpushed.to_str().unwrap()]);
+    fs::write(unpushed.join("work.txt"), "work\n").unwrap();
+    git(&unpushed, &["add", "."]);
+    git(&unpushed, &["commit", "-q", "-m", "work nobody has"]);
+    let item = |slug: &str, extra: &str| {
+        fs::write(w.root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: {slug}\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\n{extra}---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n")).unwrap();
+    };
+    item("res-merged", "branches:\n- merged-b\n");
+    item("res-dirty", "branches:\n- dirty-b\n");
+    item("res-unpushed", "branches:\n- unpushed-b\n- gone-branch\n");
+    item("res-issues", "");
+    item("res-nothing", "");
+    item("res-twice", "branches:\n- nopr-exists\n");
+    item("res-unsure", "");
+    fs::create_dir_all(w.root.join("issues/res-unsure")).unwrap();
+    fs::write(w.root.join("issues/res-unsure/01-date.md"), "---\ntitle: Dated\nkind: bug\nwhen: 2026-01-01\n---\n\nbody\n").unwrap();
+    let issue = |name: &str, front: &str| {
+        let p = w.root.join(format!("issues/res-issues/{name}"));
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, format!("---\n{front}---\n\nbody\n")).unwrap();
+    };
+    issue("01-made.md", "title: Made\nkind: bug\nnumber: 9\n");
+    issue("02-open.md", "title: Open\nkind: feature\n");
+    // fresh PR answers, so no plan waits on a background lookup
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    let entry = |state: &str, n: u32| format!("{{\"state\":{state},\"number\":{n},\"url\":\"https://example.test/pull/{n}\",\"ts\":{now}}}");
+    fs::write(
+        w.root.join("pr-cache.json"),
+        format!("{{\"demo#merged-b\":{},\"demo#dirty-b\":{},\"demo#unpushed-b\":{{\"state\":null,\"ts\":{now}}},\"demo#nopr-exists\":{{\"state\":null,\"ts\":{now}}},\"demo#gone-branch\":{{\"state\":null,\"ts\":{now}}}}}", entry("\"MERGED\"", 6), entry("\"OPEN\"", 7)),
+    )
+    .unwrap();
+    fs::create_dir_all(w.root.join("viewed")).unwrap();
+    fs::write(w.root.join("viewed/res-merged.json"), "{\"v\":1,\"marks\":{\"a.txt\":[\"0123456789abcdef0123\"]}}").unwrap();
+    let env: Vec<(&str, String)> = vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("PATH", format!("{}:{}", w.bin.display(), std::env::var("PATH").unwrap())), ("FAKE_GH_DATA", w.gh_data.display().to_string()), ("FAKE_GH_LOG", base.path().join("gh.log").display().to_string())];
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let ruby = start_env(false, &w.root, &w.home, &env);
+    let rust = start_env(true, &root2, &w.home, &env);
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let step = |label: &str, body: &str| {
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, body, true), request(rust.port, "POST", "/api/action", &origin, body, true));
+        let (sa, sb) = (shown(&a, ruby.port), shown(&b, rust.port).replace("/root2/", "/root/"));
+        assert_eq!(sa, sb, "{label}: reply to {body}");
+        assert_eq!(viewed_traces(&w.root, &root2), viewed_traces(&root2, &w.root), "{label}: files after {body}");
+        sa
+    };
+    let resolve = |slug: &str| format!("{{\"cmd\":\"state\",\"slug\":\"{slug}\",\"args\":{{\"state\":\"resolved\"}}}}");
+    let mut plans = String::new();
+    for slug in ["res-merged", "res-dirty", "res-unpushed", "res-issues", "res-nothing", "res-twice", "res-twice", "pr-no-project", "nowhere"] {
+        plans += &step(slug, &resolve(slug));
+    }
+    for slug in ["res-merged", "res-dirty"] {
+        step("reopened", &format!("{{\"cmd\":\"state\",\"slug\":\"{slug}\",\"args\":{{\"state\":\"fridge\"}}}}"));
+    }
+    // issue files Psych might read differently are Ruby's: nothing written, not even the state
+    let before = viewed_traces(&root2, &w.root);
+    let a = request(rust.port, "POST", "/api/action", &origin, &resolve("res-unsure"), true);
+    assert!(a.status.starts_with("501"), "{}", a.status);
+    assert_eq!(before, viewed_traces(&root2, &w.root));
+    for needle in ["worktree:", "branch:", "issue:", "need", "untracked files", "found nowhere else", "PR merged", "never created on GitHub"] {
+        assert!(plans.contains(needle), "the world should reach {needle}: {plans}");
+    }
 }

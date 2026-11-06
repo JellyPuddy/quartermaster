@@ -453,7 +453,11 @@ pub fn plan_item(item: &WorkItem) -> Res<Plan> {
         let owners = Planner::branch_owners(&others, b, project.as_deref());
         branch_entries.push(planner.branch_entry(&mut repo, b, &bases, "temp branch", &checked_out, &worktree_entries, &owners).entry);
     }
-    Ok(Plan { scope: item.slug.clone(), entries: worktree_entries.into_iter().chain(branch_entries).chain(issues).collect(), notes: vec![] })
+    let owned = |mut e: Entry| {
+        e.item = Some(item.slug.clone());
+        e
+    };
+    Ok(Plan { scope: item.slug.clone(), entries: worktree_entries.into_iter().map(owned).chain(branch_entries.into_iter().map(owned)).chain(issues).collect(), notes: vec![] })
 }
 
 #[cfg(test)]
