@@ -17,6 +17,7 @@ pub mod clock;
 pub mod data_root;
 pub mod delegate;
 pub mod draft_command;
+pub mod drops;
 pub mod drafts;
 pub mod error;
 pub mod event_log;

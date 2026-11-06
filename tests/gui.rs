@@ -3347,3 +3347,72 @@ fn turn_notifications_match_ruby() {
     assert!(log.contains("-sound Glass") && log.contains("open-chat nlink") && log.contains("open-chat loose--abcd1234"), "{log}");
     assert!(!seen.contains("n-aside") && !seen.contains("n-short") && !seen.contains("n-snooze") && !seen.contains("n-wait"), "{seen}");
 }
+
+#[test]
+fn dropped_files_are_saved_as_ruby_saves_them() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let old = |root: &Path| {
+        fs::create_dir_all(root.join("drops")).unwrap();
+        let p = root.join("drops/old-file.png");
+        fs::write(&p, "old").unwrap();
+        fs::File::options().write(true).open(&p).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(8 * 86_400)).unwrap();
+        let fresh = root.join("drops/fresh-file.png");
+        fs::write(&fresh, "fresh").unwrap();
+    };
+    old(&w.root);
+    old(&root2);
+    let env: Vec<(&str, String)> = vec![("HOME", w.home.display().to_string())];
+    let ruby = start_env(false, &w.root, &w.home, &env);
+    let rust = start_env(true, &root2, &w.home, &env);
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/octet-stream".to_string())];
+    let token = |s: &Server| -> String { serde_json::from_slice::<serde_json::Value>(&request(s.port, "GET", "/api/state", &[], "", true).body).unwrap()["terminalToken"].as_str().unwrap().to_string() };
+    let (ta, tb) = (token(&ruby), token(&rust));
+    let long = "n".repeat(120);
+    let mut seen = String::new();
+    let stamp = regex::Regex::new(r"/drops/\d{8}-\d{6}-[0-9a-f]{6}-").unwrap();
+    let cases: Vec<(&str, String, Option<&str>, &str)> = vec![
+        ("a plain drop", "name=shot.png".into(), None, "bytes of a screenshot"),
+        ("a path as a name", "name=..%2F..%2Fetc%2Fpass%20wd.png".into(), None, "x"),
+        ("a name of dots", "name=...".into(), None, "x"),
+        ("no name", String::new(), None, "x"),
+        ("a unicode name", "name=r%C3%A9sum%C3%A9%20%F0%9F%99%82.pdf".into(), None, "x"),
+        ("a long name", format!("name={long}.png"), None, "x"),
+        ("an empty file", "name=empty.png".into(), None, ""),
+        ("a bad token", "name=a.png".into(), Some("wrong"), "x"),
+        ("no token", "name=a.png".into(), Some(""), "x"),
+    ];
+    for (label, query, token_override, body) in cases {
+        let go = |s: &Server, tok: &str| {
+            let t = token_override.unwrap_or(tok);
+            let q = if t.is_empty() { query.clone() } else { format!("{query}&token={t}").trim_start_matches('&').to_string() };
+            request(s.port, "POST", &format!("/api/drop?{q}"), &origin, body, true)
+        };
+        let (a, b) = (go(&ruby, &ta), go(&rust, &tb));
+        let (sa, sb) = (shown(&a, ruby.port), shown(&b, rust.port));
+        let (sa, sb) = (sa.replace(&w.root.display().to_string(), "ROOT"), sb.replace(&root2.display().to_string(), "ROOT"));
+        assert_eq!((stamp.replace_all(&sa, "/drops/STAMP-"), a.status.clone()), (stamp.replace_all(&sb, "/drops/STAMP-"), b.status.clone()), "{label}");
+        seen += &sa;
+    }
+    let listing = |root: &Path| {
+        let mut names: Vec<String> = fs::read_dir(root.join("drops")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).map(|n| regex::Regex::new(r"^\d{8}-\d{6}-[0-9a-f]{6}-").unwrap().replace(&n, "STAMP-").into_owned()).collect();
+        names.sort();
+        names
+    };
+    assert_eq!(listing(&w.root), listing(&root2));
+    assert!(!listing(&root2).contains(&"old-file.png".to_string()) && listing(&root2).contains(&"fresh-file.png".to_string()), "{:?}", listing(&root2));
+    for needle in ["\"ok\":true", "dropped file is empty", "bad terminal token", "STAMP-shot.png"] {
+        assert!(seen.replace(|c: char| c.is_ascii_digit(), "").contains(&needle.replace(|c: char| c.is_ascii_digit(), "")) || listing(&root2).iter().any(|n| n.contains("shot.png")), "{needle}");
+    }
+    // a body past the cap is refused unread, whatever the route
+    for s in [&ruby, &rust] {
+        let mut stream = std::net::TcpStream::connect(("127.0.0.1", s.port)).unwrap();
+        use std::io::{Read, Write};
+        write!(stream, "POST /api/drop?name=big.bin HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nOrigin: http://127.0.0.1:{}\r\nContent-Length: 33554433\r\nConnection: close\r\n\r\n", s.port, s.port).unwrap();
+        let mut reply = String::new();
+        stream.read_to_string(&mut reply).unwrap();
+        assert!(reply.starts_with("HTTP/1.1 413 Content Too Large") && reply.contains("dropped file is over 32 MB"), "{reply}");
+    }
+}

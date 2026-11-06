@@ -375,6 +375,17 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
             return json_reply(diff_file_payload(slug, query));
         }
     }
+    if method == "POST" && route == "/api/drop" {
+        let given = params(query);
+        if given.get("token").and_then(Value::as_str) != Some(token) {
+            return json_reply(json!({"ok": false, "error": "bad terminal token"}));
+        }
+        let name = given.get("name").and_then(Value::as_str).unwrap_or("");
+        return match crate::drops::save(name, body) {
+            Ok(path) => json_reply(json!({"ok": true, "path": path})),
+            Err(m) => json_reply(json!({"ok": false, "error": m})),
+        };
+    }
     if method == "POST" && route == "/api/ask" {
         let payload = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
         let query = match payload.get("query") {
@@ -455,10 +466,15 @@ fn handle(mut stream: TcpStream, guard: &Guard, token: &str) {
     let reply = if headers.get("upgrade").and_then(Value::as_str).is_some_and(|u| u.eq_ignore_ascii_case("websocket")) {
         text_reply("501 Not Implemented", "not ported yet: the terminal bridge")
     } else {
-        let length = headers.get("content-length").and_then(Value::as_str).and_then(|v| v.trim().parse::<usize>().ok()).unwrap_or(0).min(MAX_BYTES * 50);
-        let mut body = vec![0u8; length];
-        let _ = reader.read_exact(&mut body);
-        respond(guard, token, &method, &path, &headers, &body)
+        let length = headers.get("content-length").and_then(Value::as_str).map(ruby_to_i).unwrap_or(0);
+        if length > crate::drops::MAX_BYTES {
+            // a dropped file is the only big body; anything past its cap is refused unread
+            ("413 Content Too Large", "application/json", json!({"ok": false, "error": format!("dropped file is over {} MB", crate::drops::MAX_BYTES / 1024 / 1024)}).to_string().into_bytes())
+        } else {
+            let mut body = vec![0u8; length];
+            let _ = reader.read_exact(&mut body);
+            respond(guard, token, &method, &path, &headers, &body)
+        }
     };
     let (status, kind, payload) = reply;
     let head = format!("HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", payload.len());
@@ -595,4 +611,11 @@ fn history_payload(rest: &str, params: &Map<String, Value>) -> Option<Value> {
         Err(crate::chat_history::Stop::Refuse(m)) => failed("ArgumentError", m),
         Err(crate::chat_history::Stop::Unported) => None,
     }
+}
+
+/// `String#to_i`: the leading integer, 0 when there is none.
+fn ruby_to_i(s: &str) -> usize {
+    let t = s.trim_start();
+    let digits: String = t.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().unwrap_or(0)
 }
