@@ -171,12 +171,14 @@ class GuiSettingsTest < Minitest::Test
     assert_equal Quartermaster::ConfigSchema::TYPES.sort, widgets.sort
   end
 
-  def test_settings_is_a_mode_with_its_shortcut_in_the_legend
+  def test_settings_opens_from_the_header_cog_not_a_mode_tab
     page = served_page(gui, { "host" => "127.0.0.1:4567" })
 
-    assert_includes page, %(<button data-mode="settings")
+    modes = page[%r{<div class="segmented" id="modes".*?</div>}m]
+    refute_includes modes, "settings", "the mode switcher has no Settings tab"
+    assert_match(%r{<button class="btn icon" id="settings-btn" aria-pressed="false" title="Settings \(,\)" aria-label="Settings">}, page)
     assert_match(%r{<kbd>,</kbd><span>settings</span>}, page)
-    assert_includes page, %(if (e.key === ",") { e.preventDefault(); setMode(mode === "settings" ? "board" : "settings"); return; })
+    assert_includes page, %(if (e.key === ",") { e.preventDefault(); toggleSettings(); return; })
     assert_operator page.index("/assets/js/settings.js"), :<, page.index("/assets/js/events.js"), "settings.js loads before events.js"
   end
 

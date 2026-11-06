@@ -7,7 +7,8 @@
 ## What it does
 
 `qm gui` is a loopback web UI over the work items: a kanban board, a chat view (`v`), a PRs
-view (`p`), an Issues view (`I`) and the Settings view (`,`, [settings](settings.md)). It is a
+view (`p`), an Issues view (`I`) and the Settings view (`,` or the header's ⚙ button, not a mode
+tab; [settings](settings.md)). It is a
 stdlib `TCPServer`, no web framework.
 
 **Server lifecycle** (`Gui#run`). Binds `127.0.0.1` on the fixed port 49737 (`QM_GUI_PORT`

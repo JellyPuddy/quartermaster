@@ -88,9 +88,12 @@ after the write (the cached dev-server status forgotten), so the page's buttons 
 `409 {ok: false, stale: true, error, settings}` when the file changed since `digest`, carrying the
 current payload to reload; `422 {ok: false, error, issues, features}` while the draft has errors.
 
-**The Settings view** (the GUI's fifth mode: the mode switcher's **Settings**, key `,`, ⌘S
-saves). Full width, three parts. On top a projects × features grid: per project its name and
-root, a chip per feature from the server's `features` (on in green with its short value, off,
+**The Settings view** (the GUI's fifth mode, `data-mode="settings"`, but not a mode-switcher tab:
+the header's ⚙ icon button `#settings-btn` opens it and shows pressed while it is open, with no
+tab highlighted; the button again, `,` or Esc (a first Esc only leaves a focused field) returns
+to the mode it was opened from; a mode tab or mode key leaves for its own mode, and `v` never
+lands on Settings; ⌘S saves). Full width, three parts. On top a projects × features grid: per
+project its name and root, a chip per feature from the server's `features` (on in green with its short value, off,
 inherit as a hollow accent outline with the real value in its tooltip, warning, error) and its
 work-item count; clicking the name or any cell opens that project's card (and the fold holding
 the section) and scrolls there. Below it a document: General (`default_project`), IDE (the

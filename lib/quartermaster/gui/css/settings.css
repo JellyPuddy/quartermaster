@@ -1,6 +1,7 @@
 /* ------- Settings view: projects × features grid, the document, a sticky side column ------- */
 body:not([data-mode="settings"]) .st-wrap, body:not([data-mode="settings"]) .legend .settings-only { display: none; }
 body[data-mode="settings"] .legend .item-key { display: none; }
+#settings-btn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent-line); }
 .st-wrap { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
 .st-main {
   max-width: 1500px; margin: 0 auto; padding: 10px 12px 80px;

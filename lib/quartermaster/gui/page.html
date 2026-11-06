@@ -45,7 +45,6 @@
       <button data-mode="chat" aria-pressed="false">Chats <span id="chat-count"></span></button>
       <button data-mode="prs" aria-pressed="false" title="Open PRs: yours, and those asking your review (p)">PRs <span id="prs-badge"></span></button>
       <button data-mode="issues" aria-pressed="false" title="Issue drafts across all items (⇧I)">Issues <span id="issues-badge"></span></button>
-      <button data-mode="settings" aria-pressed="false" title="Edit config.yml: projects, dev servers, IDE, prices (,)">Settings</button>
     </div>
 
     <label class="search">
@@ -80,6 +79,9 @@
     <button class="btn primary" id="new-item">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
       New item <kbd style="background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.28);color:inherit">c</kbd>
+    </button>
+    <button class="btn icon" id="settings-btn" aria-pressed="false" title="Settings (,)" aria-label="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
     </button>
     <button class="btn icon" id="theme" title="Toggle theme" aria-label="Toggle theme">
       <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
