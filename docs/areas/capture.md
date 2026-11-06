@@ -1,7 +1,7 @@
 # Capture
 
-**Code:** `lib/quartermaster/hook_handler.rb`, `lib/quartermaster/session.rb`, `lib/quartermaster/session_log.rb`, `lib/quartermaster/project_map.rb`, `lib/quartermaster/project_config.rb`, `lib/quartermaster/project_settings.rb`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
-**Tests:** `test/hook_test.rb`, `test/chat_attention_test.rb`, `test/prompt_snapshots_test.rb`
+**Code:** `lib/quartermaster/hook_handler.rb`, `lib/quartermaster/session.rb`, `lib/quartermaster/session_log.rb`, `lib/quartermaster/project_map.rb`, `lib/quartermaster/project_config.rb`, `lib/quartermaster/project_settings.rb`, `lib/quartermaster/failure_log.rb`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
+**Tests:** `test/hook_test.rb`, `test/chat_attention_test.rb`, `test/prompt_snapshots_test.rb`, `test/failure_log_test.rb`
 **Depends on:** none
 
 ## What it does
@@ -50,12 +50,27 @@ fallback protocol for when the injection is missing.
   (`ProjectConfig`, plain path or `root:` mapping, [overview](../overview.md#configyml));
   a cwd inside a root, or a worktree whose `git rev-parse --git-common-dir` lies inside one,
   gets that project; everything else is `No project`.
+- **`qm.log`** (`Quartermaster.log_error` → `FailureLog`) is line-oriented. A header line
+  starts at column 0: `<iso8601> [<context>] <Class>: <message>` (the message folded onto
+  that one line). Under it, up to 3 continuation lines indented two spaces: the error's first
+  backtrace frames inside the repo's `lib/`, repo-relative. A **transient** failure — gh
+  can't reach GitHub (`error connecting to api.github.com`, `connection reset`, `dial tcp`,
+  `read tcp`, `i/o timeout`, `TLS handshake timeout`, `githubstatus.com`, a bare `EOF`), or
+  a browser tab gone mid-response (`Errno::EPIPE`, `Errno::ECONNRESET`) — reads
+  `<iso8601> [<context>] transient <Class>: <message>` and is written only for the first
+  failure of an outage of that context. The context's next `Quartermaster.log_success`
+  ends the outage with `<iso8601> [<context>] recovered after <n> failure(s)`. Pollers that
+  report success: `pr-inbox`, `pr-deployment`, `pr-refresh`, `gui-client`.
 
 ## Rules
 
 - **Hooks never block or break a session.** Ruby hook entry points rescue everything, log
   to `qm.log` and exit 0 (`CLI#guard_hook`); the `sh` hooks wrap their body in
   `{ … } >/dev/null 2>&1` and always `exit 0`. Pinned by tests.
+- **Every `qm.log` line other than a header starts with whitespace**, and only headers carry
+  `[<context>] transient` or `[<context>] recovered`: readers (an error count) tell lines
+  apart by that alone. Non-transient failures are always written in full. Outage state is
+  per process; a fresh process may write one more first failure.
 - **Only SessionStart may print**, and only the injected context. SessionEnd and every error
   path stay silent — stray stdout would leak into Claude's context.
 - **Per-tool-call hooks are plain POSIX `sh`, not Ruby**: PostToolUse fires on every tool

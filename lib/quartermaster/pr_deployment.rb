@@ -145,6 +145,7 @@ module Quartermaster
       return unless expired?(cache["releases"][repo])
 
       cache["releases"][repo] = { "tag" => @fetcher.latest_release(repo), "ts" => @now.call.to_i }
+      Quartermaster.log_success("pr-deployment")
     rescue StandardError => e
       Quartermaster.log_error("pr-deployment", e)
       stamp_failure(cache["releases"], repo)
@@ -155,6 +156,8 @@ module Quartermaster
       return cache["pulls"][url] unless pull_stale?(cache, url)
 
       cache["pulls"][url] = @fetcher.pull(url).merge("ts" => @now.call.to_i)
+      Quartermaster.log_success("pr-deployment")
+      cache["pulls"][url]
     rescue StandardError => e
       Quartermaster.log_error("pr-deployment", e)
       stamp_failure(cache["pulls"], url)
@@ -174,6 +177,7 @@ module Quartermaster
       sha = entry_sha(cache, entry)
       tag = cache["releases"][entry["repo"]]["tag"]
       status = @fetcher.compare(entry["repo"], tag, sha)
+      Quartermaster.log_success("pr-deployment")
       cache["verdicts"][sha] = { "tag" => tag, "deployed" => %w[behind identical].include?(status), "ts" => @now.call.to_i }
     rescue StandardError => e
       Quartermaster.log_error("pr-deployment", e)

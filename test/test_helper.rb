@@ -29,6 +29,8 @@ module QmTestHelpers
     # A background PR refetch leaked from a prior test must not make this
     # test's #refreshing? true (a thread's own cleanup deletes are harmless).
     Quartermaster::PrStatus::IN_FLIGHT_MUTEX.synchronize { Quartermaster::PrStatus::IN_FLIGHT.clear }
+    # An outage left open by a prior test would swallow this test's failures.
+    Quartermaster::FailureLog.reset
   end
 
   def run_hook(command, stdin, env = {})

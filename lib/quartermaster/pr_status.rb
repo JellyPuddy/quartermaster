@@ -88,6 +88,7 @@ module Quartermaster
       if IN_FLIGHT_MUTEX.synchronize { IN_FLIGHT[key] ? false : IN_FLIGHT[key] = true }
         Thread.new do
           store(key, @fetcher.call(item, branch))
+          Quartermaster.log_success("pr-refresh")
         rescue StandardError => e
           Quartermaster.log_error("pr-refresh", e)
         ensure

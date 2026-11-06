@@ -231,9 +231,9 @@ module Quartermaster
         "HTTP/1.1 #{status}\r\n" \
         "Content-Type: #{content_type}\r\n" \
         "Content-Length: #{payload.bytesize}\r\n" \
-        "Cache-Control: no-store\r\nConnection: close\r\n\r\n"
+        "Cache-Control: no-store\r\nConnection: close\r\n\r\n", payload
       )
-      client.write(payload)
+      Quartermaster.log_success("gui-client")
     rescue StandardError => e
       Quartermaster.log_error("gui-client", e)
     ensure

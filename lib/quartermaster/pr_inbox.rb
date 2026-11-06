@@ -65,6 +65,7 @@ module Quartermaster
     # keeps the last good list and records why.
     def refresh
       write_cache("prs" => @fetcher.call, "ts" => Time.now.to_i, "error" => nil)
+      Quartermaster.log_success("pr-inbox")
     rescue StandardError => e
       Quartermaster.log_error("pr-inbox", e)
       write_cache(read_cache.merge("ts" => Time.now.to_i, "error" => e.message))

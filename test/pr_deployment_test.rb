@@ -98,6 +98,19 @@ class PrDeploymentTest < Minitest::Test
     assert_equal [PR], @store.all.keys, "a failed lookup never prunes"
   end
 
+  def test_a_github_outage_is_logged_once_and_its_end_once
+    @store.add(PR, kind: "commit", ref: SHA)
+    reset = RuntimeError.new('gh api graphql failed: read tcp 10.0.0.2:5000->10.0.0.9:443: read: connection reset by peer')
+    deployment(FakeGitHub.new(tag: reset, pulls: { PR => reset })).refresh
+    @clock += Quartermaster::PrDeployment::TTL_SECONDS
+    deployment(FakeGitHub.new(pulls: { PR => open_pr }, compares: { ["2026.10.8", SHA] => "ahead" })).refresh
+
+    headers = File.readlines(Quartermaster::LOG_FILE, chomp: true).reject { |line| line.start_with?(" ") }
+    assert_equal 2, headers.size
+    assert_match(/\[pr-deployment\] transient RuntimeError: gh api graphql failed/, headers.first)
+    assert_match(/\[pr-deployment\] recovered after 2 failures\z/, headers.last)
+  end
+
   def test_a_lookup_that_keeps_failing_waits_out_the_ttl
     @store.add(PR, kind: "commit", ref: SHA)
     no_releases = FakeGitHub.new(tag: RuntimeError.new("404 Not Found"), pulls: { PR => RuntimeError.new("offline") })

@@ -121,11 +121,17 @@ module Quartermaster
     File.write(CONFIG_FILE, CONFIG_SEED) unless File.exist?(CONFIG_FILE)
   end
 
+  # qm.log's format and the once-per-outage rule live in FailureLog.
   def self.log_error(context, error)
-    ensure_setup
-    File.open(LOG_FILE, "a") do |f|
-      f.puts("#{Time.now.iso8601} [#{context}] #{error.class}: #{error.message}")
-    end
+    FailureLog.failure(context, error)
+  rescue StandardError
+    nil
+  end
+
+  # A poller that can fail transiently reports each success, which ends that
+  # context's outage in qm.log.
+  def self.log_success(context)
+    FailureLog.success(context)
   rescue StandardError
     nil
   end
@@ -424,6 +430,7 @@ module Quartermaster
   end
 end
 
+require_relative "quartermaster/failure_log"
 require_relative "quartermaster/note"
 require_relative "quartermaster/ide"
 require_relative "quartermaster/project_settings"
