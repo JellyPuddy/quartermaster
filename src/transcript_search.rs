@@ -22,6 +22,10 @@ const RG_FALLBACK_DIRS: [&str; 2] = ["/opt/homebrew/bin", "/usr/local/bin"];
 
 pub struct Hit {
     pub id: String,
+    /// The first matching entry's own `timestamp`, as the transcript wrote it.
+    pub ts: Value,
+    pub transcript: String,
+    pub cwd: Option<String>,
     pub date: Option<String>,
     pub hits: usize,
     pub role: &'static str,
@@ -38,8 +42,28 @@ pub struct Group {
 }
 
 pub struct Found {
+    pub query: String,
     pub groups: Vec<Group>,
     pub more: usize,
+}
+
+impl Found {
+    /// The GUI's answer: `TranscriptSearch#call`'s hash.
+    pub fn to_json(&self) -> Value {
+        let groups: Vec<Value> = self
+            .groups
+            .iter()
+            .map(|g| {
+                let sessions: Vec<Value> = g
+                    .sessions
+                    .iter()
+                    .map(|h| serde_json::json!({"id": h.id, "date": h.date, "hits": h.hits, "transcript": h.transcript, "cwd": h.cwd, "role": h.role, "ts": h.ts, "before": h.before, "match": h.matched, "after": h.after}))
+                    .collect();
+                serde_json::json!({"slug": g.slug, "title": g.title, "state": g.state, "sessions": sessions})
+            })
+            .collect();
+        serde_json::json!({"query": self.query, "groups": groups, "more": self.more})
+    }
 }
 
 pub enum Failure {
@@ -142,6 +166,7 @@ fn scan(path: &str, m: &Matchers, log: &SessionLog) -> Result<Option<Hit>, Failu
     let id = std::path::Path::new(path).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
     let timestamp = Regex::new(r#""timestamp":"([^"]+)""#).unwrap();
     let (mut first_ts, mut found, mut count): (Option<String>, Option<(&'static str, String, String, String)>, usize) = (None, None, 0);
+    let mut found_ts = Value::Null;
     for line in content.split_inclusive('\n') {
         if first_ts.is_none() {
             first_ts = timestamp.captures(line).map(|c| c[1].to_string());
@@ -160,6 +185,7 @@ fn scan(path: &str, m: &Matchers, log: &SessionLog) -> Result<Option<Hit>, Failu
         let Some(found_at) = m.text.find(&text) else { continue };
         count += 1;
         if found.is_none() {
+            found_ts = entry.get("timestamp").cloned().unwrap_or(Value::Null);
             let chars: Vec<char> = text.chars().collect();
             let at = text[..found_at.start()].chars().count();
             let len = found_at.as_str().chars().count();
@@ -176,7 +202,8 @@ fn scan(path: &str, m: &Matchers, log: &SessionLog) -> Result<Option<Hit>, Failu
     }
     let Some((role, before, matched, after)) = found else { return Ok(None) };
     let started = log.session_for(&id).map(|s| s.started_ts()).filter(|t| !t.is_empty());
-    Ok(Some(Hit { id, date: started.or(first_ts), hits: count, role, before, matched, after }))
+    let cwd = log.session_for(&id).and_then(|s| s.cwd());
+    Ok(Some(Hit { id, ts: found_ts, transcript: path.to_string(), cwd, date: started.or(first_ts), hits: count, role, before, matched, after }))
 }
 
 pub fn call(query: &str) -> Result<Found, Failure> {
@@ -233,7 +260,7 @@ pub fn call(query: &str) -> Result<Found, Failure> {
             hits.push(hit);
         }
     }
-    Ok(Found { groups: group(hits, &items), more: candidates.len() - read })
+    Ok(Found { query: query.to_string(), groups: group(hits, &items), more: candidates.len() - read })
 }
 
 fn group(hits: Vec<Hit>, items: &[WorkItem]) -> Vec<Group> {

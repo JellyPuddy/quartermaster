@@ -2600,6 +2600,13 @@ fn adopt_and_restack_start_or_type_into_chats_like_ruby() {
             all.sort();
             norm(all.join(""), side)
         };
+        // what a chat writes lands a moment after the action answers
+        for _ in 0..60 {
+            if record(0) == record(1) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
         assert_eq!(record(0), record(1), "{label}: what the chats saw");
         let panes = |side: usize| tmux_on(&format!("qm-test-adopt-{side}"), &["list-sessions", "-F", "#{session_name}"]);
         assert_eq!(panes(0), panes(1), "{label}: tmux");
@@ -2805,4 +2812,55 @@ fn the_warp_tab_actions_match_ruby() {
     }
     let a = post(&rust, &act("resume", "k-one", r#"{"session":5}"#));
     assert!(a.status.starts_with("501"), "{}", a.status);
+}
+
+#[test]
+fn the_transcript_search_route_matches_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let (root, home, tr) = (base.path().join("root"), base.path().join("home"), base.path().join("transcripts"));
+    fs::create_dir_all(root.join("work-items")).unwrap();
+    fs::create_dir_all(&home).unwrap();
+    let user = |text: &str, ts: &str| serde_json::json!({"type": "user", "timestamp": ts, "message": {"role": "user", "content": text}}).to_string();
+    let assistant = |blocks: serde_json::Value, ts: &str| serde_json::json!({"type": "assistant", "timestamp": ts, "message": {"role": "assistant", "content": blocks}}).to_string();
+    let write = |project: &str, id: &str, lines: &[String], age_mins: u64| {
+        let path = tr.join(project).join(format!("{id}.jsonl"));
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, lines.join("\n") + "\n").unwrap();
+        fs::OpenOptions::new().write(true).open(&path).unwrap().set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(age_mins * 60)).unwrap();
+    };
+    write("p1", "s-user", &[user("Please fix the Login bug in the form", "2026-03-01T10:00:00.000Z"), assistant(serde_json::json!([{"type": "text", "text": "I fixed the LOGIN handler"}]), "2026-03-01T10:01:00.000Z")], 10);
+    write("p1", "s-tools", &[serde_json::json!({"type": "user", "timestamp": "2026-03-02T10:00:00.000Z", "toolUseResult": {"stdout": "login in tool output"}, "message": {"content": [{"type": "tool_result", "content": "login in tool output"}]}}).to_string(), serde_json::json!({"type": "user", "isSidechain": true, "message": {"content": "login in a sidechain"}}).to_string()], 20);
+    write("p1", "s-many", &[user("login one", "2026-03-03T10:00:00.000Z"), assistant(serde_json::json!("login two as a string"), "2026-03-03T10:00:30.000Z")], 30);
+    write("p2", "s-long", &[user(&format!("{}NEEDLE{}", "word ".repeat(40), " tail".repeat(60)), "2026-03-04T10:00:00.000Z")], 40);
+    write("p2", "s-squash", &[user("first line\n\n\tsecond   line NEEDLE third\r\nfourth", "2026-03-05T10:00:00.000Z")], 50);
+    write("p2", "s-unicode", &[user("héllo wörld 🙂 ünï — NEEDLE ünï 🙂 after", "2026-03-06T10:00:00.000Z")], 60);
+    write("p2", "s-escapes", &[user("say \"quoted\" and back\\slash and tab\there", "2026-03-07T10:00:00.000Z")], 70);
+    write("p2", "s-nots", &[serde_json::json!({"type": "user", "message": {"content": "needle without any timestamp"}}).to_string()], 80);
+    write("p3", "s-aside", &[user("needle in an aside", "2026-03-08T10:00:00.000Z")], 90);
+    write("p3", "s-junk", &["not json needle".to_string(), "[1,2,\"needle\"]".to_string(), user("needle after junk", "2026-03-09T10:00:00.000Z")], 100);
+    write("p3/deeper", "s-subagent", &[user("needle in a sub-agent run", "2026-03-10T10:00:00.000Z")], 5);
+    let start = |id: &str, ts: &str, extra: &str| format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"{id}\",\"cwd\":\"/srv/app\",\"pid\":999999,\"ts\":\"{ts}\"{extra}}}\n");
+    let log = [start("s-user", "2026-03-01T09:59:00Z", ""), start("s-many", "2026-03-03T09:59:00Z", ""), start("s-long", "2026-03-04T09:59:00Z", ""), start("s-aside", "2026-03-08T09:59:00Z", ",\"aside\":\"alpha\""), start("s-junk", "2026-03-09T09:59:00Z", "")].concat();
+    fs::write(root.join("sessions.jsonl"), log).unwrap();
+    for (slug, title, state, sessions) in [("alpha", "Alpha work", "in_progress", "- id: s-user\n- id: s-many\n"), ("beta", "Beta work", "fridge", "- id: s-long\n")] {
+        fs::write(root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: {title}\nstate: {state}\nproject: demo\ncreated: '2026-01-01'\nsessions:\n{sessions}---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n")).unwrap();
+    }
+    let env: Vec<(&str, String)> = vec![("QM_TRANSCRIPTS_DIR", tr.display().to_string())];
+    let ruby = start_env(false, &root, &home, &env);
+    let rust = start_env(true, &root, &home, &env);
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let mut seen = String::new();
+    for query in ["login", "NEEDLE", "needle", "héllo", "quoted", "back\\\\slash", "é", "nomatch", "", "   ", " login "] {
+        let body = serde_json::json!({"query": query}).to_string();
+        let (a, b) = (request(ruby.port, "POST", "/api/grep", &origin, &body, true), request(rust.port, "POST", "/api/grep", &origin, &body, true));
+        assert_eq!(shown(&a, ruby.port), shown(&b, rust.port), "query {query:?}");
+        seen += &String::from_utf8_lossy(&a.body);
+    }
+    for body in ["{}", "{\"query\":null}", "{\"query\":5}", "not json"] {
+        let (a, b) = (request(ruby.port, "POST", "/api/grep", &origin, body, true), request(rust.port, "POST", "/api/grep", &origin, body, true));
+        assert_eq!(shown(&a, ruby.port), shown(&b, rust.port), "body {body}");
+    }
+    for needle in ["\"slug\":\"alpha\"", "\"state\":\"fridge\"", "\"slug\":null", "\"transcript\":", "\"more\":0", "query is empty", "\"title\":\"unlinked\""] {
+        assert!(seen.contains(needle), "the world should reach {needle}");
+    }
 }

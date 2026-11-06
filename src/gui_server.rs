@@ -326,6 +326,29 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
             return json_reply(diff_file_payload(slug, query));
         }
     }
+    if method == "POST" && route == "/api/grep" {
+        let payload = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+        let query = match payload.get("query") {
+            None | Some(Value::Null) => Some(String::new()),
+            Some(Value::String(s)) => Some(s.clone()),
+            Some(Value::Number(n)) if n.is_i64() || n.is_u64() => Some(n.to_string()),
+            _ => None,
+        };
+        return match (payload.is_object(), query) {
+            (true, Some(q)) => match crate::transcript_search::call(&q) {
+                Ok(found) => {
+                    let mut out = json!({"ok": true});
+                    for (k, v) in found.to_json().as_object().cloned().unwrap_or_default() {
+                        out[k] = v;
+                    }
+                    json_reply(out)
+                }
+                Err(crate::transcript_search::Failure::Abort(m)) => json_reply(json!({"ok": false, "error": m})),
+                Err(crate::transcript_search::Failure::Ruby) => text_reply("501 Not Implemented", "not ported yet: this search"),
+            },
+            _ => text_reply("501 Not Implemented", "not ported yet: this search"),
+        };
+    }
     if method == "POST" && route == "/api/cleanup-plan" {
         let payload = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
         let scope = payload.get("scope").cloned().unwrap_or(Value::Null);
