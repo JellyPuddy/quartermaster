@@ -50,3 +50,85 @@ pub fn apply(slug: &str, files: &mut [Value]) {
         o.insert("viewed".into(), json!(viewed));
     }
 }
+
+/// Why a `set` stopped before writing.
+pub enum Halt {
+    Refuse(String),
+    Unported,
+}
+
+fn has_float(v: &Value) -> bool {
+    match v {
+        Value::Number(n) => !(n.is_i64() || n.is_u64()),
+        Value::Array(items) => items.iter().any(has_float),
+        Value::Object(map) => map.values().any(has_float),
+        _ => false,
+    }
+}
+
+/// `String#inspect` for what a page might send as a digest; the rest is Ruby's.
+fn inspected(v: &Value) -> Option<String> {
+    match v {
+        Value::Null => Some("nil".into()),
+        Value::Bool(b) => Some(b.to_string()),
+        Value::Number(n) if n.is_i64() || n.is_u64() => Some(n.to_string()),
+        Value::String(s) => crate::ruby_text::inspect_ascii(s),
+        _ => None,
+    }
+}
+
+/// `ViewedMarks#set`: marks or unmarks one (path, digest) under the item's lock, keeping a path's
+/// newest six digests and the 2000 most recently marked paths. Returns whether it is viewed now.
+pub fn set(slug: &str, path: &Value, digest: &Value, viewed: bool) -> Result<bool, Halt> {
+    use std::os::unix::io::AsRawFd;
+    let Value::String(file_path) = path else { return Err(Halt::Refuse("a viewed mark needs a path".into())) };
+    if crate::ruby_text::strip(file_path).is_empty() {
+        return Err(Halt::Refuse("a viewed mark needs a path".into()));
+    }
+    let digest = match digest {
+        Value::String(d) if (16..=64).contains(&d.len()) && d.bytes().all(|c| c.is_ascii_hexdigit()) => d.clone(),
+        other => return Err(inspected(other).map(|i| Halt::Refuse(format!("{i} is not a diff digest"))).unwrap_or(Halt::Unported)),
+    };
+    let dir = data_root::root().join("viewed");
+    let file = dir.join(format!("{slug}.json"));
+    if let Ok(text) = std::fs::read_to_string(&file) {
+        if serde_json::from_str::<Value>(&text).is_ok_and(|v| has_float(&v)) {
+            return Err(Halt::Unported);
+        }
+    }
+    std::fs::create_dir_all(&dir).map_err(|_| Halt::Unported)?;
+    let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(dir.join(format!(".{slug}.lock"))).map_err(|_| Halt::Unported)?;
+    unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) };
+    let mut data = match std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
+        Some(Value::Object(d)) if d.get("marks").is_some_and(Value::is_object) => d,
+        _ => serde_json::Map::from_iter([("v".to_string(), json!(1)), ("marks".to_string(), json!({}))]),
+    };
+    let Some(Value::Object(all)) = data.get_mut("marks") else { return Err(Halt::Unported) };
+    let mut digests: Vec<Value> = match all.shift_remove(file_path.as_str()) {
+        None | Some(Value::Null) => vec![],
+        Some(Value::Array(items)) => items,
+        Some(Value::String(s)) => vec![Value::String(s)],
+        Some(_) => return Err(Halt::Unported),
+    };
+    digests.retain(|d| *d != Value::String(digest.clone()));
+    if viewed {
+        digests.push(Value::String(digest));
+    }
+    if !digests.is_empty() {
+        let keep = digests.len().saturating_sub(6);
+        all.insert(file_path.clone(), Value::Array(digests.split_off(keep)));
+    }
+    while all.len() > 2000 {
+        let oldest = all.keys().next().cloned().unwrap_or_default();
+        all.shift_remove(&oldest);
+    }
+    if all.is_empty() {
+        let _ = std::fs::remove_file(&file);
+    } else {
+        data.insert("v".into(), json!(1));
+        let temp = format!("{}.{}.{:?}.tmp", file.display(), std::process::id(), std::thread::current().id());
+        std::fs::write(&temp, Value::Object(data).to_string()).map_err(|_| Halt::Unported)?;
+        std::fs::rename(&temp, &file).map_err(|_| Halt::Unported)?;
+    }
+    Ok(viewed)
+}

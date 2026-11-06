@@ -1283,3 +1283,88 @@ fn the_draft_actions_match_ruby() {
     }
     assert_eq!(before, draft_traces(&root2, &w.root, &rust_ids));
 }
+
+fn viewed_traces(root: &Path, other: &Path) -> String {
+    let mut out = String::new();
+    let mut names: Vec<_> = fs::read_dir(root.join("viewed")).map(|r| r.map(|e| e.unwrap().path()).collect()).unwrap_or_default();
+    names.sort();
+    for p in names {
+        out += &format!("== {}\n{}\n", p.file_name().unwrap().to_string_lossy(), fs::read_to_string(&p).unwrap_or_default());
+    }
+    out + &action_traces(root, other)
+}
+
+#[test]
+fn diff_viewed_and_pf_mode_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    fs::write(w.root.join("config.yml"), format!("projects:\n  demo:\n    root: {}\n    dev_server:\n      command: devsrv\n      modes: [dev, tunnel]\n      default_mode: dev\n", w.repo.display())).unwrap();
+    fs::write(w.root.join("work-items/no-project.md"), "---\nv: 1\ntitle: no project\nstate: in_progress\ncreated: '2026-01-01'\n---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n").unwrap();
+    // a viewed file already at the 2000-path limit, with odd values among the marks
+    let mut marks = serde_json::Map::new();
+    marks.insert("odd-string".into(), serde_json::json!("0123456789abcdef0123"));
+    marks.insert("odd-null".into(), serde_json::Value::Null);
+    for i in 0..1998 {
+        marks.insert(format!("old/{i:04}.txt"), serde_json::json!([format!("{i:020x}")]));
+    }
+    fs::create_dir_all(w.root.join("viewed")).unwrap();
+    fs::write(w.root.join("viewed/degrade.json"), serde_json::json!({"v": 1, "marks": marks, "extra": [1]}).to_string()).unwrap();
+    fs::write(w.root.join("viewed/pr-one-merged.json"), "not json").unwrap();
+    let env: Vec<(&str, String)> = vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string())];
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let ruby = start_env(false, &w.root, &w.home, &env);
+    let rust = start_env(true, &root2, &w.home, &env);
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let step = |label: &str, body: &str| {
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, body, true), request(rust.port, "POST", "/api/action", &origin, body, true));
+        assert_eq!(shown(&a, ruby.port), shown(&b, rust.port), "{label}: reply to {body}");
+        assert_eq!(viewed_traces(&w.root, &root2), viewed_traces(&root2, &w.root), "{label}: files after {body}");
+    };
+    let act = |cmd: &str, slug: &str, args: &str| format!("{{\"cmd\":\"{cmd}\",\"slug\":\"{slug}\",\"args\":{args}}}");
+    let d = |n: u32| format!("{n:020x}");
+    let mark = |slug: &str, path: &str, digest: &str, viewed: &str| act("diff-viewed", slug, &format!("{{\"path\":\"{path}\",\"digest\":{digest},\"viewed\":{viewed}}}"));
+    let mut cases: Vec<(String, String)> = vec![];
+    let mut add = |label: &str, body: String| cases.push((label.to_string(), body));
+    add("mark", mark("stale", "a.txt", &format!("\"{}\"", d(1)), "true"));
+    add("mark again", mark("stale", "a.txt", &format!("\"{}\"", d(1)), "true"));
+    for n in 2..=8 {
+        add("mark more", mark("stale", "a.txt", &format!("\"{}\"", d(n)), "true"));
+    }
+    add("mark another path", mark("stale", "b.txt", &format!("\"{}\"", d(1)), "true"));
+    add("mark the first path again", mark("stale", "a.txt", &format!("\"{}\"", d(8)), "true"));
+    add("unmark", mark("stale", "a.txt", &format!("\"{}\"", d(8)), "false"));
+    add("unmark absent", mark("stale", "a.txt", &format!("\"{}\"", d(99)), "false"));
+    add("viewed not boolean", mark("stale", "a.txt", &format!("\"{}\"", d(5)), "\"true\""));
+    add("viewed missing", act("diff-viewed", "stale", &format!("{{\"path\":\"a.txt\",\"digest\":\"{}\"}}", d(6))));
+    add("uppercase hex", mark("stale", "c.txt", "\"ABCDEF0123456789\"", "true"));
+    add("64 hex", mark("stale", "c.txt", &format!("\"{}\"", "a".repeat(64)), "true"));
+    add("unicode path", mark("stale", "dir/ü and \\\\ \\\"q\\\".txt", &format!("\"{}\"", d(1)), "true"));
+    for (label, digest) in [("short", "\"abc\""), ("15 hex", "\"0123456789abcde\""), ("65 hex", &format!("\"{}\"", "a".repeat(65))), ("not hex", "\"zzzzzzzzzzzzzzzzzzzz\""), ("null", "null"), ("number", "5"), ("true", "true"), ("quoted", "\"a\\\"b\\\\c\""), ("hash sign", "\"a#{x}\""), ("newline", "\"a\\nb\""), ("control", "\"a\\u0001\\u007f\\u001b\\t\""), ("dollar", "\"a#$b#@c#d\"")] {
+        add(&format!("digest {label}"), mark("stale", "a.txt", digest, "true"));
+    }
+    add("path null", mark("stale", "x", "null", "true").replace("\"path\":\"x\"", "\"path\":null"));
+    add("path blank", mark("stale", "  ", &format!("\"{}\"", d(1)), "true"));
+    add("path empty", mark("stale", "", "null", "true"));
+    add("path number", act("diff-viewed", "stale", &format!("{{\"path\":5,\"digest\":\"{}\",\"viewed\":true}}", d(1))));
+    add("no args", act("diff-viewed", "stale", "{}"));
+    add("missing item", mark("nowhere", "a.txt", &format!("\"{}\"", d(1)), "true"));
+    add("unmark the last", mark("stale", "b.txt", &format!("\"{}\"", d(1)), "false"));
+    add("odd string kept", mark("degrade", "odd-string", "\"fedcba9876543210ffff\"", "true"));
+    add("odd string value", mark("degrade", "odd-string", "\"0123456789abcdef0123\"", "false"));
+    add("odd null", mark("degrade", "odd-null", &format!("\"{}\"", d(3)), "true"));
+    add("beyond the limit", mark("degrade", "new.txt", &format!("\"{}\"", d(7)), "true"));
+    add("over junk", mark("pr-one-merged", "a.txt", &format!("\"{}\"", d(1)), "true"));
+    add("unmark the only mark", mark("pr-one-merged", "a.txt", &format!("\"{}\"", d(1)), "false"));
+    for (label, mode) in [("dev", "\"dev\""), ("tunnel", "\"tunnel\""), ("again", "\"tunnel\""), ("bogus", "\"bogus\""), ("empty", "\"\""), ("number", "5"), ("null", "null"), ("true", "true")] {
+        add(&format!("pf-mode {label}"), act("pf-mode", "stale", &format!("{{\"mode\":{mode}}}")));
+    }
+    add("pf-mode no args", act("pf-mode", "stale", "{}"));
+    add("pf-mode no dev server", act("pf-mode", "pr-no-project", r#"{"mode":"dev"}"#));
+    add("pf-mode no project", act("pf-mode", "no-project", r#"{"mode":"dev"}"#));
+    add("pf-mode missing item", act("pf-mode", "nowhere", r#"{"mode":"dev"}"#));
+    add("pf-mode quoted", act("pf-mode", "stale", r#"{"mode":"a: b"}"#));
+    for (label, body) in &cases {
+        step(label, body);
+    }
+}

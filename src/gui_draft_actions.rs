@@ -135,7 +135,7 @@ pub(crate) fn move_to(slug: &str, id: &str, to: &Value) -> R<Value> {
             Value::Null => "nil".to_string(),
             Value::Bool(b) => b.to_string(),
             Value::Number(n) if n.is_i64() || n.is_u64() => n.to_string(),
-            Value::String(s) if s.bytes().all(|c| (0x20..0x7f).contains(&c) && c != b'#') => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
+            Value::String(s) => crate::ruby_text::inspect_ascii(s).ok_or(Stop::Unported)?,
             _ => return Err(Stop::Unported),
         };
         return Err(Stop::refuse(format!("a draft moves to github or chat, not {shown}")));

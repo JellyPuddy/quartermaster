@@ -183,17 +183,38 @@ fn run(payload: &Value) -> R<Value> {
             // Ruby answers `false` itself when nothing was attached
             Ok(if item.detach_session(&session).map_err(error)? { ok() } else { Value::Bool(false) })
         }
+        "diff-viewed" => {
+            let item = find(&slug)?;
+            let slug = item.slug.clone();
+            if !slug_shaped(&slug) {
+                return Err(fail(format!("'{slug}' is not a work item slug")));
+            }
+            let viewed = matches!(args.get("viewed")?, Value::Bool(true));
+            match crate::viewed_marks::set(&slug, args.get("path")?, args.get("digest")?, viewed) {
+                Ok(v) => Ok(json!({"ok": true, "viewed": v})),
+                Err(crate::viewed_marks::Halt::Refuse(m)) => Err(fail(m)),
+                Err(crate::viewed_marks::Halt::Unported) => Err(Stop::Unported),
+            }
+        }
+        "pf-mode" => {
+            let mut item = find(&slug)?;
+            item.update_pf_mode(&args.text("mode")?).map_err(error)?;
+            Ok(ok())
+        }
         "draft-edit" | "draft-delete" | "drafts-discard" | "draft-put" | "draft-move" => drafts(&cmd, &slug, &args),
         _ => Err(Stop::Unported),
     }
+}
+
+fn slug_shaped(slug: &str) -> bool {
+    slug.chars().next().is_some_and(|c| c.is_ascii_alphanumeric()) && slug.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
 }
 
 /// The draft actions open the item first (`drafts_of`), then its drafts, whose slug must be a slug.
 fn drafts(cmd: &str, slug: &str, args: &Args) -> R<Value> {
     let item = find(slug)?;
     let slug = item.slug.clone();
-    let shaped = slug.chars().next().is_some_and(|c| c.is_ascii_alphanumeric()) && slug.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'));
-    if !shaped {
+    if !slug_shaped(&slug) {
         return Err(fail(format!("'{slug}' is not a work item slug")));
     }
     use crate::gui_draft_actions as d;

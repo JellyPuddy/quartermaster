@@ -397,7 +397,7 @@ impl WorkItem {
                 return Err(QmError::argument(format!("work item '{slug}' already exists")));
             }
             if let Some(mode) = pf_mode {
-                Self::validate_pf_mode(project, mode)?;
+                Self::validate_pf_mode(Some(project), mode)?;
             }
             let front_text = lines.join("\n");
             Self::write_file(&slug, &format!("---\n{front_text}\n---\n{body}"))?;
@@ -406,9 +406,10 @@ impl WorkItem {
     }
 
     /// The project's dev server serves one checkout in one of its modes; the item remembers which.
-    fn validate_pf_mode(project: &str, mode: &str) -> Res<()> {
+    fn validate_pf_mode(project: Option<&str>, mode: &str) -> Res<()> {
         let config = crate::project_config::ProjectConfig::current();
-        let Some(server) = config.settings(Some(project)).and_then(|s| s.dev_server.as_ref()) else {
+        let Some(server) = config.settings(project).and_then(|s| s.dev_server.as_ref()) else {
+            let project = project.unwrap_or("");
             return Err(QmError::argument(format!("{project} has no dev server: set projects.{project}.dev_server in config.yml")));
         };
         if server.modes.iter().any(|m| m == mode) {
@@ -542,6 +543,11 @@ impl WorkItem {
         }
         let _ = fs::remove_file(data_root::root().join("viewed").join(format!("{}.json", self.slug)));
         Ok(())
+    }
+
+    pub fn update_pf_mode(&mut self, mode: &str) -> Res<()> {
+        Self::validate_pf_mode(self.project().as_deref(), mode)?;
+        self.edit(|_, lines, _| Self::set_pair(lines, "pf_mode", mode).map(|_| true)).map(|_| ())
     }
 
     pub fn move_to(&mut self, project: &str) -> Res<()> {
