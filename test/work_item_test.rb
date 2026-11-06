@@ -220,6 +220,18 @@ class WorkItemTest < Minitest::Test
     assert_equal ["private.md"], Dir.children(Quartermaster::WORK_ITEMS_DIR) - [".lock"]
     assert_equal ["still private"], Quartermaster::WorkItem.find("private").notes.map(&:text)
   end
+
+  # A handle found before another process deleted the item must not write its
+  # stale copy back: the mutation re-reads under the lock and finds nothing.
+  def test_a_stale_handle_never_resurrects_a_deleted_item
+    Quartermaster::WorkItem.create("Gone", project: "MyApp")
+    handle = Quartermaster::WorkItem.find("gone")
+    File.delete(Quartermaster::WorkItem.path_for("gone"))
+
+    error = assert_raises(ArgumentError) { handle.add_note("too late") }
+    assert_equal "no work item 'gone'", error.message
+    refute File.exist?(Quartermaster::WorkItem.path_for("gone"))
+  end
 end
 
 class AtomicFileTest < Minitest::Test

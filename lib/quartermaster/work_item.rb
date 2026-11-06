@@ -529,8 +529,6 @@ module Quartermaster
     end
 
     def reload!
-      return unless File.exist?(self.class.path_for(slug))
-
       fresh = self.class.find(slug)
       @front = fresh.front
       @body = fresh.body

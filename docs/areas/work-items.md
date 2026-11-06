@@ -83,7 +83,8 @@ editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
   `WorkItem.with_lock` / `#locked`) spanning the whole read-modify-write, re-reading the file
   before applying; reentrant per thread so compound moves (`claim_session`) nest. Without it
   a bulk distill's stale copy clobbered a concurrent note. A caller's own `find` before the
-  mutation is only a handle: the mutator never writes from that copy.
+  mutation is only a handle: the mutator never writes from that copy, and an item deleted
+  meanwhile raises "no work item" instead of being written back.
 - **`save` replaces the file whole** (`AtomicFile.write`: temp file beside it, renamed over
   it, keeping the file's mode), so readers that take no lock — the GUI, the viewer, `qm list`,
   every mutator's first `find` — see the old or the new item, never a truncated one. A plain
