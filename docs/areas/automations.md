@@ -19,8 +19,8 @@ the `kind: automation` work item of the same slug (`routine:`, `runner: cloud` i
 - `push(slug, force:)` — the one path that changes a routine. No `routine` yet: create, then
   write the id to the store and the item. Else `get` the routine, refuse with `Stale` when it
   drifted (unless forced), and `update` only what differs from it: changed name / cron /
-  enabled / connectors as they are, and all job fields when any of prompt / model / repos /
-  tools / environment differs. Stores the answer's `updated_at`; nothing differing writes nothing.
+  enabled as they are, the stored connectors always, and all job fields when any of prompt /
+  model / repos / tools / environment differs. Stores the answer's `updated_at`; nothing differing writes nothing.
 - Each push with changes appends one `history` note (`pushed: schedule → Mon 07:00 (0 6 * * 1
   UTC); prompt changed`, `paused`, `resumed`, `created routine trig_…`), and the item's state
   follows `enabled`: `active`, or `fridge` while paused (`in_progress` until the first push).
@@ -64,7 +64,8 @@ Headers: `Authorization: Bearer <token>`, `anthropic-version`, the `ccr-triggers
 name, cron` (UTC, as the API holds it), `enabled, prompt` (the first job event's message, else
 `derived_state.prompt`), `model` (else `derived_state.model`), `sources, allowed_tools,
 environment_id, connectors` (the `mcp_connections` as given) and `updated_at`. `RoutinesClient.request_body(fields)` builds create
-and update bodies: only the fields given (a partial update stays partial); any of prompt / model /
+and update bodies: only the fields given (a partial update stays partial); given `connectors` (nil
+counts as none) become `mcp_connections`, plus `clear_mcp_connections: true` when empty; any of prompt / model /
 sources / allowed_tools / environment_id sends the whole `job_config.ccr` (environment, one
 user-message event carrying the prompt, session context).
 
@@ -151,6 +152,9 @@ one refresh and loads runs once per automation shown; Apply is per automation.
   An expired token is the user's to renew by opening Claude Code.
 - Request bodies are built only in `RoutinesClient.request_body`, so a changed API shape is
   fixed there.
+- Every create and update `Automations` sends carries the stored connectors (none → `[]` plus
+  `clear_mcp_connections`): the API attaches all the user's connectors to a routine created
+  without them and ignores an empty list in an update, so a pushed routine has exactly its yml's.
 - Tests stub the keychain (`FakeRunner`) and the transport; no test reaches the network.
 - The local files are the source of truth; a remote routine only changes through
   `Automations#push` (pause and resume included), which refuses a drifted routine unless forced.

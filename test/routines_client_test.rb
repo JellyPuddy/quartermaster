@@ -122,6 +122,28 @@ class RoutinesClientTest < Minitest::Test
     assert_match(/\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/, event["uuid"])
   end
 
+  def test_an_empty_connector_list_clears_the_routines_connectors
+    transport = StubTransport.new([200, JSON.generate(JSON.parse(FIXTURE)["data"].first)])
+    client(transport).create("name" => "Bare", "connectors" => [])
+
+    body = transport.last[:body]
+    assert_equal [[], true], body.values_at("mcp_connections", "clear_mcp_connections")
+
+    client(transport).update(ID, "enabled" => false, "connectors" => nil)
+    assert_equal({ "enabled" => false, "mcp_connections" => [], "clear_mcp_connections" => true }, transport.last[:body])
+  end
+
+  def test_a_connector_list_is_sent_exactly_without_the_clear_flag
+    transport = StubTransport.new([200, JSON.generate(JSON.parse(FIXTURE)["data"].first)])
+    slack = { "connector_uuid" => "00000000-0000-4000-8000-000000000002", "name" => "Slack",
+              "url" => "https://mcp.slack.com/mcp" }
+    client(transport).create("name" => "Digest", "connectors" => [slack])
+
+    body = transport.last[:body]
+    assert_equal [slack], body["mcp_connections"]
+    refute body.key?("clear_mcp_connections")
+  end
+
   def test_updating_the_prompt_sends_the_whole_job_config
     routine = JSON.parse(FIXTURE)["data"].first
     transport = StubTransport.new([200, JSON.generate(routine)])

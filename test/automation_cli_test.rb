@@ -11,6 +11,7 @@ class AutomationCliTest < Minitest::Test
   DIGEST = JSON.parse(File.read(File.join(__dir__, "fixtures", "routines-list-response.json")))["data"].first
   ID = DIGEST["id"]
   SYNCED = DIGEST["updated_at"]
+  SLACK = DIGEST["mcp_connections"]
 
   # The routines API as a hash of routines: records every call, applies
   # creates and updates the way the API would (via the real request body)
@@ -74,7 +75,7 @@ class AutomationCliTest < Minitest::Test
     end
 
     def apply(routine, body)
-      routine = routine.merge(body).merge("updated_at" => "2026-11-06T09:00:0#{@stamp += 1}Z")
+      routine = routine.merge(body.except("clear_mcp_connections")).merge("updated_at" => "2026-11-06T09:00:0#{@stamp += 1}Z")
       @routines[routine["id"]] = routine
       copy(routine)
     end
@@ -151,7 +152,7 @@ class AutomationCliTest < Minitest::Test
     out, = qm("push", "digest")
 
     update = @client.calls.find { |c| c.first == :update }
-    assert_equal [:update, ID, { "cron" => "0 6 * * 1" }], update
+    assert_equal [:update, ID, { "cron" => "0 6 * * 1", "connectors" => SLACK }], update
     assert_equal "2026-11-06T09:00:01Z", store.read("digest").record["remote_updated_at"]
     assert_equal ["pushed: schedule → Mon 07:00 (0 6 * * 1 UTC)"], history
     assert_includes out, "schedule → Mon 07:00"
@@ -164,7 +165,7 @@ class AutomationCliTest < Minitest::Test
 
     _, id, fields = @client.calls.find { |c| c.first == :update }
     assert_equal ID, id
-    assert_equal %w[allowed_tools environment_id model prompt sources], fields.keys.sort
+    assert_equal %w[allowed_tools connectors environment_id model prompt sources], fields.keys.sort
     assert_equal "New prompt", @client.routines[ID].dig("job_config", "ccr", "events", 0, "data", "message", "content")
     assert_equal DIGEST.dig("job_config", "ccr", "session_context"), @client.routines[ID].dig("job_config", "ccr", "session_context")
     assert_equal ["pushed: prompt changed"], history
@@ -229,6 +230,10 @@ class AutomationCliTest < Minitest::Test
 
     _, fields = @client.calls.find { |c| c.first == :create }
     refute(fields.any? { |_, v| v.nil? }, "a create sends no nulls")
+    assert_equal [], fields["connectors"]
+    assert_equal true, Quartermaster::RoutinesClient.request_body(fields)["clear_mcp_connections"]
+    assert_equal [], @client.routines["trig_NEW"]["mcp_connections"]
+    refute @client.routines["trig_NEW"].key?("clear_mcp_connections")
     out, = qm("push", "bare")
     assert_equal "bare: nothing to push\n", out
   end
@@ -238,7 +243,7 @@ class AutomationCliTest < Minitest::Test
     out, = qm("pause", "digest")
 
     assert_equal "digest: paused\n", out
-    assert_equal [:update, ID, { "enabled" => false }], @client.calls.find { |c| c.first == :update }
+    assert_equal [:update, ID, { "enabled" => false, "connectors" => SLACK }], @client.calls.find { |c| c.first == :update }
     assert_equal [false, "fridge"], [store.read("digest").record["enabled"], item.state]
 
     qm("resume", "digest")
@@ -282,7 +287,7 @@ class AutomationCliTest < Minitest::Test
     adopt
     out, = qm("delete", "digest", stdin: "y\n")
 
-    assert_equal [[:delete, ID], [:update, ID, { "enabled" => false }]], @client.calls
+    assert_equal [[:delete, ID], [:update, ID, { "enabled" => false, "connectors" => SLACK }]], @client.calls
     assert_equal "digest: paused; delete it on claude.ai: https://claude.ai/code/routines/#{ID}\n", out
     assert_equal "resolved", item.state
     assert_equal false, store.read("digest").record["enabled"]

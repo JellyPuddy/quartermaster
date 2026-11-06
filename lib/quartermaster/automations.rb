@@ -132,7 +132,7 @@ module Quartermaster
       outcome = if id.nil? then :local
                 elsif @client.delete(id) == :deleted then :deleted
                 else
-                  updated = @client.update(id, "enabled" => false)
+                  updated = @client.update(id, { "enabled" => false }.merge(connectors_of(entry)))
                   @store.write(slug, { "enabled" => false, "remote_updated_at" => updated["updated_at"] }, entry.prompt)
                   :paused
                 end
@@ -154,7 +154,7 @@ module Quartermaster
     end
 
     def create(entry)
-      routine = @client.create(fields_of(entry).compact)
+      routine = @client.create(fields_of(entry).compact.merge(connectors_of(entry)))
       @store.write(entry.slug, { "routine" => routine["id"], "remote_updated_at" => routine["updated_at"] }, entry.prompt)
       item = WorkItem.with_lock do
         WorkItem.find(entry.slug).tap do |fresh|
@@ -199,13 +199,17 @@ module Quartermaster
     end
 
     # Changed top-level fields as they are; any changed job field sends all of
-    # them, since the API takes job_config whole.
+    # them, since the API takes job_config whole. Connectors always go along.
     def update_fields(entry, changes)
       fields = fields_of(entry)
       job = RoutinesClient::JOB_FIELDS
       keys = (changes & TOP_FIELDS) + (changes.intersect?(job) ? job : [])
-      fields.slice(*keys)
+      fields.slice(*keys).merge(connectors_of(entry))
     end
+
+    # Every create and update carries the stored connectors (none → []), so
+    # a pushed routine has exactly those and never the API's default set.
+    def connectors_of(entry) = { "connectors" => entry.record["connectors"] || [] }
 
     def describe_change(field, entry)
       record = entry.record
