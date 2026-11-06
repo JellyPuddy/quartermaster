@@ -64,7 +64,7 @@ pub(crate) fn resume_cwd(session: &Session) -> Option<String> {
 }
 
 /// `Launcher#chat_plan`; `None` when `QM_CHAT_COMMAND` is quoted in a way only Ruby reads.
-pub fn chat_plan(item: &WorkItem, fresh: bool, session_id: Option<&str>) -> Option<Plan> {
+pub fn chat_plan(item: &WorkItem, fresh: bool, session_id: Option<&str>, prompt: Option<&str>) -> Option<Plan> {
     let command = chat_command()?;
     let ids = item.session_ids();
     let log = SessionLog::read();
@@ -72,7 +72,7 @@ pub fn chat_plan(item: &WorkItem, fresh: bool, session_id: Option<&str>) -> Opti
     if sessions.iter().any(|s| ids.contains(&s.id) && s.live) {
         return Some(Plan { mode: Mode::Live, cwd: String::new(), argv: vec![], env: vec![] });
     }
-    let fresh_plan = || Plan { mode: Mode::Start, cwd: start_cwd(item), argv: command.clone(), env: vec![("QM_ITEM".into(), item.slug.clone())] };
+    let fresh_plan = || Plan { mode: Mode::Start, cwd: start_cwd(item), argv: command.iter().cloned().chain(prompt.map(String::from)).collect(), env: vec![("QM_ITEM".into(), item.slug.clone())] };
     if fresh {
         return Some(fresh_plan());
     }

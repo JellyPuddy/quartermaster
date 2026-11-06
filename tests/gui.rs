@@ -78,7 +78,7 @@ fn request(port: u16, method: &str, path: &str, headers: &[(&str, String)], body
 }
 
 fn shown(a: &Answer, port: u16) -> String {
-    let body = String::from_utf8_lossy(&a.body).replace(&port.to_string(), "PORT");
+    let body = String::from_utf8_lossy(&a.body).replace(&format!(":{port}"), ":PORT");
     let body = regex::Regex::new(r"let terminalToken = \x22[0-9a-f]{48}\x22").unwrap().replace_all(&body, "let terminalToken = TOKEN").into_owned();
     format!("{} | {} | {body}", a.status, a.content_type)
 }
@@ -2341,6 +2341,10 @@ fn workspace_world(base: &Path, live: bool) -> common::AttentionWorld {
     }
     git(repo, &["worktree", "add", base.join("wt-w").to_str().unwrap(), "feat-w"]);
     git(repo, &["worktree", "add", base.join("wt-st1").to_str().unwrap(), "st-1"]);
+    // st-1 moves after st-2 was built on it: st-2 needs a restack
+    fs::write(base.join("wt-st1/moved.txt"), "moved\n").unwrap();
+    git(&base.join("wt-st1"), &["add", "."]);
+    git(&base.join("wt-st1"), &["commit", "-q", "-m", "st-1 moved"]);
     fs::write(repo.join(".git/gh-stack"), serde_json::json!({"stacks": [{"trunk": {"branch": "main"}, "branches": [{"branch": "st-1"}, {"branch": "st-2"}]}]}).to_string()).unwrap();
     let tools = base.join("tools");
     let log = "\"${FAKE_TOOL_LOG}\"";
@@ -2537,5 +2541,121 @@ fn a_gui_on_a_throwaway_root_is_fenced_off_the_dev_server_and_runs_updates() {
     assert!(panes(1).contains("bin-update-proj"), "{}", panes(1));
     for side in 0..2 {
         tmux_on(&format!("qm-test-fence-{side}"), &["kill-server"]);
+    }
+}
+
+#[test]
+fn adopt_and_restack_start_or_type_into_chats_like_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let (base_a, base_b) = (base.path().join("a"), base.path().join("b"));
+    let (wa, wb) = (workspace_world(&base_a, false), workspace_world(&base_b, false));
+    for w in [&wa, &wb] {
+        for slug in ["w-two", "w-exist", "w-feat", "w-stack"] {
+            let p = w.root.join(format!("work-items/{slug}.md"));
+            let text = fs::read_to_string(&p).unwrap().replacen("---\n\n## Description", &format!("sessions:\n- id: sess-{slug}\n---\n\n## Description"), 1);
+            fs::write(&p, text).unwrap();
+        }
+        fs::write(w.root.join("work-items/w-stack2.md"), "---\nv: 1\ntitle: w-stack2\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\nbranches:\n- st-1\nsessions:\n- id: sess-w-stack2\n---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n").unwrap();
+        // a chat's transcript with a background agent still out
+        let transcript = w.transcripts.join("p/sess-w-stack2.jsonl");
+        fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+        fs::write(&transcript, format!("{}\n", serde_json::json!({"type": "user", "timestamp": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true), "toolUseResult": {"status": "async_launched", "agentId": "bg-1", "description": "the long job"}}))).unwrap();
+    }
+    let chat = base.path().join("fake-chat");
+    executable(&chat, "#!/bin/sh\nprintf '{\"v\":1,\"event\":\"start\",\"session_id\":\"sess-%s\",\"cwd\":\"%s\",\"pid\":%s,\"transcript_path\":\"%s/sess-%s.jsonl\",\"ts\":\"%s\"}\\n' \"$QM_ITEM\" \"$(pwd)\" \"$$\" \"$QM_TRANSCRIPTS_DIR/p\" \"$QM_ITEM\" \"$(date -u +%FT%TZ)\" >> \"$QM_ROOT/sessions.jsonl\"\necho \"started in $(pwd) with: $*\" > \"$FAKE_REC/start-$QM_ITEM\"\nwhile read -r line; do echo \"$line\" >> \"$FAKE_REC/typed-$QM_ITEM\"; done\n");
+    let recs = [base_a.join("rec"), base_b.join("rec")];
+    for r in &recs {
+        fs::create_dir_all(r).unwrap();
+    }
+    let env_for = |w: &common::AttentionWorld, side: usize| -> Vec<(&'static str, String)> {
+        let base = if side == 0 { &base_a } else { &base_b };
+        vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("PATH", format!("{}:{}", w.bin.display(), std::env::var("PATH").unwrap())), ("QM_TMUX_SOCKET", format!("qm-test-adopt-{side}")), ("QM_CHAT_COMMAND", chat.display().to_string()), ("FAKE_REC", recs[side].display().to_string()), ("QM_ROOT", w.root.display().to_string()), ("FAKE_BASE", base.display().to_string())]
+    };
+    for side in 0..2 {
+        tmux_on(&format!("qm-test-adopt-{side}"), &["kill-server"]);
+    }
+    let ruby = start_env(false, &wa.root, &wa.home, &env_for(&wa, 0));
+    let rust = start_env(true, &wb.root, &wb.home, &env_for(&wb, 1));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let norm = |text: String, side: usize| text.replace(&(if side == 0 { &base_a } else { &base_b }).display().to_string(), "BASE");
+    let post = |server: &Server, body: &str| String::from_utf8_lossy(&request(server.port, "POST", "/api/action", &origin, body, true).body).into_owned();
+    let act = |cmd: &str, slug: &str, args: &str| format!("{{\"cmd\":\"{cmd}\",\"slug\":\"{slug}\",\"args\":{args}}}");
+    let mut step = |label: &str, make: &dyn Fn(&Path) -> String, wait_for: Option<&str>| -> String {
+        let (a, b) = (post(&ruby, &make(&base_a)), post(&rust, &make(&base_b)));
+        assert_eq!(norm(a.clone(), 0), norm(b.clone(), 1), "{label}: reply");
+        if let Some(file) = wait_for {
+            for _ in 0..100 {
+                if recs[0].join(file).exists() && recs[1].join(file).exists() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(700));
+        }
+        let record = |side: usize| {
+            let mut all: Vec<String> = fs::read_dir(&recs[side]).unwrap().map(|e| {
+                let p = e.unwrap().path();
+                format!("{}: {}", p.file_name().unwrap().to_string_lossy(), fs::read_to_string(&p).unwrap_or_default())
+            }).collect();
+            all.sort();
+            norm(all.join(""), side)
+        };
+        assert_eq!(record(0), record(1), "{label}: what the chats saw");
+        let panes = |side: usize| tmux_on(&format!("qm-test-adopt-{side}"), &["list-sessions", "-F", "#{session_name}"]);
+        assert_eq!(panes(0), panes(1), "{label}: tmux");
+        norm(a, 0)
+    };
+    let wt = |base: &Path| format!("{}/wt-w", base.display());
+    step("adopt starts a chat", &|b| act("adopt", "w-exist", &format!("{{\"worktree\":\"{}\"}}", wt(b))), Some("start-w-exist"));
+    step("adopt the main checkout", &|b| act("adopt", "w-main", &format!("{{\"worktree\":\"{}/repo\"}}", b.display())), None);
+    step("adopt what is no worktree", &|b| act("adopt", "w-main", &format!("{{\"worktree\":\"{}\"}}", b.join("tools").display())), None);
+    step("adopt without a root", &|b| act("adopt", "w-none", &format!("{{\"worktree\":\"{}\"}}", wt(b))), None);
+    step("adopt for a missing item", &|b| act("adopt", "nowhere", &format!("{{\"worktree\":\"{}\"}}", wt(b))), None);
+    step("restack starts a chat", &|_| act("restack", "w-stack", "{}"), Some("start-w-stack"));
+    step("restack names a branch", &|_| act("restack", "w-stack", r#"{"branch":"st-2"}"#), None);
+    step("restack a branch in no stack", &|_| act("restack", "w-stack", r#"{"branch":"zzz"}"#), None);
+    step("restack without a stack", &|_| act("restack", "w-main", "{}"), None);
+    // a chat that is running: typed into once it is the user's turn
+    step("open a chat", &|_| act("pane-start", "w-two", "{}"), Some("start-w-two"));
+    let events = |side: usize, text: &str| {
+        let root = if side == 0 { &wa.root } else { &wb.root };
+        let mut f = fs::OpenOptions::new().append(true).create(true).open(root.join("events.jsonl")).unwrap();
+        use std::io::Write;
+        f.write_all(text.as_bytes()).unwrap();
+    };
+    let event = |name: &str, session: &str| format!("{{\"v\":1,\"ts\":\"{}\",\"event\":\"{name}\",\"session_id\":\"{session}\"}}\n", chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
+    for side in 0..2 {
+        events(side, &event("UserPromptSubmit", "sess-w-two"));
+    }
+    step("restack while the chat works", &|_| act("restack", "w-two", "{}"), None);
+    step("adopt while the chat works", &|b| act("adopt", "w-two", &format!("{{\"worktree\":\"{}\"}}", wt(b))), None);
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    for side in 0..2 {
+        events(side, &event("Stop", "sess-w-two"));
+    }
+    step("adopt types into the chat", &|b| act("adopt", "w-two", &format!("{{\"worktree\":\"{}\"}}", wt(b))), Some("typed-w-two"));
+    let typed = fs::read_to_string(recs[1].join("typed-w-two")).unwrap_or_default();
+    assert!(typed.contains("/adopt-worktree "), "{typed}");
+    for side in 0..2 {
+        events(side, &event("Stop", "sess-w-stack"));
+    }
+    step("restack types into the chat", &|_| act("restack", "w-stack", "{}"), Some("typed-w-stack"));
+    let typed = fs::read_to_string(recs[1].join("typed-w-stack")).unwrap_or_default();
+    assert!(typed.contains("Restack the gh-stack main ← st-1 ← st-2") && typed.contains("behind their parent: st-2"), "{typed}");
+    // its report would land on top of the prompt while background work is out
+    step("open a chat with work out", &|_| act("pane-start", "w-stack2", "{}"), Some("start-w-stack2"));
+    for side in 0..2 {
+        events(side, &event("Stop", "sess-w-stack2"));
+    }
+    let waiting = step("restack while work is out", &|_| act("restack", "w-stack2", "{}"), None);
+    assert!(waiting.contains("waiting on background work (the long job)"), "{waiting}");
+    step("adopt while work is out", &|b| act("adopt", "w-stack2", &format!("{{\"worktree\":\"{}\"}}", wt(b))), Some("typed-w-stack2"));
+    // a chat that waits on the user's permission is mid-turn too
+    for side in 0..2 {
+        events(side, &event("PermissionRequest", "sess-w-exist"));
+    }
+    step("adopt while the chat is blocked", &|b| act("adopt", "w-exist", &format!("{{\"worktree\":\"{}\"}}", wt(b))), None);
+    for side in 0..2 {
+        tmux_on(&format!("qm-test-adopt-{side}"), &["kill-server"]);
     }
 }

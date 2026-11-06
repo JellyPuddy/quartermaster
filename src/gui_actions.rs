@@ -222,6 +222,8 @@ fn run(payload: &Value) -> R<Value> {
         "loose-promote" => loose_promote(&args),
         "loose-close" => loose_close(&args),
         "cleanup" => cleanup(&args),
+        "adopt" => adopt(&slug, &args),
+        "restack" => restack(&slug, &args),
         "work-on" | "pf-switch" | "ide" | "terminal" => workspace_job(&cmd, &slug, &args),
         "pf-stop" => Ok(crate::gui_jobs::background("pf", "stopping the dev server…", true, || match crate::workspace::stop_pf() {
             Ok(message) => Ok(json!({"ok": true, "message": message})),
@@ -384,6 +386,123 @@ fn loose_start(args: &Args) -> R<Value> {
     match crate::tmux::Tmux::new().open(&name, &cwd, &argv, &[("QM_LOOSE".to_string(), id.clone()), ("QM_ITEM".to_string(), String::new())]) {
         Ok(_) => Ok(json!({"ok": true, "name": name, "id": id})),
         Err(message) => Err(fail(message)),
+    }
+}
+
+/// The running chat of an item, if any: its newest live session's turn.
+fn live_turn(item: &WorkItem) -> Option<crate::chat_attention::Turn> {
+    let session = crate::session_log::SessionLog::read().item_sessions(item).ok()?.into_iter().find(|s| s.live)?;
+    Some(crate::chat_attention::ChatAttention::new().turn_for(&session))
+}
+
+fn refuse_mid_turn(item: &WorkItem) -> R<()> {
+    if let Some(turn) = live_turn(item) {
+        if turn.state == "working" || turn.state == "blocked" {
+            return Err(fail(format!("{}'s chat is mid-turn ({}) — try again once it is your turn", item.slug, turn.state)));
+        }
+    }
+    Ok(())
+}
+
+/// Background work out: the turn has ended, but its report would land on top of a typed prompt.
+fn refuse_waiting(item: &WorkItem) -> R<()> {
+    if let Some(turn) = live_turn(item) {
+        if turn.state == "waiting" {
+            let on: Vec<String> = turn.waiting_on.unwrap_or_default().into_iter().map(Option::unwrap_or_default).collect();
+            return Err(fail(format!("{}'s chat is waiting on background work ({}) — try again once it has reported back", item.slug, on.join(", "))));
+        }
+    }
+    Ok(())
+}
+
+/// Types a line into the item's chat pane and submits it, once it is the user's turn.
+fn type_into_chat(item: &WorkItem, text: &str) -> R<Value> {
+    refuse_mid_turn(item)?;
+    let tmux = crate::tmux::Tmux::new();
+    let cannot = || fail(format!("could not type into {}'s chat", item.slug));
+    if !tmux.send_text(&item.slug, text) {
+        return Err(cannot());
+    }
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    if !tmux.send_enter(&item.slug) {
+        return Err(cannot());
+    }
+    Ok(json!({"ok": true, "attached": true}))
+}
+
+/// Adopt hands the worktree to the /adopt-worktree skill in the item's chat: typed into a chat in the
+/// pane, or a fresh chat started with it as its first prompt in the main checkout.
+fn adopt(slug: &str, args: &Args) -> R<Value> {
+    let item = find(slug)?;
+    let project = item.project();
+    let root = crate::project_map::root_for(project.as_deref()).ok_or_else(|| fail(format!("no repo root configured for project '{}'", project.clone().unwrap_or_default())))?;
+    let main = crate::data_root::expand_path(&root).to_string_lossy().into_owned();
+    let path = crate::data_root::expand_path(&args.text("worktree")?).to_string_lossy().into_owned();
+    let shown = crate::cli_format::short_path(Some(&path));
+    if path == main {
+        return Err(fail(format!("{shown} is the main checkout — nothing to adopt")));
+    }
+    let Some((branch, _)) = crate::branch_diff::branch_worktrees(&main).into_iter().find(|(_, p)| *p == path) else {
+        return Err(fail(format!("{shown} is not a worktree of {}", project.unwrap_or_default())));
+    };
+    let prompt = format!("/adopt-worktree {path}");
+    let tmux = crate::tmux::Tmux::new();
+    if tmux.live(slug) {
+        return type_into_chat(&item, &prompt);
+    }
+    let plan = crate::launcher::chat_plan(&item, true, None, None).ok_or(Stop::Unported)?;
+    if matches!(plan.mode, crate::launcher::Mode::Live) {
+        return Err(fail(format!("{slug} has a chat running outside the GUI — adopt from there, or end it first")));
+    }
+    let argv: Vec<String> = plan.argv.iter().cloned().chain([prompt]).collect();
+    match tmux.open(slug, &main, &argv, &plan.env) {
+        Ok(_) => Ok(json!({"ok": true, "mode": "start", "branch": branch})),
+        Err(m) => Err(fail(m)),
+    }
+}
+
+/// One line: typed into a pane, each newline would submit.
+fn restack_prompt(chain: &Value) -> String {
+    let layers = chain["layers"].as_array().cloned().unwrap_or_default();
+    let name = |l: &Value| l["branch"].as_str().unwrap_or("").to_string();
+    let branches: Vec<String> = layers.iter().map(name).collect();
+    let behind: Vec<String> = layers.iter().filter(|l| l["needsRestack"].as_bool().unwrap_or(false)).map(name).collect();
+    let status = if behind.is_empty() { "no layer is flagged as behind its parent".to_string() } else { format!("behind their parent: {}", behind.join(", ")) };
+    let trunk = chain["trunk"].as_str().unwrap_or("");
+    format!("Restack the gh-stack {trunk} ← {} (bottom → top; {status}) with `gh stack rebase` (see the gh-stack skill). Resolve the conflicts it hits, or stop and report any you can't resolve safely.", branches.join(" ← "))
+}
+
+/// The ⟳ chip, only ever on the user's click: the item's chat restacks with gh-stack — qm itself never
+/// runs git or gh for it.
+fn restack(slug: &str, args: &Args) -> R<Value> {
+    let item = find(slug)?;
+    let branch = presence_of(args, "branch")?;
+    let empty = serde_json::Map::new();
+    let stacks: Vec<Value> = crate::gh_stack::chains(&item, &empty, &empty).into_iter().filter(|c| c["kind"] == "stack").collect();
+    let has = |c: &Value, b: &str| c["layers"].as_array().is_some_and(|l| l.iter().any(|x| x["branch"] == b));
+    let chain = match &branch {
+        Some(b) => stacks.iter().find(|c| has(c, b)),
+        None => stacks.first(),
+    };
+    let Some(chain) = chain else {
+        return Err(fail(match &branch {
+            Some(b) => format!("{b} is in none of {slug}'s stacks"),
+            None => format!("{slug} has no stack to restack"),
+        }));
+    };
+    let prompt = restack_prompt(chain);
+    let tmux = crate::tmux::Tmux::new();
+    if tmux.live(slug) {
+        refuse_waiting(&item)?;
+        return type_into_chat(&item, &prompt);
+    }
+    let plan = crate::launcher::chat_plan(&item, true, None, Some(&prompt)).ok_or(Stop::Unported)?;
+    if matches!(plan.mode, crate::launcher::Mode::Live) {
+        return Err(fail(format!("{slug} has a chat running outside the GUI — restack from there, or end it first")));
+    }
+    match tmux.open(slug, &plan.cwd, &plan.argv, &plan.env) {
+        Ok(_) => Ok(json!({"ok": true, "mode": "start"})),
+        Err(m) => Err(fail(m)),
     }
 }
 
@@ -604,7 +723,7 @@ fn pane(slug: &str, fresh: bool, args: &Args) -> R<Value> {
         let given = args.text("session")?;
         (!strip(&given).is_empty()).then_some(given)
     };
-    let plan = crate::launcher::chat_plan(&item, fresh, session.as_deref()).ok_or(Stop::Unported)?;
+    let plan = crate::launcher::chat_plan(&item, fresh, session.as_deref(), None).ok_or(Stop::Unported)?;
     if matches!(plan.mode, crate::launcher::Mode::Live) {
         return Err(fail(format!("{slug} has a chat running outside the GUI — take it over here once it ends")));
     }
