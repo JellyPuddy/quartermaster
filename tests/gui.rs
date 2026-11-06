@@ -2469,7 +2469,7 @@ fn the_workspace_jobs_match_ruby() {
     run("the dev server will not stop", act("pf-stop", "", "{}"));
     fail("devsrv", false);
     let seen = got_rust.join("\n");
-    for needle in ["devsrv tunnel @", "created worktree", "FakeIDE opened", "Opened Warp tab", "stack top st-2 has no worktree", "mode must be one of", "devsrv exploded", "ide refused", "no database", "could not open a Warp tab", "devsrv stopped", "tdb prepare", "worktrees/origin-only for origin-only"] {
+    for needle in ["devsrv tunnel @", "created worktree", "FakeIDE opened", "Opened Warp tab", "mode must be one of", "devsrv exploded", "ide refused", "no database", "could not open a Warp tab", "devsrv stopped", "tdb prepare", "worktrees/origin-only for origin-only"] {
         let found = seen.contains(needle) || fs::read_to_string(&logs[1]).unwrap_or_default().contains(needle);
         assert!(found, "the world should reach {needle}: {seen}");
     }
@@ -3098,5 +3098,59 @@ fn the_issues_routes_match_ruby() {
     }
     for needle in ["\"repo\":\"acme/widgets\"", "\"repo\":null", "\"acknowledged\":true", "\"previous\":{\"title\":\"Before\"", "\"deps\":[\"one\",\"2\"]", "\"group\":\"auth\"", "kind must be feature or bug", "no frontmatter", "title is missing", "\"created\":true", "no work item", "\"state\":\"resolved\""] {
         assert!(seen.contains(needle), "the world should reach {needle}: {seen}");
+    }
+}
+
+#[test]
+fn the_workspace_route_matches_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let (base_a, base_b) = (base.path().join("a"), base.path().join("b"));
+    let (wa, wb) = (workspace_world(&base_a, false), workspace_world(&base_b, false));
+    for w in [&wa, &wb] {
+        fs::write(w.root.join("work-items/w-nochat.md"), "---\nv: 1\ntitle: w-nochat\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\nbranches:\n- st-1\n---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n").unwrap();
+    }
+    let socks = ["qm-test-wsr-0", "qm-test-wsr-1"];
+    for (i, b) in [&base_a, &base_b].iter().enumerate() {
+        tmux_on(socks[i], &["kill-server"]);
+        // a chat running in a worktree, one in the stack's bottom worktree
+        for (name, dir) in [("w-exist", "wt-w"), ("w-stack", "wt-st1"), ("w-nochat", "repo")] {
+            for _ in 0..50 {
+                tmux_on(socks[i], &["new-session", "-d", "-s", name, "-c", b.join(dir).to_str().unwrap(), "sleep 300"]);
+                if tmux_on(socks[i], &["list-sessions", "-F", "#{session_name}"]).contains(name) {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        }
+    }
+    let env_for = |w: &common::AttentionWorld, side: usize| -> Vec<(&'static str, String)> {
+        let base = if side == 0 { &base_a } else { &base_b };
+        vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("PATH", format!("{}:{}:{}", base.join("tools").display(), w.bin.display(), std::env::var("PATH").unwrap())), ("QM_TMUX_SOCKET", socks[side].to_string())]
+    };
+    let ruby = start_env(false, &wa.root, &wa.home, &env_for(&wa, 0));
+    let rust = start_env(true, &wb.root, &wb.home, &env_for(&wb, 1));
+    let norm = |text: String, side: usize| text.replace(&(if side == 0 { &base_a } else { &base_b }).display().to_string(), "BASE");
+    let mut seen = String::new();
+    let mut paths: Vec<String> = ["w-exist", "w-feat", "w-slash", "w-origin", "w-stack", "w-main", "w-two", "w-plain", "w-none", "w-nochat", "nowhere"].iter().map(|s| format!("/api/workspace/{s}")).collect();
+    for (slug, branch) in [("w-two", "feat-a"), ("w-two", "feat-w"), ("w-two", "main"), ("w-stack", "st-2"), ("w-stack", "st-1"), ("w-exist", ""), ("w-exist", "nope")] {
+        paths.push(format!("/api/workspace/{slug}?branch={branch}"));
+    }
+    paths.push("/api/workspace/w-stack".to_string());
+    for path in &paths {
+        let (a, b) = (request(ruby.port, "GET", path, &[], "", true), request(rust.port, "GET", path, &[], "", true));
+        assert_eq!(norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1), "{path}");
+        seen += &norm(String::from_utf8_lossy(&a.body).into_owned(), 0);
+    }
+    let items = |w: &common::AttentionWorld, side: usize| {
+        let mut t = String::new();
+        tree_text(&w.root.join("work-items"), "items", &mut t);
+        norm(t, side)
+    };
+    assert_eq!(items(&wa, 0), items(&wb, 1), "the stack's branches are linked as Ruby links them");
+    for needle in ["\"devServer\":{", "\"ide\":{\"label\":\"FakeIDE\"", "\"create\":true", "\"alternatives\":[{", "\"chatBranch\":\"feat-w\"", "\"defaultBranch\":\"st-1\"", "\"defaultBranch\":\"st-2\"", "not linked to", "\"devServer\":null", "no work item"] {
+        assert!(seen.contains(needle), "the world should reach {needle}: {seen}");
+    }
+    for s in socks {
+        tmux_on(s, &["kill-server"]);
     }
 }

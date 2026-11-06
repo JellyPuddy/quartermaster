@@ -22,6 +22,8 @@ pub struct Target {
     pub branch: Option<String>,
     pub create: bool,
     pub warning: Option<String>,
+    /// The item's other branches with a worktree, offered instead.
+    pub alternatives: Vec<(String, String)>,
 }
 
 pub struct Report {
@@ -81,7 +83,7 @@ pub fn resolve(item: &mut WorkItem, worktree: Option<&str>, branch: Option<&str>
         if !Path::new(&path).is_dir() {
             return Err(format!("no such worktree: {path}"));
         }
-        return Ok(Target { path, branch: None, create: false, warning: None });
+        return Ok(Target { path, branch: None, create: false, warning: None, alternatives: vec![] });
     }
     let project = item.project();
     let root = root_for(project.as_deref())?;
@@ -92,29 +94,31 @@ pub fn resolve(item: &mut WorkItem, worktree: Option<&str>, branch: Option<&str>
     let with_worktree: Vec<(String, String)> = branches.iter().rev().filter_map(|b| lookup(&out, b).map(|p| (b.clone(), p.clone()))).collect();
     if let Some(branch) = branch {
         require_linked(item, branch)?;
+        let alternatives: Vec<(String, String)> = with_worktree.iter().filter(|(b, _)| b != branch).cloned().collect();
         return Ok(match lookup(&out, branch) {
-            Some(path) => Target { path: path.clone(), branch: Some(branch.to_string()), create: false, warning: None },
-            None => Target { path: new_worktree_path(&root, branch), branch: Some(branch.to_string()), create: true, warning: None },
+            Some(path) => Target { path: path.clone(), branch: Some(branch.to_string()), create: false, warning: None, alternatives: alternatives.clone() },
+            None => Target { path: new_worktree_path(&root, branch), branch: Some(branch.to_string()), create: true, warning: None, alternatives },
         });
     }
     // the stack holding the most recently linked stacked branch
     let stack = branches.iter().rev().find_map(|b| stacks.stacks_for(std::slice::from_ref(b)).into_iter().next());
     if let Some(stack) = stack {
         let top = stack.entries.last().map(|e| e.branch.clone()).unwrap_or_default();
+        let alternatives: Vec<(String, String)> = with_worktree.iter().filter(|(b, _)| *b != top).cloned().collect();
         if let Some(path) = lookup(&out, &top) {
-            return Ok(Target { path: path.clone(), branch: Some(top), create: false, warning: None });
+            return Ok(Target { path: path.clone(), branch: Some(top), create: false, warning: None, alternatives });
         }
         let siblings: Vec<String> = stack.entries.iter().filter_map(|e| lookup(&out, &e.branch).map(|p| format!("{} ({})", e.branch, short_path(Some(p))))).collect();
         let warning = (!siblings.is_empty()).then(|| format!("stack top {top} has no worktree; only {} does — a new worktree is created for the top instead of checking it out there", siblings.join(", ")));
-        return Ok(Target { path: new_worktree_path(&root, &top), branch: Some(top), create: true, warning });
+        return Ok(Target { path: new_worktree_path(&root, &top), branch: Some(top), create: true, warning, alternatives });
     }
     if let Some((branch, path)) = with_worktree.first() {
-        return Ok(Target { path: path.clone(), branch: Some(branch.clone()), create: false, warning: None });
+        return Ok(Target { path: path.clone(), branch: Some(branch.clone()), create: false, warning: None, alternatives: with_worktree[1..].to_vec() });
     }
     if let Some(branch) = branches.iter().rev().find(|b| !MAINLINE_BRANCHES.contains(&b.as_str())) {
-        return Ok(Target { path: new_worktree_path(&root, branch), branch: Some(branch.clone()), create: true, warning: None });
+        return Ok(Target { path: new_worktree_path(&root, branch), branch: Some(branch.clone()), create: true, warning: None, alternatives: vec![] });
     }
-    Ok(Target { path: root, branch: None, create: false, warning: None })
+    Ok(Target { path: root, branch: None, create: false, warning: None, alternatives: vec![] })
 }
 
 fn run_checked(argv: &[&str], label: &str, chdir: &str) -> Result<(), Failed> {

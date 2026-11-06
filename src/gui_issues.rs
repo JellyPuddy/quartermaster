@@ -80,3 +80,43 @@ pub fn index() -> Option<Value> {
     entries.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)).then(a.3.cmp(&b.3)));
     Some(json!({"ok": true, "items": entries.into_iter().map(|e| e.4).collect::<Vec<_>>()}))
 }
+
+/// `Gui#workspace_payload`: where "work on this" would land, for the side panel: the target, the item's
+/// dev server and IDE, the branch the chat runs on and the default selection. Creates nothing.
+pub fn workspace(slug: &str, query: Option<&str>, params: &serde_json::Map<String, Value>) -> Option<Value> {
+    let _ = query;
+    let failed = |class: &str, message: String| {
+        if class != "ArgumentError" {
+            data_root::log_error("gui-workspace", class, &message);
+        }
+        Some(json!({"ok": false, "error": message}))
+    };
+    let mut item = match WorkItem::find(slug) {
+        Ok(i) => i,
+        Err(e) => return failed(e.class, e.message),
+    };
+    let picked = params.get("branch").and_then(Value::as_str).unwrap_or("").to_string();
+    let chat_branch = crate::branch_diff::chat_branch(&item);
+    let empty = serde_json::Map::new();
+    let chains = crate::gh_stack::chains(&item, &empty, &empty);
+    let in_chain = chat_branch.as_ref().is_some_and(|b| chains.iter().any(|c| c["layers"].as_array().is_some_and(|l| l.iter().any(|x| x["branch"] == b.as_str()))));
+    let default = if in_chain { chat_branch.clone() } else { chains.first().and_then(|c| c["layers"].as_array()).and_then(|l| l.last()).and_then(|l| l["branch"].as_str()).map(String::from) };
+    let branch = if picked.is_empty() { default.clone() } else { Some(picked) };
+    let target = match crate::workspace::resolve(&mut item, None, branch.as_deref()) {
+        Ok(t) => t,
+        Err(m) => return Some(json!({"ok": false, "error": m})),
+    };
+    let config = crate::project_config::ProjectConfig::current();
+    let project = item.project();
+    let server = config.settings(project.as_deref()).and_then(|s| s.dev_server.as_ref());
+    let short = |p: &str| crate::cli_format::short_path(Some(p));
+    let alternatives: Vec<Value> = target.alternatives.iter().map(|(b, p)| json!({"branch": b, "path": p, "short": short(p)})).collect();
+    Some(json!({
+        "ok": true,
+        "devServer": server.map(|s| json!({"command": s.command, "modes": s.modes, "mode": item.pf_mode()})),
+        "ide": config.ide(project.as_deref()).map(|i| json!({"label": i.label, "command": i.command})),
+        "root": crate::project_map::root_for(project.as_deref()),
+        "target": {"path": target.path, "short": short(&target.path), "branch": target.branch, "create": target.create, "warning": target.warning, "alternatives": alternatives},
+        "chatBranch": chat_branch, "defaultBranch": default
+    }))
+}

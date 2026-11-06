@@ -316,6 +316,12 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
                 Err(_) => text_reply("501 Not Implemented", "not ported yet: this state (status boards, benchmarks, loose chats, build progress)"),
             };
         }
+        if let Some(slug) = route.strip_prefix("/api/workspace/") {
+            return match crate::gui_issues::workspace(slug, query, &params(query)) {
+                Some(v) => json_reply(v),
+                None => text_reply("501 Not Implemented", "not ported yet: this workspace"),
+            };
+        }
         if route == "/api/issues" {
             return match crate::gui_issues::index() {
                 Some(v) => json_reply(v),

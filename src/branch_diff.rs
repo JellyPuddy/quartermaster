@@ -112,6 +112,11 @@ fn chat_cwd(item: &WorkItem) -> String {
     (tmux.live(&item.slug).then(|| tmux.pane_path(&item.slug)).flatten()).unwrap_or_else(|| start_cwd(item))
 }
 
+pub(crate) fn chat_branch(item: &WorkItem) -> Option<String> {
+    let path = chat_checkout(item)?;
+    g(&path, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+}
+
 fn chat_checkout(item: &WorkItem) -> Option<String> {
     g(&chat_cwd(item), &["rev-parse", "--show-toplevel"])
 }
