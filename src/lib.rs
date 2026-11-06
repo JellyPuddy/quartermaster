@@ -5,6 +5,7 @@ pub mod background_jobs;
 pub mod cli;
 pub mod command_runner;
 pub mod cli_format;
+pub mod caffeinate;
 pub mod chat_attention;
 pub mod chats_commands;
 pub mod branch_diff;

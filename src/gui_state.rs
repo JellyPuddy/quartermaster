@@ -92,7 +92,7 @@ pub fn pulse() -> String {
     let mut parts = vec![size(data_root::root().join("events.jsonl")), size(SessionLog::path())];
     parts.extend(MID_TURN.lock().unwrap().iter().map(|p| size(p.into())));
     let mut out: Vec<String> = parts.iter().map(u64::to_string).collect();
-    out.extend(["0".to_string(), drafts::signature(), issue_drafts::signature(), "0".to_string()]);
+    out.extend([if crate::caffeinate::status()["on"] == true { "1" } else { "0" }.to_string(), drafts::signature(), issue_drafts::signature(), "0".to_string()]);
     out.join(":")
 }
 
@@ -504,7 +504,7 @@ pub fn build(token: &str) -> R<Value> {
         ("panes", json!(panes)),
         ("terminalToken", json!(token)),
         ("asideModels", json!(["sonnet", "opus", "haiku"])),
-        ("caffeinate", json!({"on": false, "pid": null, "mode": "off"})),
+        ("caffeinate", crate::caffeinate::status()),
         ("benchmark", Value::Null),
         ("notifications", json!([])),
         ("rateLimits", rate_limits()),

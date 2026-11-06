@@ -222,6 +222,7 @@ fn run(payload: &Value) -> R<Value> {
         "loose-promote" => loose_promote(&args),
         "loose-close" => loose_close(&args),
         "cleanup" => cleanup(&args),
+        "caffeinate" => caffeinate(&args),
         "adopt" => adopt(&slug, &args),
         "restack" => restack(&slug, &args),
         "work-on" | "pf-switch" | "ide" | "terminal" => workspace_job(&cmd, &slug, &args),
@@ -387,6 +388,30 @@ fn loose_start(args: &Args) -> R<Value> {
         Ok(_) => Ok(json!({"ok": true, "name": name, "id": id})),
         Err(message) => Err(fail(message)),
     }
+}
+
+/// Any live session, linked or not, mid-turn or with background jobs out (`sessions_busy?`).
+pub fn sessions_busy() -> bool {
+    let log = crate::session_log::SessionLog::read();
+    let mut attention = crate::chat_attention::ChatAttention::new();
+    log.sessions().iter().filter(|s| s.live).any(|s| matches!(attention.turn_for(s).state.as_str(), "working" | "waiting"))
+}
+
+/// The ☕ toggle, and `qm caffeinate on|off|auto|status` from the CLI.
+fn caffeinate(args: &Args) -> R<Value> {
+    let failed = |m: String| {
+        data_root::log_error("gui-action", "Errno::ENOENT", &m);
+        fail(m)
+    };
+    let status = match args.get("mode")? {
+        Value::String(m) if m == "on" => crate::caffeinate::on().map_err(failed)?,
+        Value::String(m) if m == "off" => crate::caffeinate::off(),
+        Value::String(m) if m == "auto" => crate::caffeinate::auto(sessions_busy()).map_err(failed)?,
+        Value::String(m) if m == "status" => crate::caffeinate::status(),
+        Value::Null => crate::caffeinate::status(),
+        _ => return Err(fail("caffeinate: mode must be on, off, auto or status")),
+    };
+    Ok(json!({"ok": true, "caffeinate": status}))
 }
 
 /// The running chat of an item, if any: its newest live session's turn.

@@ -2086,7 +2086,7 @@ fn the_loose_chat_actions_match_ruby() {
     }
     // what is not read as Ruby does, and typing into the chat, stay Ruby's: nothing is written
     let before = action_traces(&root2, &w.root);
-    for body in [act("loose-promote", r#"{"id":"x","title":"y","tell":true}"#), act("loose-start", r#"{"starter":"dev"}"#), act("loose-start", r#"{"model":"é"}"#), act("caffeinate", r#"{"mode":"on"}"#)] {
+    for body in [act("loose-promote", r#"{"id":"x","title":"y","tell":true}"#), act("loose-start", r#"{"starter":"dev"}"#), act("loose-start", r#"{"model":"é"}"#), act("rotate", r#"{"slug":"x"}"#)] {
         let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
         assert!(a.status.starts_with("501"), "{body}: {}", a.status);
     }
@@ -2658,4 +2658,62 @@ fn adopt_and_restack_start_or_type_into_chats_like_ruby() {
     for side in 0..2 {
         tmux_on(&format!("qm-test-adopt-{side}"), &["kill-server"]);
     }
+}
+
+#[test]
+fn caffeinate_answers_as_ruby_does_without_the_program() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let env: Vec<(&str, String)> = vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string())];
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let ruby = start_env(false, &w.root, &w.home, &env);
+    let rust = start_env(true, &root2, &w.home, &env);
+    let local = [("Content-Type", "application/json".to_string())];
+    let state = |s: &Server| -> serde_json::Value { serde_json::from_slice(&request(s.port, "GET", "/api/state", &[], "", true).body).unwrap() };
+    let log = |root: &Path| fs::read_to_string(root.join("qm.log")).unwrap_or_default().lines().map(|l| l.splitn(2, ' ').nth(1).unwrap_or("").to_string()).collect::<Vec<_>>();
+    for (label, args) in [("status", r#"{"mode":"status"}"#), ("no mode", "{}"), ("off", r#"{"mode":"off"}"#), ("a bad mode", r#"{"mode":"sometimes"}"#), ("a number", r#"{"mode":5}"#), ("null", r#"{"mode":null}"#), ("auto with nothing busy", r#"{"mode":"auto"}"#), ("on without the program", r#"{"mode":"on"}"#), ("status after", r#"{"mode":"status"}"#), ("auto again", r#"{"mode":"auto"}"#), ("off again", r#"{"mode":"off"}"#)] {
+        let body = format!("{{\"cmd\":\"caffeinate\",\"slug\":null,\"args\":{args}}}");
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &local, &body, true), request(rust.port, "POST", "/api/action", &local, &body, true));
+        assert_eq!(shown(&a, ruby.port), shown(&b, rust.port), "{label}");
+        assert_eq!(state(&ruby)["caffeinate"], state(&rust)["caffeinate"], "{label}: the state's caffeinate");
+        assert_eq!(log(&w.root), log(&root2), "{label}: qm.log");
+    }
+    assert!(log(&root2).iter().any(|l| l.contains("No such file or directory - /usr/bin/caffeinate")), "{:?}", log(&root2));
+}
+
+#[test]
+fn caffeinate_holds_one_child_of_the_gui_and_ends_it() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let fake = base.path().join("fake-caffeinate");
+    executable(&fake, &format!("#!/bin/sh\necho \"$*\" > \"{}/args\"\nexec sleep 300\n", base.path().display()));
+    let env: Vec<(&str, String)> = vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("QM_CAFFEINATE_BINARY", fake.display().to_string())];
+    let rust = start_env(true, &w.root, &w.home, &env);
+    let local = [("Content-Type", "application/json".to_string())];
+    let mode = |m: &str| -> serde_json::Value { serde_json::from_slice(&request(rust.port, "POST", "/api/action", &local, &format!("{{\"cmd\":\"caffeinate\",\"slug\":null,\"args\":{{\"mode\":\"{m}\"}}}}"), true).body).unwrap() };
+    let alive = |pid: i64| Command::new("kill").args(["-0", &pid.to_string()]).output().unwrap().status.success() && !fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default().contains(") Z");
+    let first = mode("on");
+    let pid = first["caffeinate"]["pid"].as_i64().expect("a pid");
+    assert_eq!(first["caffeinate"]["mode"], "on");
+    assert!(alive(pid));
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert_eq!(fs::read_to_string(base.path().join("args")).unwrap().trim(), format!("-i -w {}", rust.child.id()));
+    assert_eq!(mode("on")["caffeinate"]["pid"].as_i64(), Some(pid), "a second on keeps the child");
+    let state: serde_json::Value = serde_json::from_slice(&request(rust.port, "GET", "/api/state", &[], "", true).body).unwrap();
+    assert_eq!(state["caffeinate"]["pid"].as_i64(), Some(pid));
+    assert!(state["pulse"].as_str().unwrap().split(':').any(|p| p == "1"));
+    let off = mode("off");
+    assert_eq!((off["caffeinate"]["on"].as_bool(), off["caffeinate"]["mode"].as_str()), (Some(false), Some("off")));
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert!(!alive(pid), "off ends the child");
+    // a child killed from outside reads as off
+    let pid = mode("on")["caffeinate"]["pid"].as_i64().unwrap();
+    Command::new("kill").args(["-9", &pid.to_string()]).output().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert_eq!(mode("status")["caffeinate"]["on"], false);
+    // auto holds only while a session is busy: nothing is, so it holds nothing
+    let auto = mode("auto");
+    assert_eq!((auto["caffeinate"]["on"].as_bool(), auto["caffeinate"]["mode"].as_str()), (Some(false), Some("auto")));
+    mode("off");
 }

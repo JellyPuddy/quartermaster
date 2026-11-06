@@ -415,6 +415,15 @@ pub fn run() -> Outcome {
     unsafe { libc::signal(libc::SIGINT, stop as extern "C" fn(libc::c_int) as libc::sighandler_t) };
     crate::pr_status::set_background(true);
     crate::command_runner::set_fenced(!crate::command_runner::live_root());
+    // auto mode's verdict, re-checked on a server thread so it holds with no tab open
+    std::thread::spawn(|| loop {
+        std::thread::sleep(std::time::Duration::from_secs(15));
+        if crate::caffeinate::mode() == "auto" {
+            if let Err(m) = crate::caffeinate::sync(crate::gui_actions::sessions_busy()) {
+                data_root::log_error("caffeinate auto", "Errno::ENOENT", &m);
+            }
+        }
+    });
     let token = random_token();
     let guard = std::sync::Arc::new(Guard::new(port));
     for stream in listener.incoming().flatten() {
