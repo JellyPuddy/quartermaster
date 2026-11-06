@@ -99,7 +99,7 @@ module Quartermaster
     # issue/<n>-<slug of the title>, the slug cut at a word boundary so the
     # branch (and its worktree directory) stays readable.
     def branch_name(number, title)
-      words = WorkItem.slugify(title).split("-")
+      words = WorkItem.slug_words(title).split("-")
       slug = words.each_with_object([]) do |word, kept|
         break kept if kept.any? && (kept + [word]).join("-").length > BRANCH_SLUG_MAX
 

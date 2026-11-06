@@ -10,6 +10,18 @@ class WorkItemTest < Minitest::Test
     assert_equal "fix-sso-login-my-app", Quartermaster::WorkItem.slugify("Fix: SSO login (My App)!")
   end
 
+  def test_slugify_transliterates_accented_letters
+    assert_equal "uni", Quartermaster::WorkItem.slugify("ünï")
+    assert_equal "cafe-creme", Quartermaster::WorkItem.slugify("Café Crème")
+  end
+
+  def test_a_title_without_letters_or_digits_creates_nothing
+    error = assert_raises(ArgumentError) { Quartermaster::WorkItem.create("日本語 タイトル", project: "MyApp") }
+
+    assert_equal "title needs at least one letter or digit (a-z, 0-9) for its slug", error.message
+    assert_empty Dir.glob(File.join(Quartermaster::WORK_ITEMS_DIR, "*.md"), File::FNM_DOTMATCH)
+  end
+
   def test_create_and_find_round_trip_preserves_frontmatter
     Quartermaster::WorkItem.create("My item", project: "MyApp", branch: "issue/123-foo",
                         session_id: "sess-1", description: "Something")

@@ -228,6 +228,15 @@ class CliLinkingTest < Minitest::Test
     assert_empty Quartermaster::WorkItem.find("alpha").sessions
     assert_equal [{ "id" => "sess-nw" }], Quartermaster::WorkItem.find("fresh-work").sessions
   end
+
+  def test_new_refuses_a_title_without_letters_or_digits
+    stdout, stderr, status = run_wi("new", "日本語 タイトル")
+
+    refute status.success?
+    assert_empty stdout
+    assert_equal "qm: title needs at least one letter or digit (a-z, 0-9) for its slug\n", stderr
+    assert_empty Dir.glob(File.join(Quartermaster::WORK_ITEMS_DIR, "*.md"), File::FNM_DOTMATCH)
+  end
 end
 
 class CliBoardTest < Minitest::Test

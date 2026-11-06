@@ -74,6 +74,14 @@ class IssueStartTest < Minitest::Test
     end
   end
 
+  def test_a_title_without_letters_or_digits_gets_a_number_only_branch
+    with_widget_repo do
+      preview = starter(issue_runner(title: "日本語 タイトル")).preview(123, "Widget")
+      assert_equal "issue/123", preview["branch"]
+      assert_equal "123", preview["slug"]
+    end
+  end
+
   def test_unknown_issues_projects_and_repos_without_github_are_refused
     with_widget_repo do |repo|
       error = assert_raises(ArgumentError) { starter(issue_runner(known: false)).preview(123, "Widget") }

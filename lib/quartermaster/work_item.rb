@@ -5,8 +5,10 @@ module Quartermaster
     attr_reader :slug, :front, :body
 
     def self.slugify(title)
-      title.downcase.gsub(/[^a-z0-9]+/, "-").gsub(/^-+|-+$/, "")
+      slug_words(title).tap { |s| raise ArgumentError, "title needs at least one letter or digit (a-z, 0-9) for its slug" if s.empty? }
     end
+
+    def self.slug_words(text) = text.dup.force_encoding(Encoding::UTF_8).scrub("").unicode_normalize(:nfkd).gsub(/\p{Mn}/, "").downcase.gsub(/[^a-z0-9]+/, "-").gsub(/^-+|-+$/, "")
 
     def self.path_for(slug)
       File.join(WORK_ITEMS_DIR, "#{slug}.md")

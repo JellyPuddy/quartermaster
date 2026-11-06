@@ -233,6 +233,15 @@ class GuiTest < Minitest::Test
     assert_equal "Fresh Idea", Quartermaster::WorkItem.find("fresh-idea").title
   end
 
+  def test_new_item_action_reports_a_title_without_letters_or_digits
+    body = JSON.generate("cmd" => "new", "args" => { "title" => "日本語 タイトル", "project" => "Nowhere" })
+    _s, _c, out = gui.respond("POST", "/api/action", ok_host, body)
+
+    assert_equal({ "ok" => false, "error" => "title needs at least one letter or digit (a-z, 0-9) for its slug" },
+                 JSON.parse(out))
+    assert_empty Dir.glob(File.join(Quartermaster::WORK_ITEMS_DIR, "*.md"), File::FNM_DOTMATCH)
+  end
+
   def test_resume_session_action_reports_dead_ends_as_json_errors
     body = JSON.generate("cmd" => "resume-session", "slug" => nil, "args" => { "session" => "sess-ghost" })
     _s, _c, out = gui.respond("POST", "/api/action", ok_host, body)

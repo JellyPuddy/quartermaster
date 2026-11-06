@@ -12,7 +12,8 @@ running Notes and distilled Snapshots. Human-editable by design — fixing a pro
 editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
 
 - **Created** by `qm new "Title" [--project P] [--session ID] [--description …]` (slug from
-  the title, state `in_progress`, `created` today, empty sections), or from a captured
+  the title by `WorkItem.slugify`: accents transliterated, `Café` → `cafe`, then only `a-z0-9`
+  runs joined by `-`; state `in_progress`, `created` today, empty sections), or from a captured
   session (`WorkItem.from_session`: project and branch from its start event, a mainline
   branch `main|master|develop` left off, the session claimed). `qm retitle` never changes
   the slug; `qm describe SLUG TEXT` (or stdin) replaces the Description; `qm move` changes
@@ -109,6 +110,10 @@ editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
 - **Deleting rewrites no log**: `sessions.jsonl`, `events.jsonl` and `board-writes.jsonl` keep
   every line that names the slug, and the guard check and the file removal run under the
   work-item lock, so a note landing meanwhile is seen.
+- **A slug is never empty**: a title with no letter or digit left after transliterating
+  (`日本語`) is an `ArgumentError` from `slugify`, so every creation path (CLI, GUI new item,
+  loose chat → item, issue start) refuses it before writing a file. A slug is made once:
+  changing `slugify` never renames existing items, and nothing re-slugifies a stored title.
 - **`pf_mode` needs a dev server**: only an item whose project has `dev_server:` in config.yml
   takes one, and only one of that server's `modes`; anything else is refused naming the setting.
 
