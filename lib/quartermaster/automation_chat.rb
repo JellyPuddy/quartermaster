@@ -20,7 +20,7 @@ module Quartermaster
         item = WorkItem.create(title, project: project, description: description)
         item.front.merge!("kind" => "automation", "runner" => "cloud")
         item.save
-        store.write(item.slug, { "runner" => "cloud", "name" => title }, "")
+        store.write(item.slug, { "runner" => "cloud", "name" => title, "enabled" => true }, "")
         item
       end
     end

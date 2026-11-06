@@ -12,6 +12,7 @@ class AutomationCliTest < Minitest::Test
   ID = DIGEST["id"]
   SYNCED = DIGEST["updated_at"]
   SLACK = DIGEST["mcp_connections"]
+  DEFAULT_MODEL = "claude-default-model"
 
   # The routines API as a hash of routines: records every call, applies
   # creates and updates the way the API would (via the real request body)
@@ -37,9 +38,14 @@ class AutomationCliTest < Minitest::Test
       copy(@routines.fetch(id) { raise Quartermaster::RoutinesClient::ApiChanged })
     end
 
+    # Like the API, a created routine is enabled and gets a model unless the
+    # body names them.
     def create(fields)
       record(:create, fields)
-      apply({ "id" => "trig_NEW" }, Quartermaster::RoutinesClient.request_body(fields))
+      body = Quartermaster::RoutinesClient.request_body(fields)
+      context = body.dig("job_config", "ccr", "session_context")
+      context["model"] ||= DEFAULT_MODEL if context
+      apply({ "id" => "trig_NEW", "enabled" => true }, body)
     end
 
     def update(id, fields)
@@ -236,6 +242,35 @@ class AutomationCliTest < Minitest::Test
     refute @client.routines["trig_NEW"].key?("clear_mcp_connections")
     out, = qm("push", "bare")
     assert_equal "bare: nothing to push\n", out
+  end
+
+  def test_the_first_push_takes_the_routines_defaults_so_a_second_push_has_nothing_to_send
+    service = Quartermaster::Automations.new(client: @client)
+    service.create_item("fresh", "Fresh", project: "MyApp")
+    store.write("fresh", { "runner" => "cloud", "name" => "Fresh", "cron" => "0 8 * * *" }, "Do it.")
+    qm("push", "fresh")
+
+    record = store.read("fresh").record
+    assert_equal [true, DEFAULT_MODEL, "trig_NEW", "2026-11-06T09:00:01Z"],
+                 record.values_at("enabled", "model", "routine", "remote_updated_at")
+    assert_equal "Do it.", store.read("fresh").prompt
+    @client.calls.clear
+    out, = qm("push", "fresh")
+
+    assert_equal "fresh: nothing to push\n", out
+    assert_equal [[:get, "trig_NEW"]], @client.calls
+    assert_equal ["pushed: created routine trig_NEW"], history("fresh")
+  end
+
+  def test_a_push_never_sends_a_field_left_unset_locally
+    adopt
+    edit({ "enabled" => nil, "name" => "Renamed" })
+    qm("push", "digest")
+
+    _, _, fields = @client.calls.find { |c| c.first == :update }
+    refute fields.key?("enabled"), "an unset enabled is no change"
+    assert_equal ["pushed: name → Renamed"], history("digest").last(1)
+    assert_equal true, @client.routines[ID]["enabled"]
   end
 
   def test_pause_and_resume_push_enabled_and_move_the_state

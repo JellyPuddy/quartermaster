@@ -17,10 +17,12 @@ the `kind: automation` work item of the same slug (`routine:`, `runner: cloud` i
   `updated_at` differs from the stored `remote_updated_at`), plus `unmanaged` routines (no local
   files). `detail(slug)` — one entry, its routine and its last 10 runs.
 - `push(slug, force:)` — the one path that changes a routine. No `routine` yet: create, then
-  write the id to the store and the item. Else `get` the routine, refuse with `Stale` when it
+  merge the created routine (through `from_routine`, so the API's defaults such as `enabled` and
+  `model` land locally; the local prompt stays) into the store and write the id to the item, so a
+  second push has nothing to send. Else `get` the routine, refuse with `Stale` when it
   drifted (unless forced), and `update` only what differs from it: changed name / cron /
   enabled as they are, the stored connectors always, and all job fields when any of prompt /
-  model / repos / tools / environment differs. Stores the answer's `updated_at`; nothing differing writes nothing.
+  model / repos / tools / environment differs. A field unset locally is no change. Stores the answer's `updated_at`; nothing differing writes nothing.
 - Each push with changes appends one `history` note (`pushed: schedule → Mon 07:00 (0 6 * * 1
   UTC); prompt changed`, `paused`, `resumed`, `created routine trig_…`), and the item's state
   follows `enabled`: `active`, or `fridge` while paused (`in_progress` until the first push).
@@ -67,7 +69,7 @@ Headers: `Authorization: Bearer <token>`, `anthropic-version`, the `ccr-triggers
 name, cron` (UTC, as the API holds it), `enabled, prompt` (the first job event's message, else
 `derived_state.prompt`), `model` (else `derived_state.model`), `sources, allowed_tools,
 environment_id, connectors` (the `mcp_connections` as given) and `updated_at`. `RoutinesClient.request_body(fields)` builds create
-and update bodies: only the fields given (a partial update stays partial); given `connectors` (nil
+and update bodies: only the fields given (a partial update stays partial), never a nil name / cron / enabled; given `connectors` (nil
 counts as none) become `mcp_connections`, plus `clear_mcp_connections: true` when empty; any of prompt / model /
 sources / allowed_tools / environment_id sends the whole `job_config.ccr` (environment, one
 user-message event carrying the prompt, session context).
@@ -116,7 +118,7 @@ days or time, labelled as itself plus "UTC", and edited as raw cron.
 
 **New and edit** — `qm automation new TITLE --project P` (`AutomationChat.create`) makes a
 `kind: automation` item (`runner: cloud`, state `in_progress`, no `routine` until the first
-push) and its local files: an empty prompt and a yml with `name` and `runner`; a slug whose files
+push) and its local files: an empty prompt and a yml with `name`, `runner` and `enabled: true`; a slug whose files
 already exist is refused. It then opens the item's chat, as `qm automation edit SLUG` does:
 through the running GUI's `automation-chat` action (a local action, so the CLI may post it
 without an Origin), then `ChatOpener` brings the GUI up on it; without a GUI it prints the

@@ -92,7 +92,7 @@ module Quartermaster
 
       remote = @client.get(id)
       check_fresh!(entry, remote) unless force
-      changes = changed_fields(fields_of(entry), RoutinesClient.fields(remote))
+      changes = pushable_changes(fields_of(entry), RoutinesClient.fields(remote))
       updated = changes.empty? ? remote : @client.update(id, update_fields(entry, changes))
       @store.write(slug, { "remote_updated_at" => updated["updated_at"] }, entry.prompt)
       finish_push(slug, entry.record["enabled"], changes.map { |f| describe_change(f, entry) }, created: false)
@@ -155,7 +155,7 @@ module Quartermaster
 
     def create(entry)
       routine = @client.create(fields_of(entry).compact.merge(connectors_of(entry)))
-      @store.write(entry.slug, { "routine" => routine["id"], "remote_updated_at" => routine["updated_at"] }, entry.prompt)
+      @store.write(entry.slug, AutomationStore.from_routine(routine).first, entry.prompt)
       item = WorkItem.with_lock do
         WorkItem.find(entry.slug).tap do |fresh|
           fresh.front["routine"] = routine["id"]
@@ -196,6 +196,12 @@ module Quartermaster
     # A list field unset on one side and empty on the other is no change.
     def changed_fields(local, remote)
       CHANGE_LABELS.keys.reject { |f| LIST_FIELDS.include?(f) ? (local[f] || []) == (remote[f] || []) : local[f] == remote[f] }
+    end
+
+    # What a push can change: a field unset locally can't be sent, so the
+    # routine keeps its value and it is no change.
+    def pushable_changes(local, remote)
+      changed_fields(local, remote).reject { |f| local[f].nil? && !LIST_FIELDS.include?(f) }
     end
 
     # Changed top-level fields as they are; any changed job field sends all of

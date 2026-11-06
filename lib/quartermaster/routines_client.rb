@@ -79,13 +79,14 @@ module Quartermaster
     end
 
     # The create/update body for local fields; only the fields given, so a
-    # partial update stays partial. Any job field sends the whole job_config.
+    # partial update stays partial, and a nil top-level field is left out
+    # (the API would read null as a change). Any job field sends the whole job_config.
     # Given connectors (nil counts as none) are sent as the routine's exact
     # set: an empty list also sends clear_mcp_connections, since the API
     # reads an empty or missing mcp_connections as "leave them" (on create:
     # "attach all"). Callers that omit connectors leave them untouched.
     def self.request_body(fields, uuid: SecureRandom.uuid)
-      body = BODY_KEYS.filter_map { |local, api| [api, fields[local]] if fields.key?(local) }.to_h
+      body = BODY_KEYS.filter_map { |local, api| [api, fields[local]] unless fields[local].nil? }.to_h
       if fields.key?("connectors")
         body["mcp_connections"] = fields["connectors"] || []
         body["clear_mcp_connections"] = true if body["mcp_connections"].empty?

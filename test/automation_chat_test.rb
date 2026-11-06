@@ -28,7 +28,7 @@ class AutomationChatTest < Minitest::Test
     assert_equal ["automation", "cloud", nil, "in_progress", "MyApp"],
                  [found.kind, found.runner, found.routine, found.state, found.project]
     assert_equal "", File.read(File.join(dir, "shipped-digest.prompt.md"))
-    assert_equal({ "v" => 1, "runner" => "cloud", "name" => "Shipped digest" },
+    assert_equal({ "v" => 1, "runner" => "cloud", "name" => "Shipped digest", "enabled" => true },
                  YAML.safe_load(File.read(File.join(dir, "shipped-digest.yml"))))
   end
 
