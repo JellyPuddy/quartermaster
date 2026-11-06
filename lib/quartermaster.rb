@@ -30,6 +30,7 @@ module Quartermaster
   ROOT = File.expand_path(ENV.fetch("QM_ROOT", LIVE_ROOT))
   TRANSCRIPTS_DIR = File.expand_path(ENV.fetch("QM_TRANSCRIPTS_DIR", "~/.claude/projects"))
   WORK_ITEMS_DIR = File.join(ROOT, "work-items")
+  AUTOMATIONS_DIR = File.join(ROOT, "automations")
   CONFIG_FILE = File.join(ROOT, "config.yml")
   LOG_FILE = File.join(ROOT, "qm.log")
   EVENT_VERSION = 1
@@ -412,6 +413,7 @@ require_relative "quartermaster/project_map"
 require_relative "quartermaster/session"
 require_relative "quartermaster/session_log"
 require_relative "quartermaster/atomic_file"
+require_relative "quartermaster/automation_store"
 require_relative "quartermaster/local_schedule"
 require_relative "quartermaster/work_item"
 require_relative "quartermaster/command_runner"

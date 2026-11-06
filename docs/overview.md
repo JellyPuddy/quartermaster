@@ -33,6 +33,7 @@ worktrees — derives from these two layers plus a few more append-only hook log
 |---|---|---|
 | `sessions.jsonl` | session start/end events, append-only | [capture](areas/capture.md) |
 | `work-items/<slug>.md` | one work item each; `work-items/.lock` serialises writes | [work items](areas/work-items.md) |
+| `automations/<slug>.yml`, `<slug>.prompt.md` (+ `.bak`) | an automation's routine settings (`v: 1`) and its prompt, the source of truth push sends | [automations](areas/automations.md) |
 | `config.yml` (+ `.bak`) | projects and their settings (below), `prices:` overrides; `.bak` is the file before qm's last write | [settings](areas/settings.md) |
 | `qm.log` | hook and background errors with lib/ backtraces; network blips once per outage | [capture](areas/capture.md) |
 | `errors-seen-at` | iso8601 time the user last marked qm.log errors seen (absent: count the last 24 h) | [capture](areas/capture.md) |
@@ -134,8 +135,7 @@ cache_read, output}` ([side panel](areas/side-panel.md)), `overview_artifact` ([
   IDEs, worktrees or notifications.
 - **Scripts first**: every integration is deterministic code; a model runs only where real
   summarising happens (the chat itself, distill, ask, build progress, a benchmark's plan and
-  verdict). Any new agent use needs
-  the user's OK first.
+  verdict). Any new agent use needs the user's OK first.
 - **Nothing types into the user's chat or ends it without their click**: rotation, restack and
   sending drafts are user-triggered only, never from a state build, poll or notifier.
 - **qm never checks out a branch in an existing worktree** and never deletes what it cannot
