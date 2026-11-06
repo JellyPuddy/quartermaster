@@ -214,7 +214,7 @@ fn diff_payload(slug: &str, query: Option<&str>) -> Option<Value> {
             Err(Failure::Unported) => None,
         };
     }
-    let params = Params { branch: get("branch"), scope: get("scope"), from: get("from"), to: get("to"), base: get("base") };
+    let params = Params { branch: get("branch"), scope: get("scope"), from: get("from"), to: get("to"), base: get("base"), fresh: get("fresh").as_deref() == Some("1") };
     match call(&mut item, &params) {
         Ok(mut result) => {
             if let Some(Value::Array(files)) = result.get_mut("files") {

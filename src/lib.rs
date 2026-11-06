@@ -42,6 +42,7 @@ pub mod price_defaults;
 pub mod price_table;
 pub mod project_config;
 pub mod project_map;
+pub mod review_anchors;
 pub mod ruby_format;
 pub mod ruby_num;
 pub mod ruby_text;

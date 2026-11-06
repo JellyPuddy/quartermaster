@@ -27,12 +27,19 @@ fn free_port() -> u16 {
 }
 
 fn start(rust: bool, root: &Path, home: &Path) -> Server {
+    start_env(rust, root, home, &[])
+}
+
+fn start_env(rust: bool, root: &Path, home: &Path, extra: &[(&str, String)]) -> Server {
     let port = free_port();
     let bin: PathBuf = if rust { Path::new(env!("CARGO_BIN_EXE_qm")).into() } else { Path::new(env!("CARGO_MANIFEST_DIR")).join("quartermaster") };
     let mut cmd = Command::new(bin);
     cmd.arg("gui").env("QM_ROOT", root).env("HOME", home).env("QM_GUI_PORT", port.to_string()).env("QM_GUI_NO_OPEN", "1").env("LANG", "C.UTF-8").env("LC_ALL", "C.UTF-8").env("QM_TMUX_SOCKET", "qm-test-gui").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     if rust {
         cmd.env("QM_RUST_GUI", "1");
+    }
+    for (k, v) in extra {
+        cmd.env(k, v);
     }
     let child = cmd.spawn().unwrap();
     for _ in 0..100 {
@@ -608,4 +615,165 @@ fn the_prompt_scope_matches_ruby() {
     for expected in ["\"kind\":\"prompt\"", "\"kind\":\"prompt-branch\"", "\"rebase\":{\"onto\":", "\"hidden\":false", "\"rebaseNotice\":\"Couldn't hide the rebase: git merge-tree failed.\"", "\"movedBranches\":[{\"branch\":\"feat\",\"commits\":3},{\"branch\":\"main\"", "\"branch\":\"created-later\",\"commits\":0", "\"prompt\":null", "before “first prompt”", "before the prompt at 2026-04-01T10:20:00Z", "…\"", "\"notice\":\"This item has no captured chat session", "\"notice\":\"No prompt snapshots", "is gone — nothing to diff.", "snapshot is gone: git pruned it", "\"oldRev\":\"", "is not checked out anywhere"] {
         assert!(seen.contains(expected), "the payloads should contain {expected}");
     }
+}
+
+/// A repo whose origin is `<base>/acme/widgets.git` (so its GitHub name is acme/widgets and `git
+/// fetch origin` works), with PR heads published as `refs/pull/<n>/head`.
+fn pr_world(base: &Path) -> (PathBuf, PathBuf, PathBuf) {
+    let (root, home, repo) = (base.join("root"), base.join("home"), base.join("repo"));
+    let origin = base.join("acme/widgets.git");
+    for d in [&home, &repo, &origin, &base.join("bin"), &base.join("ghdata")] {
+        fs::create_dir_all(d).unwrap();
+    }
+    sh(&origin, &["init", "-q", "--bare"]);
+    sh(&repo, &["init", "-q", "-b", "main"]);
+    fs::write(repo.join("a.txt"), lines("alpha", 30)).unwrap();
+    fs::write(repo.join("b.txt"), lines("beta", 10)).unwrap();
+    fs::write(repo.join("gone.txt"), lines("gone", 4)).unwrap();
+    commit(&repo, "base");
+    sh(&repo, &["remote", "add", "origin", origin.to_str().unwrap()]);
+    sh(&repo, &["push", "-q", "origin", "main"]);
+    let feat = base.join("wt-feat");
+    sh(&repo, &["worktree", "add", "-q", "-b", "feat", feat.to_str().unwrap(), "main"]);
+    fs::write(feat.join("a.txt"), lines("alpha", 30).replace("alpha 5\n", "alpha five\n").replace("alpha 25\n", "alpha twenty-five\n").replace("alpha 12\n", "alpha twelve\n").replace("alpha 20\n", "alpha twenty\n")).unwrap();
+    commit(&feat, "feat one: two edits far apart");
+    fs::write(feat.join("b.txt"), lines("beta", 10).replace("beta 3\n", "")).unwrap();
+    fs::remove_file(feat.join("gone.txt")).unwrap();
+    fs::write(feat.join("new.txt"), lines("new", 3)).unwrap();
+    commit(&feat, "feat two: removals and a new file");
+    fs::write(feat.join("a.txt"), fs::read_to_string(feat.join("a.txt")).unwrap().replace("alpha 6\n", "alpha 6\nalpha 6b\n").replace("alpha five\n", "")).unwrap();
+    commit(&feat, "feat three");
+    sh(&repo, &["push", "-q", "origin", "feat:refs/pull/5/head"]);
+    // a second PR onto another base, found through gh
+    sh(&repo, &["checkout", "-q", "-b", "release", "main"]);
+    fs::write(repo.join("rel.txt"), lines("release", 2)).unwrap();
+    commit(&repo, "release one");
+    sh(&repo, &["push", "-q", "origin", "release"]);
+    sh(&repo, &["checkout", "-q", "-b", "feat2", "release"]);
+    fs::write(repo.join("two.txt"), lines("two", 5)).unwrap();
+    commit(&repo, "feat2 one");
+    sh(&repo, &["push", "-q", "origin", "feat2:refs/pull/6/head"]);
+    sh(&repo, &["checkout", "-q", "main"]);
+    sh(&repo, &["branch", "nopr", "main"]);
+    sh(&repo, &["branch", "gone-pr", "main"]);
+    sh(&repo, &["branch", "wrong-repo", "main"]);
+    sh(&repo, &["branch", "bad-base", "main"]);
+    sh(&repo, &["branch", "gh-fails", "main"]);
+    sh(&repo, &["branch", "closed-br", "main"]);
+    sh(&repo, &["branch", "dots-base", "main"]);
+    // gh answers from files; every call is logged to the server's own log
+    let gh = "#!/bin/sh\necho \"$*\" >> \"$FAKE_GH_LOG\"\nsel=\"$3\"\nf=\"$FAKE_GH_DATA/$(echo \"$sel\" | tr '/:' '__').json\"\nif [ -f \"$f\" ]; then cat \"$f\"; exit 0; fi\nif [ -f \"$FAKE_GH_DATA/$sel.fail\" ]; then echo 'HTTP 502: bad gateway' >&2; exit 1; fi\necho \"no pull requests found for branch $sel\" >&2\nexit 1\n";
+    fs::write(base.join("bin/gh"), gh).unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(base.join("bin/gh"), fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let pr = |n: u32, head: &str, base_ref: &str| format!("{{\"number\":{n},\"url\":\"https://github.com/acme/widgets/pull/{n}\",\"title\":\"PR {n}\",\"headRefName\":\"{head}\",\"baseRefName\":\"{base_ref}\",\"state\":\"OPEN\"}}");
+    fs::write(base.join("ghdata/feat2.json"), pr(6, "feat2", "release")).unwrap();
+    fs::write(base.join("ghdata/https___github.com_acme_widgets_pull_6.json"), pr(6, "feat2", "release")).unwrap();
+    fs::write(base.join("ghdata/gh-fails.fail"), "").unwrap();
+    fs::create_dir_all(root.join("work-items")).unwrap();
+    fs::write(root.join("config.yml"), format!("projects:\n  demo: {}\n", repo.display())).unwrap();
+    let item = |slug: &str, title: &str, branches: &[&str], desc: &str| {
+        let list: String = branches.iter().map(|b| format!("- {b}\n")).collect();
+        let list = if list.is_empty() { String::new() } else { format!("branches:\n{list}") };
+        fs::write(root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: \"{title}\"\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\n{list}---\n\n## Description\n\n{desc}\n\n## Notes\n\n## Snapshots\n")).unwrap();
+    };
+    item("pr-item", "PR item", &["feat", "feat2", "nopr", "gone-pr", "wrong-repo", "bad-base", "gh-fails", "closed-br", "dots-base"], "d");
+    item("review-cached", "Review acme/widgets#5: x", &[], "Review of pull request https://github.com/acme/widgets/pull/5");
+    item("review-gh", "Review acme/widgets#6: y", &[], "Review of pull request https://github.com/acme/widgets/pull/6");
+    item("review-branch", "Review acme/widgets#5: z", &["feat"], "Review of pull request https://github.com/acme/widgets/pull/5");
+    item("review-unknown", "Review acme/widgets#77: w", &[], "Review of pull request https://github.com/acme/widgets/pull/77");
+    item("draft-item", "Draft item", &["feat"], "d");
+    item("review-other", "Review other/repo#3: v", &[], "Review of pull request https://github.com/other/repo/pull/3");
+    let real_git = String::from_utf8_lossy(&Command::new("sh").args(["-c", "command -v git"]).output().unwrap().stdout).trim().to_string();
+    fs::write(base.join("bin/git"), format!("#!/bin/sh\ncase \" $* \" in *\" fetch \"*) echo \"$*\" | sed 's#-C [^ ]* ##' >> \"$FAKE_GIT_LOG\" ;; esac\nexec {real_git} \"$@\"\n")).unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(base.join("bin/git"), fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    fs::write(base.join("ghdata/closed-br.json"), pr(8, "closed-br", "main").replace("OPEN", "MERGED")).unwrap();
+    let prs = serde_json::json!([
+        {"repo": "Acme/Widgets", "number": 5, "url": "https://github.com/acme/widgets/pull/5", "title": "PR 5", "head": "feat", "base": "main"},
+        {"repo": "acme/widgets", "number": 99, "url": "https://github.com/acme/widgets/pull/99", "title": "PR 99", "head": "gone-pr", "base": "main"},
+        {"repo": "other/repo", "number": 3, "url": "https://github.com/other/repo/pull/3", "title": "PR 3", "head": "wrong-repo", "base": "main"},
+        {"repo": "acme/widgets", "number": 4, "url": "https://github.com/acme/widgets/pull/4", "title": "PR 4", "head": "bad-base", "base": "-evil"},
+        {"repo": "acme/widgets", "number": 7, "url": "https://github.com/acme/widgets/pull/7", "title": "PR 7", "head": "dots-base", "base": "a..b"}
+    ]);
+    fs::write(root.join("pr-inbox.json"), serde_json::json!({"prs": prs, "ts": 1}).to_string()).unwrap();
+    (root, home, base.to_path_buf())
+}
+
+#[test]
+fn the_pr_scope_matches_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let (root, home, b) = pr_world(base.path());
+    let env = |tag: &str| -> Vec<(&'static str, String)> {
+        vec![("PATH", format!("{}:{}", b.join("bin").display(), std::env::var("PATH").unwrap())), ("FAKE_GH_DATA", b.join("ghdata").display().to_string()), ("FAKE_GH_LOG", b.join(format!("gh-{tag}.log")).display().to_string()), ("FAKE_GIT_LOG", b.join(format!("git-{tag}.log")).display().to_string())]
+    };
+    let ruby = start_env(false, &root, &home, &env("ruby"));
+    let rust = start_env(true, &root, &home, &env("rust"));
+    let mut seen = String::new();
+    let mut compared = 0;
+    let mut check = |path: &str| {
+        let (a, c) = (request(ruby.port, "GET", path, &[], "", true), request(rust.port, "GET", path, &[], "", true));
+        assert!(!c.status.starts_with("501"), "{path} should be served: {}", String::from_utf8_lossy(&c.body));
+        let (sa, sc) = (shown(&a, ruby.port), shown(&c, rust.port));
+        if sa != sc {
+            let at = sa.bytes().zip(sc.bytes()).position(|(x, y)| x != y).unwrap_or(sa.len().min(sc.len()));
+            let from = at.saturating_sub(200);
+            let cut = |s: &str| s.get(from..(from + 500).min(s.len())).unwrap_or("").to_string();
+            panic!("{path}: first difference at byte {at}\nRuby: …{}\nRust: …{}", cut(&sa), cut(&sc));
+        }
+        compared += 1;
+        seen.push_str(&sa);
+    };
+    let repo = base.path().join("repo");
+    let shas = sh(&repo, &["log", "--format=%H", "main..feat"]);
+    let shas: Vec<&str> = shas.lines().collect(); // newest first
+    let (c3, c2, c1) = (shas[0], shas[1], shas[2]);
+    for query in [
+        "?scope=pr&branch=feat".to_string(),
+        "?scope=pr&branch=feat&fresh=1".to_string(),
+        "?scope=pr&branch=feat".to_string(),
+        format!("?scope=pr&branch=feat&from={c1}&to={c1}"),
+        format!("?scope=pr&branch=feat&from={c2}&to={c2}"),
+        format!("?scope=pr&branch=feat&from={c1}&to={c3}"),
+        format!("?scope=pr&branch=feat&from={c3}&to={c1}"),
+        "?scope=pr&branch=feat&from=zzzz".to_string(),
+        "?scope=pr&branch=feat2".to_string(),
+        "?scope=pr&branch=nopr".to_string(),
+        "?scope=pr&branch=gone-pr".to_string(),
+        "?scope=pr&branch=wrong-repo".to_string(),
+        "?scope=pr&branch=bad-base".to_string(),
+        "?scope=pr&branch=gh-fails".to_string(),
+        "?scope=pr&branch=closed-br".to_string(),
+        "?scope=pr&branch=dots-base".to_string(),
+        "?scope=pr&branch=unlinked".to_string(),
+        "?scope=pr".to_string(),
+        "?scope=branch&branch=feat".to_string(),
+    ] {
+        check(&format!("/api/diff/pr-item{query}"));
+    }
+    for slug in ["review-cached", "review-gh", "review-branch", "review-unknown", "review-other"] {
+        for query in ["", "?scope=pr", "?scope=branch", "?scope=commits", "?scope=uncommitted"] {
+            check(&format!("/api/diff/{slug}{query}"));
+        }
+    }
+    // the same questions asked of gh and of git, by each server, with the memo in between
+    let calls = |tag: &str| fs::read_to_string(b.join(format!("gh-{tag}.log"))).unwrap_or_default();
+    assert_eq!(calls("rust"), calls("ruby"), "gh must be asked the same things");
+    assert!(!calls("ruby").is_empty());
+    let fetches = |tag: &str| fs::read_to_string(b.join(format!("git-{tag}.log"))).unwrap_or_default();
+    assert_eq!(fetches("rust"), fetches("ruby"), "git must be asked to fetch the same things");
+    assert!(fetches("ruby").contains("fetch --quiet --no-tags origin +refs/pull/5/head:refs/quartermaster/pr/5 +refs/heads/main:refs/remotes/origin/main"));
+    assert!(compared > 40);
+    for expected in ["\"scope\":\"pr\"", "\"kind\":\"pr\"", "\"reviewRoutes\":{}", "\"anchor\":\"", "\"gh\":false", "\"messages\":[{", "has no open pull request", "is not in this project's repo", "has no usable base branch", "could not fetch", "gh pr view gh-fails failed: HTTP 502", "\"prAvailable\":true", "\"checkout\":false"] {
+        assert!(seen.contains(expected), "the payloads should contain {expected}");
+    }
+    // GitHub drafts on the PR are re-anchored by code that is Ruby's yet
+    fs::create_dir_all(root.join("drafts")).unwrap();
+    fs::write(root.join("drafts/draft-item.json"), serde_json::json!({"v": 1, "entries": [{"id": "g1", "kind": "github-comment", "comment": "x", "rev": 1, "path": "a.txt", "side": "new", "line": 5, "repo": "acme/widgets", "number": 5, "commit": c3, "base": c1, "subject": "line", "author": "user"}]}).to_string()).unwrap();
+    let a = request(rust.port, "GET", "/api/diff/draft-item?scope=pr&branch=feat", &[], "", true);
+    assert!(a.status.starts_with("501"), "{}", a.status);
 }
