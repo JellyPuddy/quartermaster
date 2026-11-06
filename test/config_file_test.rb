@@ -265,6 +265,16 @@ class ConfigFileTest < Minitest::Test
                   parse["null"], parse["[unclosed"]]
   end
 
+  def test_the_earlier_seeds_empty_projects_key_reads_as_no_projects
+    config = load("# qm configuration\nprojects:\n#   my-app: ~/code/my-app\n")
+    assert_empty config.issues
+
+    config.set("ide_command", %w[code PATH])
+    config.write!
+    assert_equal "# Edited by qm (Settings view / qm config); key reference: docs/overview.md\n" \
+                 "projects: {}\nide_command: [code, PATH]\n", File.read(file)
+  end
+
   def test_unset_values_and_emptied_mappings_are_dropped_on_write
     config = load("projects: { App: /code/app }\n")
     config.replace({ "projects" => { "App" => { "root" => "/code/app", "test_db" => "", "review_skill" => nil,

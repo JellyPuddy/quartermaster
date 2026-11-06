@@ -28,7 +28,8 @@ module Quartermaster
 
     # The mapping as qm keeps it: under the keys the schema governs, unset
     # values (nil, blank text, empty lists) and emptied sub-mappings are
-    # dropped; everything else is untouched.
+    # dropped, and a bare `projects:` is no projects; everything else is
+    # untouched.
     def self.tidy(data, pattern = "")
       return data unless data.is_a?(Hash)
 
@@ -36,6 +37,7 @@ module Quartermaster
         child = ConfigSchema.child(pattern, key.to_s)
         next out[key] = value unless child
 
+        value = {} if value.nil? && child == "projects"
         value = tidy(value, child) if ConfigSchema::CONTAINERS.key?(child)
         kept = pattern.empty? ? key.to_s == "projects" : ConfigSchema::CONTAINERS.dig(pattern, :kind) == :map
         next if blank?(value) && !kept

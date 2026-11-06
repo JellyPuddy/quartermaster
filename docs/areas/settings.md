@@ -48,7 +48,7 @@ file in the same folder, copies the old file to `config.yml.bak` and renames the
 (in the user's order), `default_project`, `ide_command`, `ide_label`, `loose_starters`,
 `overview_artifact`, `prices`, then unknown top-level keys as they were. Keys inside a mapping
 follow the schema's order; unset values (nil, blank text, empty lists) and emptied sub-mappings are
-dropped (`ConfigCheck.tidy`); a project holding only its root is written as the plain path; lists
+dropped and a bare `projects:` (the earlier seed's) is `projects: {}` (`ConfigCheck.tidy`); a project holding only its root is written as the plain path; lists
 of scalars are flow style (`[dev, tunnel]`); multi-line text is a `|` block; paths stay unquoted.
 The first-run seed (`CONFIG_SEED`) is exactly what `emit` writes for `projects: {}`.
 
