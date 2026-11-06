@@ -57,7 +57,7 @@ module Quartermaster
         text = f.read.force_encoding(Encoding::UTF_8).scrub
         start.zero? ? text : text.partition("\n").last
       end
-    rescue Errno::ENOENT
+    rescue SystemCallError
       ""
     end
 

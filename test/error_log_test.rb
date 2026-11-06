@@ -77,6 +77,12 @@ class ErrorLogTest < Minitest::Test
     assert_equal({ "count" => 0, "entries" => [] }, error_log.summary)
   end
 
+  def test_an_unreadable_log_means_no_errors
+    FileUtils.mkdir_p(log_path) # a directory where the log goes
+
+    assert_equal({ "count" => 0, "entries" => [] }, error_log.summary)
+  end
+
   def test_reads_only_the_tail_and_skips_a_cut_entry
     old = "#{at(2)} [x] RuntimeError: early\n" * 50
     write_log("#{old}#{at(1)} [y] RuntimeError: late\n  lib/quartermaster/y.rb:1:in `y'\n")
