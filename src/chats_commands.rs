@@ -156,3 +156,8 @@ fn rotate(a: &[String]) -> Outcome {
         format!("{slug}: {} started — the chat wraps up in its qm gui pane\n", if close { "wrap up & close" } else { "rotation" })
     })
 }
+
+/// `Aside.session_name`: the tmux session of an item's aside.
+pub fn aside_name(slug: &str) -> String {
+    format!("{slug}--aside")
+}

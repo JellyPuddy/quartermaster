@@ -9,8 +9,10 @@ use crate::data_root;
 use crate::project_config::{DevServer, ProjectConfig};
 
 pub struct Status {
+    pub mode: Value,
     pub root: Option<String>,
     pub running: bool,
+    pub switching: bool,
 }
 
 /// The dev server qm reads: the first one any project configures.
@@ -28,19 +30,18 @@ fn from_endpoint(server: &DevServer) -> Option<Status> {
     let data: Value = serde_json::from_str(&result.out).ok()?;
     let obj = data.as_object()?;
     obj.get("mode").filter(|m| !matches!(m, Value::Null | Value::Bool(false)))?;
-    Some(Status { root: obj.get("root").and_then(Value::as_str).map(String::from), running: true })
+    Some(Status { mode: obj["mode"].clone(), root: obj.get("root").and_then(Value::as_str).map(String::from), running: true, switching: obj.get("switching") == Some(&Value::Bool(true)) })
 }
 
 /// `<command> status` exits non-zero when nothing runs; the state file, written on every switch and
 /// never cleared on stop, names what it was (or still is) serving.
 fn from_files(server: &DevServer) -> Status {
-    let root = server
-        .state_file
-        .as_deref()
-        .and_then(|f| std::fs::read_to_string(f).ok())
-        .and_then(|t| crate::ruby_text::strip(&t).split_once(' ').map(|(_, r)| r.trim_start_matches(' ').to_string()));
+    let text = server.state_file.as_deref().and_then(|f| std::fs::read_to_string(f).ok());
+    let stripped = text.as_deref().map(|t| crate::ruby_text::strip(t).to_string());
+    let mode = stripped.as_deref().and_then(|t| t.split_whitespace().next()).map(|m| Value::String(m.to_string())).unwrap_or(Value::Null);
+    let root = stripped.as_deref().and_then(|t| t.split_once(' ').map(|(_, r)| r.trim_start_matches(' ').to_string()));
     let running = command_runner::call(&[server.command.as_str(), "status"]).success;
-    Status { root, running }
+    Status { mode, root, running, switching: false }
 }
 
 pub fn status(server: Option<&DevServer>) -> Option<Status> {
@@ -51,7 +52,7 @@ pub fn status(server: Option<&DevServer>) -> Option<Status> {
 /// Whether the status says it is serving `path` right now.
 pub fn serves(status: &Option<Status>, path: &str) -> bool {
     match status {
-        Some(Status { running: true, root: Some(root) }) => data_root::normalize(root) == data_root::normalize(path),
+        Some(Status { running: true, root: Some(root), .. }) => data_root::normalize(root) == data_root::normalize(path),
         _ => false,
     }
 }

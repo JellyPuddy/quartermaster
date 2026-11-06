@@ -2,6 +2,8 @@
 //! network on every render. Synchronous: an expired entry blocks on `gh`.
 
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 use serde_json::{Map, Value};
 
@@ -12,6 +14,27 @@ use crate::work_item::WorkItem;
 const CACHE_TTL_SECONDS: i64 = 6 * 3600;
 const OPEN_TTL_SECONDS: i64 = 5 * 60;
 const NO_PR_TTL_SECONDS: i64 = 10 * 60;
+
+/// The GUI's mode: an expired entry is served as it is and refetched on a thread, so no page load
+/// waits on the network; `refreshing` says an answer may still improve.
+static BACKGROUND: AtomicBool = AtomicBool::new(false);
+static SERVED_STALE: AtomicBool = AtomicBool::new(false);
+static IN_FLIGHT: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static CACHE_LOCK: Mutex<()> = Mutex::new(());
+
+pub fn set_background(on: bool) {
+    BACKGROUND.store(on, Ordering::SeqCst);
+}
+
+/// Forgets which answers were served stale: a state build starts from here.
+pub fn start_build() {
+    SERVED_STALE.store(false, Ordering::SeqCst);
+}
+
+/// True while an answer served since `start_build` may still improve, or a fetch is running.
+pub fn refreshing() -> bool {
+    SERVED_STALE.load(Ordering::SeqCst) || !IN_FLIGHT.lock().unwrap().is_empty()
+}
 
 pub struct PrStatus {
     now: i64,
@@ -67,11 +90,52 @@ impl PrStatus {
                 }
             }
         }
+        if BACKGROUND.load(Ordering::SeqCst) {
+            return self.serve_stale(item, branch, &key, cache.get(&key));
+        }
         self.store(&key, self.fetch_via_gh(item, branch))
     }
 
+    /// The branch's PR as last fetched, `{number, url}`, or None. Reads the cache only.
+    pub fn link_for(&self, item: &WorkItem, branch: &str) -> Option<Map<String, Value>> {
+        let cache = read_cache();
+        let entry = cache.get(&format!("{}#{branch}", item.project().unwrap_or_default()))?.as_object()?;
+        if matches!(entry.get("number"), None | Some(Value::Null) | Some(Value::Bool(false))) {
+            return None;
+        }
+        let mut out = Map::new();
+        for k in ["number", "url"] {
+            if let Some(v) = entry.get(k) {
+                out.insert(k.into(), v.clone());
+            }
+        }
+        Some(out)
+    }
+
+    fn serve_stale(&self, item: &WorkItem, branch: &str, key: &str, entry: Option<&Value>) -> Option<String> {
+        SERVED_STALE.store(true, Ordering::SeqCst);
+        let first = {
+            let mut flying = IN_FLIGHT.lock().unwrap();
+            if flying.iter().any(|k| k == key) { false } else { flying.push(key.to_string()); true }
+        };
+        if first {
+            let (key, branch, project, now) = (key.to_string(), branch.to_string(), item.project(), self.now);
+            std::thread::spawn(move || {
+                let me = PrStatus { now, config: ProjectConfig::current() };
+                let fetched = me.fetch_in(project.as_deref(), &branch);
+                me.store(&key, fetched);
+                IN_FLIGHT.lock().unwrap().retain(|k| *k != key);
+            });
+        }
+        entry.and_then(|e| e.get("state")).and_then(Value::as_str).map(String::from)
+    }
+
     fn fetch_via_gh(&self, item: &WorkItem, branch: &str) -> Option<Value> {
-        let root = self.root_for(item.project().as_deref())?;
+        self.fetch_in(item.project().as_deref(), branch)
+    }
+
+    fn fetch_in(&self, project: Option<&str>, branch: &str) -> Option<Value> {
+        let root = self.root_for(project)?;
         let out = Command::new("gh")
             .args(["pr", "view", branch, "--json", "state,number,url"])
             .current_dir(root)
@@ -104,6 +168,7 @@ impl PrStatus {
         }
         pr.insert("ts".into(), Value::from(self.now));
         let state = pr.get("state").and_then(Value::as_str).map(String::from);
+        let _guard = CACHE_LOCK.lock().unwrap();
         let mut cache = read_cache();
         cache.insert(key.to_string(), Value::Object(pr));
         write_cache(&cache);

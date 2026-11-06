@@ -230,14 +230,6 @@ fn diff_payload(slug: &str, query: Option<&str>) -> Option<Value> {
     }
 }
 
-fn pulse() -> String {
-    let size = |p: PathBuf| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
-    let events = size(data_root::root().join("events.jsonl"));
-    let sessions = size(crate::session_log::SessionLog::path());
-    // no caffeinate child and no notifier here: both are the Ruby GUI's
-    format!("{events}:{sessions}:0:{}:{}:0", crate::drafts::signature(), crate::issue_drafts::signature())
-}
-
 struct Guard {
     hosts: [String; 2],
 }
@@ -316,7 +308,13 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
             return text_reply("404 Not Found", "not found");
         }
         if route == "/api/pulse" {
-            return json_reply(json!({"pulse": pulse(), "events": events_pulse(), "issues": crate::issue_drafts::signature()}));
+            return json_reply(json!({"pulse": crate::gui_state::pulse(), "events": crate::gui_state::events_pulse(), "issues": crate::issue_drafts::signature()}));
+        }
+        if route == "/api/state" {
+            return match crate::gui_state::build(token) {
+                Ok(v) => json_reply(v),
+                Err(_) => text_reply("501 Not Implemented", "not ported yet: this state (status boards, benchmarks, loose chats, build progress)"),
+            };
         }
         if let Some(slug) = route.strip_prefix("/api/diff/") {
             return match diff_payload(slug, query) {
@@ -329,11 +327,6 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
         }
     }
     text_reply("501 Not Implemented", &format!("not ported yet: {method} {route}"))
-}
-
-fn events_pulse() -> String {
-    let size = std::fs::metadata(data_root::root().join("events.jsonl")).map(|m| m.len()).unwrap_or(0);
-    format!("{size}:{}:{}:0", crate::drafts::signature(), crate::issue_drafts::signature())
 }
 
 fn handle(mut stream: TcpStream, guard: &Guard, token: &str) {
@@ -405,6 +398,7 @@ pub fn run() -> Outcome {
         unsafe { libc::_exit(0) }
     }
     unsafe { libc::signal(libc::SIGINT, stop as extern "C" fn(libc::c_int) as libc::sighandler_t) };
+    crate::pr_status::set_background(true);
     let token = random_token();
     let guard = std::sync::Arc::new(Guard::new(port));
     for stream in listener.incoming().flatten() {

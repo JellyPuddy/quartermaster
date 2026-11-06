@@ -27,6 +27,8 @@ pub struct Issue {
     pub file: String,
     pub title: String,
     pub number: Option<u64>,
+    /// 12 hex of the SHA-1 of the file, as the page tells revisions apart.
+    pub version: String,
 }
 
 pub struct Broken {
@@ -86,7 +88,8 @@ pub fn load(slug: &str) -> Option<Loaded> {
             Parsed::Error(error) => errors.push(Broken { file: name.clone(), error }),
             Parsed::Issue { title, number } => {
                 snapshot_is_readable(&dir, name, &content)?;
-                issues.push(Issue { file: name.clone(), title, number });
+                let version = crate::sha1::hex(content.as_bytes())[..12].to_string();
+                issues.push(Issue { file: name.clone(), title, number, version });
                 seen.push((name.clone(), content));
             }
         }

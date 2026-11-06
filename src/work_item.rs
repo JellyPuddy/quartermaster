@@ -124,6 +124,54 @@ impl WorkItem {
         sections::map_notes(&self.body, f)
     }
 
+    /// `sessions.size`: the entries of the item's `sessions` list.
+    pub fn sessions_count(&self) -> usize {
+        array(get(&self.front, "sessions")).len()
+    }
+
+    /// How many times the item's chat was handed over.
+    pub fn rotation_count(&self) -> usize {
+        array(get(&self.front, "rotations")).len()
+    }
+
+    /// The item's dev-server mode: its own, else its project's default; None without a dev server.
+    pub fn pf_mode(&self) -> Option<String> {
+        let config = crate::project_config::ProjectConfig::current();
+        let server = config.settings(self.project().as_deref())?.dev_server.as_ref()?;
+        Some(self.pf_mode_override().unwrap_or_else(|| server.default_mode.clone()))
+    }
+
+    /// The `## Snapshots` section as `{stamp, session, text}`, newest first.
+    pub fn snapshots(&self) -> Vec<serde_json::Value> {
+        let section = self.section_body("## Snapshots");
+        let split = regex::Regex::new(r"(?m)^### ").unwrap();
+        let header = regex::Regex::new(r"\A([0-9]{4}-[0-9]{2}-[0-9]{2}) — session ([^ \t\r\n\x0c\x0b]+)").unwrap();
+        let mut out: Vec<serde_json::Value> = vec![];
+        let mut start = 0;
+        let mut chunks: Vec<&str> = vec![];
+        for m in split.find_iter(&section) {
+            chunks.push(&section[start..m.start()]);
+            start = m.end();
+        }
+        chunks.push(&section[start..]);
+        for chunk in chunks {
+            if strip(chunk).is_empty() {
+                continue;
+            }
+            let mut lines = chunk.split_inclusive('\n');
+            let head = lines.next().unwrap_or("");
+            let rest: String = lines.collect();
+            let meta = header.captures(head);
+            out.push(serde_json::json!({
+                "stamp": meta.as_ref().map(|m| m[1].to_string()),
+                "session": meta.as_ref().map(|m| m[2].to_string()),
+                "text": strip(&rest),
+            }));
+        }
+        out.reverse();
+        out
+    }
+
     pub fn pf_mode_override(&self) -> Option<String> {
         self.field("pf_mode")
     }

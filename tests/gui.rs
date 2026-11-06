@@ -3,7 +3,7 @@
 //! is ported is compared; the rest answers 501 here.
 
 mod common;
-use common::git;
+use common::{attention_world, git};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -780,7 +780,13 @@ fn copy_dir(from: &Path, to: &Path) {
     fs::create_dir_all(to).unwrap();
     for e in fs::read_dir(from).unwrap().filter_map(|e| e.ok()) {
         let (src, dst) = (e.path(), to.join(e.file_name()));
-        if src.is_dir() { copy_dir(&src, &dst) } else { fs::copy(&src, &dst).map(|_| ()).unwrap() }
+        if src.is_dir() {
+            copy_dir(&src, &dst)
+        } else {
+            fs::copy(&src, &dst).unwrap();
+            let when = fs::metadata(&src).unwrap().modified().unwrap();
+            fs::OpenOptions::new().write(true).open(&dst).unwrap().set_modified(when).unwrap();
+        }
     }
 }
 
@@ -877,4 +883,48 @@ fn github_drafts_are_re_anchored_like_ruby() {
     for expected in ["\"route\":\"head\"", "\"route\":\"commit\"", "\"route\":\"outdated\"", "\"moved\":true", "\"fileGone\":true", "\"oldCommit\":\"", "\"position\":", "no longer in the pull request", "its commit's line can't take a comment any more", "since the push its line isn't in the PR's diff once, unchanged", "\"at\":true", "side must be LEFT or RIGHT, not \\\"SIDEWAYS\\\""] {
         assert!(seen.contains(expected), "the payloads should contain {expected}");
     }
+}
+
+/// What a state build is compared on: everything but the terminal token.
+fn compare_state(ruby: &Server, rust: &Server, label: &str) -> String {
+    let (a, b) = (request(ruby.port, "GET", "/api/state", &[], "", true), request(rust.port, "GET", "/api/state", &[], "", true));
+    assert!(!b.status.starts_with("501"), "{label}: the state should be served: {}", String::from_utf8_lossy(&b.body));
+    let (sa, sb) = (shown(&a, ruby.port), shown(&b, rust.port));
+    let (sa, sb) = (regex::Regex::new(r#""terminalToken":"[0-9a-f]{48}""#).unwrap().replace_all(&sa, "\"terminalToken\":\"T\"").into_owned(), regex::Regex::new(r#""terminalToken":"[0-9a-f]{48}""#).unwrap().replace_all(&sb, "\"terminalToken\":\"T\"").into_owned());
+    let sb = sb.replace("/root2", "/root");
+    if sa != sb {
+        let at = sa.bytes().zip(sb.bytes()).position(|(x, y)| x != y).unwrap_or(sa.len().min(sb.len()));
+        let from = at.saturating_sub(300);
+        let cut = |s: &str| s.get(from..(from + 700).min(s.len())).unwrap_or("").to_string();
+        panic!("{label}: first difference at byte {at}\nRuby: …{}\nRust: …{}", cut(&sa), cut(&sb));
+    }
+    sa
+}
+
+#[test]
+fn the_state_matches_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let env: Vec<(&str, String)> = vec![
+        ("HOME", w.home.display().to_string()),
+        ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()),
+        ("PATH", format!("{}:{}", w.bin.display(), std::env::var("PATH").unwrap())),
+        ("FAKE_GH_DATA", w.gh_data.display().to_string()),
+        ("FAKE_GH_LOG", base.path().join("gh.log").display().to_string()),
+    ];
+    // each server gets its own copy of the data root: a build rewrites caches and links branches
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let mut env_rust = env.clone();
+    env_rust[4].1 = base.path().join("gh-rust.log").display().to_string();
+    let ruby = start_env(false, &w.root, &w.home, &env);
+    let rust = start_env(true, &root2, &w.home, &env_rust);
+    // the first build starts the background PR lookups (a race of its own); compare once they landed
+    for s in [&ruby, &rust] {
+        request(s.port, "GET", "/api/state", &[], "", true);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    let first = compare_state(&ruby, &rust, "first build");
+    assert!(first.contains("\"items\":[{"));
+    compare_state(&ruby, &rust, "second build");
 }

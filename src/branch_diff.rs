@@ -64,7 +64,7 @@ fn github_repo(root: &str) -> Option<String> {
 }
 
 /// `Quartermaster.branch_worktrees`: branch → the worktree path it is checked out in.
-fn branch_worktrees(root: &str) -> Vec<(String, String)> {
+pub fn branch_worktrees(root: &str) -> Vec<(String, String)> {
     let Some(listing) = g(root, &["worktree", "list", "--porcelain"]) else { return vec![] };
     let mut out: Vec<(String, String)> = vec![];
     let mut path: Option<String> = None;
