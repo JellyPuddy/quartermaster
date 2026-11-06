@@ -22,7 +22,9 @@ the two values, a `flow` that isn't a non-empty string, a `timeout_minutes` that
 whole number, an `allowed_tools` that isn't a list of strings. Cloud records are never held to it.
 
 **Run log** — `RunLog.new(slug)` is `automations/<slug>.runs.jsonl`, one `{v: 1, at, event, …}`
-line per event, appended under a flock. Events:
+line per event, appended under a flock; a writer that decides from the fold (`enqueue_item`,
+`enqueue_cron`, `retry`, `waiting`) re-reads it and appends under that one flock, so a tick and a
+CLI or GUI write never both queue a key. Events:
 - `queued` (`run_id`, `key`, `item`, `flow`, `trigger`: `cron` | `guard` | `manual` | `retry`)
 - `started` (`run_id`, `session_id`, `tmux`, `item_slug`)
 - `waiting` (`run_id`, `reason`) — written only when the reason differs from the run's last one

@@ -35,29 +35,35 @@ module Quartermaster
 
     # Queues a guard item unless its key was seen; returns the run id or nil.
     def enqueue_item(key:, item:, flow:, trigger: "guard", at: Time.now)
-      return nil if seen_keys.include?(key)
+      exclusively do
+        next nil if seen_keys.include?(key)
 
-      enqueue(key: key, item: item, flow: flow, trigger: trigger, at: at)
+        enqueue(key: key, item: item, flow: flow, trigger: trigger, at: at)
+      end
     end
 
     # Queues the run a due cron minute asks for, unless a cron run is
     # already queued; returns the run id or nil.
     def enqueue_cron(due:, flow:, at: Time.now)
-      return nil if cron_queued?
+      exclusively do
+        next nil if cron_queued?
 
-      enqueue(key: "cron:#{due.getutc.iso8601}", item: nil, flow: flow, trigger: "cron", at: at)
+        enqueue(key: "cron:#{due.getutc.iso8601}", item: nil, flow: flow, trigger: "cron", at: at)
+      end
     end
 
     # Queues a new run with an ended run's item, bypassing dedupe; returns its id.
     def retry(run_id, at: Time.now)
-      old = run(run_id)
-      raise ArgumentError, "no run #{run_id} in #{slug}" unless old
-      raise ArgumentError, "run #{run_id} is still #{old.status}" if old.queued? || old.live?
+      exclusively do
+        old = run(run_id)
+        raise ArgumentError, "no run #{run_id} in #{slug}" unless old
+        raise ArgumentError, "run #{run_id} is still #{old.status}" if old.queued? || old.live?
 
-      id = new_run_id
-      append("retried", at, "run_id" => run_id, "new_run_id" => id)
-      append("queued", at, "run_id" => id, "key" => old.key, "item" => old.item, "flow" => old.flow, "trigger" => "retry")
-      id
+        id = new_run_id
+        append("retried", at, "run_id" => run_id, "new_run_id" => id)
+        append("queued", at, "run_id" => id, "key" => old.key, "item" => old.item, "flow" => old.flow, "trigger" => "retry")
+        id
+      end
     end
 
     def started(run_id, session_id:, tmux:, item_slug:, at: Time.now)
@@ -66,9 +72,11 @@ module Quartermaster
 
     # Records why a queued run doesn't start, only when the reason changed.
     def waiting(run_id, reason:, at: Time.now)
-      return if run(run_id)&.waiting == reason
+      exclusively do
+        next if run(run_id)&.waiting == reason
 
-      append("waiting", at, "run_id" => run_id, "reason" => reason)
+        append("waiting", at, "run_id" => run_id, "reason" => reason)
+      end
     end
 
     def finished(run_id, at: Time.now) = append("finished", at, "run_id" => run_id)
@@ -117,14 +125,27 @@ module Quartermaster
     private
 
     def append(event, at, fields)
-      FileUtils.mkdir_p(@dir)
       line = { "v" => VERSION, "at" => at.getutc.iso8601, "event" => event }.merge(fields)
-      File.open(path, "a") do |f|
-        f.flock(File::LOCK_EX)
-        f.puts(JSON.generate(line))
-      end
+      exclusively { @locked.puts(JSON.generate(line)) }
       @fold = nil
       line
+    end
+
+    # Runs the block holding the log's flock, with the fold re-read, so a
+    # check and the append it decides stay one step against other writers.
+    def exclusively
+      return yield if @locked
+
+      FileUtils.mkdir_p(@dir)
+      File.open(path, "a") do |f|
+        f.flock(File::LOCK_EX)
+        f.sync = true
+        @locked = f
+        @fold = nil
+        yield
+      ensure
+        @locked = nil
+      end
     end
 
     def new_run_id = SecureRandom.alphanumeric(8).downcase

@@ -106,6 +106,22 @@ class RunLogTest < Minitest::Test
     assert_equal ["pr-1"], log.seen_keys.to_a
   end
 
+  def test_dedupe_and_coalescing_see_what_another_writer_appended
+    mine = log
+    mine.queue
+    theirs = Quartermaster::RunLog.new("digest")
+    theirs.enqueue_item(key: "pr-1", item: nil, flow: "chat", at: T0)
+    theirs.enqueue_cron(due: T0, flow: "chat", at: T0)
+    queued = theirs.enqueue(key: "a", item: nil, flow: "chat", trigger: "guard", at: T0)
+    theirs.started(queued, session_id: "s", tmux: "t", item_slug: "digest", at: T0)
+    theirs.failed(queued, error: "x", at: T0)
+    theirs.retry(queued, at: T0)
+
+    assert_nil mine.enqueue_item(key: "pr-1", item: nil, flow: "chat", at: T0 + 1)
+    assert_nil mine.enqueue_cron(due: T0 + 60, flow: "chat", at: T0 + 1)
+    assert_equal 3, lines.count { |l| l["event"] == "queued" && l["trigger"] != "retry" }
+  end
+
   def test_a_key_stays_consumed_after_its_run_failed
     id = log.enqueue_item(key: "pr-1", item: nil, flow: "chat", at: T0)
     log.started(id, session_id: "s", tmux: "t", item_slug: "digest", at: T0 + 1)
