@@ -104,7 +104,8 @@ module Quartermaster
       "Hooks" => [
         ["qm hook-session-start", "called by Claude Code: capture, link, inject context"],
         ["qm hook-session-end", "called by Claude Code: capture duration, commits, diff stat"],
-        ["qm install-hooks", "print the settings.json hooks snippet (session capture + event/board/snapshot appenders)"]
+        ["qm install-hooks", "print the settings.json hooks snippet (session capture + event/board/snapshot appenders)"],
+        ["qm pin-ruby [VERSION|--clear]", "run qm (hooks included) on this Ruby whatever a session's directory pins (default: the running one); --clear unpins"]
       ]
     }.freeze
 

@@ -51,6 +51,7 @@ worktrees — derives from these two layers plus a few more append-only hook log
 | `pr-prerequisites.json`, `pr-deployment.json` | PR prerequisites and their deploy-check cache | [prs](areas/prs.md) |
 | `viewer-filter` | the fzf viewer's state filter | [cli](areas/cli.md) |
 | `feature-use.jsonl` | one line per CLI command, GUI action and GUI read, append-only | [cli](areas/cli.md) |
+| `ruby-version` | the Ruby qm runs on whatever a session's cwd pins (`qm pin-ruby`); absent, the cwd's | [cli](areas/cli.md) |
 | `plans/<slug>/<batch id>.md` (+ `-exploration.md`) | each delegate-build run's plan, written by that skill; qm never reads it | none |
 
 Hooks and the global fallback instruction live at **user level** (`~/.claude/settings.json`,
@@ -97,11 +98,13 @@ finishes with " answer my question about them: …" or " ask me what I want to k
 
 ## Tech decisions
 
-- **Ruby, `#!/usr/bin/env ruby`**, resolved through asdf shims to whatever the session's cwd
-  pins; a user-level asdf default (`~/.tool-versions`) must exist or capture dies outside pinned repos.
+- **Ruby, through an `sh` launcher**: `ruby` resolves through asdf shims to the version in
+  `ruby-version` when pinned (`qm pin-ruby`), else to whatever the session's cwd pins, which
+  needs a user-level asdf default (`~/.tool-versions`) outside pinned repos ([cli](areas/cli.md)).
 - **Stdlib only** (yaml, json, open3, optparse, socket, …), no gems: gems install per Ruby
   version, so a hook firing in a repo pinned to another Ruby would not find them.
-- **Ruby 3.3 is the syntax floor** for the same reason — no 4.x-only features.
+- **Ruby 3.3 is the syntax floor** for the same reason — no 4.x-only features. The launcher
+  checks it before loading `lib/` and logs a `[ruby-floor]` line instead ([capture](areas/capture.md)).
 - **`statusline/statusline.rb` is the exception:** standalone, macOS system Ruby 2.6, never loads `lib/`.
 - **The skills qm drives ship in `skills/`** (rotate, work-items, branch-stats, adopt-worktree,
   draft-issues), symlinked into `~/.claude/skills/`; qm's code reads these skills' files from

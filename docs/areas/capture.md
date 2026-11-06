@@ -67,6 +67,13 @@ fallback protocol for when the injection is missing.
 - **Hooks never block or break a session.** Ruby hook entry points rescue everything, log
   to `qm.log` and exit 0 (`CLI#guard_hook`); the `sh` hooks wrap their body in
   `{ … } >/dev/null 2>&1` and always `exit 0`. Pinned by tests.
+- **A Ruby below the 3.3 floor never reaches `lib/`** (`RubyFloor`, run by the launcher
+  first): it appends `<iso8601> [ruby-floor] qm needs Ruby >= 3.3, got <v> (<ruby path>); pin
+  one with qm pin-ruby` to `qm.log`, then a `hook-*` command exits 0 in silence and any other
+  command repeats the line on stderr and exits 1. Never stdout. Pinned by a test that runs the
+  launcher on macOS's system Ruby 2.6 when it is there.
+- **Hook commands in settings.json stay `~/bin/quartermaster hook-…`**: the Ruby pin lives in
+  the launcher ([cli](cli.md)), so `qm install-hooks` prints the same snippet pinned or not.
 - **Every `qm.log` line other than a header starts with whitespace**, and only headers carry
   `[<context>] transient` or `[<context>] recovered`: readers (an error count) tell lines
   apart by that alone. Non-transient failures are always written in full. Outage state is
@@ -135,9 +142,11 @@ fallback protocol for when the injection is missing.
   resumed or restarted.
 - Headless `claude -p` sessions fire SessionStart/SessionEnd like interactive ones — useful
   for end-to-end checks, and the reason `QM_SKIP` exists.
-- `env ruby` resolves through asdf shims; with no asdf global ruby default it dies outside
-  repos pinned by `.tool-versions` and capture silently stops. Fixed by
-  `asdf set -u ruby <version>` (writes `~/.tool-versions`) — check this first when capture
-  goes quiet.
+- Unpinned, `ruby` resolves through asdf shims from the session's cwd: a repo pinning a Ruby
+  below the floor gets a `[ruby-floor]` line in `qm.log` and no capture, and with no asdf
+  global ruby default it dies outside repos pinned by `.tool-versions`, logging nothing.
+  `qm pin-ruby` fixes both; otherwise `asdf set -u ruby <version>` (writes `~/.tool-versions`)
+  — check these first when capture goes quiet. A pinned version later uninstalled is skipped,
+  back to the unpinned behavior.
 - Claude Code prunes transcripts `cleanupPeriodDays` (default 30) after their last write;
   qm can't stop that, only distill first ([work-items](work-items.md)).

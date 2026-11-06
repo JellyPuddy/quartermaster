@@ -1,8 +1,28 @@
-#!/usr/bin/env ruby
+#!/bin/sh
+=begin 2>/dev/null
+# Launcher only; the code lives in lib/quartermaster/. This file is both sh and
+# Ruby. Run directly (hooks, ~/bin/{qm,quartermaster} symlinks), sh pins the
+# Ruby named in $QM_ROOT/ruby-version and execs ruby on this same file, which
+# skips to the #!ruby line below. Loaded by Ruby, the sh half is a =begin comment.
+pin="${QM_ROOT:-$HOME/.claude/quartermaster}/ruby-version"
+version=
+[ -f "$pin" ] && read -r version < "$pin"
+installs="${ASDF_DATA_DIR:-$HOME/.asdf}/installs/ruby"
+if [ -n "$version" ] && { [ ! -d "$installs" ] || [ -d "$installs/$version" ]; }; then
+  ASDF_RUBY_VERSION=$version
+  MISE_RUBY_VERSION=$version
+  export ASDF_RUBY_VERSION MISE_RUBY_VERSION
+fi
+exec ruby "$0" "$@"
+=end
+#!ruby
 # frozen_string_literal: true
 
-# Launcher only — the code lives in lib/quartermaster/. Resolved through
-# realpath so the ~/bin/{quartermaster,qm} symlinks keep working.
-require File.join(File.dirname(File.realpath(__FILE__)), "lib", "quartermaster")
+# Resolved through realpath so the ~/bin symlinks keep working. The floor guard
+# runs before lib/ loads, since an older Ruby cannot even parse lib/.
+qm_lib = File.join(File.dirname(File.realpath(__FILE__)), "lib")
+require File.join(qm_lib, "quartermaster", "ruby_floor")
+Quartermaster::RubyFloor.enforce(ARGV.first) if $PROGRAM_NAME == __FILE__
+require File.join(qm_lib, "quartermaster")
 
 Quartermaster::CLI.new.run(ARGV) if $PROGRAM_NAME == __FILE__

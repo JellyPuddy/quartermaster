@@ -1,14 +1,20 @@
 # CLI and viewer
 
-**Code:** `lib/quartermaster/cli.rb`, `lib/quartermaster/cli_format.rb`, `lib/quartermaster/cli_viewer.rb`, `lib/quartermaster/cli_attention.rb`, `lib/quartermaster/cli_chats.rb`, `lib/quartermaster/cli_prs.rb`, `lib/quartermaster/cli_cleanup.rb`, `lib/quartermaster/cli_workspace.rb`, `lib/quartermaster/viewer.rb`, `lib/quartermaster/feature_use.rb`, `quartermaster`
-**Tests:** `test/viewer_test.rb`, `test/feature_use_test.rb`
+**Code:** `lib/quartermaster/cli.rb`, `lib/quartermaster/cli_format.rb`, `lib/quartermaster/cli_viewer.rb`, `lib/quartermaster/cli_attention.rb`, `lib/quartermaster/cli_chats.rb`, `lib/quartermaster/cli_prs.rb`, `lib/quartermaster/cli_cleanup.rb`, `lib/quartermaster/cli_workspace.rb`, `lib/quartermaster/cli_setup.rb`, `lib/quartermaster/viewer.rb`, `lib/quartermaster/feature_use.rb`, `lib/quartermaster/ruby_pin.rb`, `lib/quartermaster/ruby_floor.rb`, `quartermaster`
+**Tests:** `test/viewer_test.rb`, `test/feature_use_test.rb`, `test/ruby_pin_test.rb`
 **Depends on:** [work-items](work-items.md), [linking](linking.md), [gui-shell](gui-shell.md)
 
 ## What it does
 
-`qm` is shared by the user, Claude and the hooks. `./quartermaster` is a launcher only: it
-requires `lib/quartermaster` through its realpath, so the `~/bin/qm` and `~/bin/quartermaster`
-symlinks keep working, and runs `CLI#run`. Help text comes from `CliFormat::USAGE_SECTIONS`;
+`qm` is shared by the user, Claude and the hooks. `./quartermaster` is a launcher only, one
+file that is both `sh` and Ruby. Run directly, its `sh` half reads `$QM_ROOT/ruby-version`
+(`RubyPin`) and, when it names a version asdf has installed (or there is no asdf), exports it as
+`ASDF_RUBY_VERSION` and `MISE_RUBY_VERSION`, overriding any inherited value; then it execs
+`ruby` on the same file, which starts at the `#!ruby` line. No file, an empty one, or a version
+asdf lacks: plain `ruby`, resolved as the cwd pins it. Loaded by Ruby (tests, `RbConfig.ruby
+EXECUTABLE`), the `sh` half is a `=begin` comment. The Ruby half runs `RubyFloor` before anything
+else (see [capture](capture.md)), then requires `lib/quartermaster` through its realpath, so the
+`~/bin/qm` and `~/bin/quartermaster` symlinks keep working, and runs `CLI#run`. Help text comes from `CliFormat::USAGE_SECTIONS`;
 `qm help` is authoritative. Commands, one line each (flags in `qm help`):
 
 **Viewer and GUI**
@@ -56,6 +62,9 @@ symlinks keep working, and runs `CLI#run`. Help text comes from `CliFormat::USAG
 
 **Hooks**: `qm hook-session-start`, `qm hook-session-end`, `qm install-hooks` (prints the
 settings snippet) — see [capture](capture.md).
+- `qm pin-ruby [VERSION|--clear]` — write `ruby-version` (default: the running `RUBY_VERSION`),
+  refusing a version below the floor or one asdf has not installed (checked against
+  `$ASDF_DATA_DIR/installs/ruby`, default `~/.asdf`); `--clear` removes it.
 
 Internal, called by the viewer's fzf bindings: `viewer-rows`, `sessions-view`, `inbox-view`,
 `cycle-filter`, `session-rows`, `inbox-rows`, `choose-state`, `choose-project`,
@@ -66,7 +75,7 @@ Internal, called by the viewer's fzf bindings: `viewer-rows`, `sessions-view`, `
 one file each: `CliViewer` (viewer rows and pickers, `show`, sessions), `CliAttention` (inbox,
 attention, overview, ack, snooze, distill), `CliChats` (commands acting on the running GUI),
 `CliPrs` (pr, pr-requires, draft), `CliCleanup` (cleanup, sweep), `CliWorkspace` (resume, start,
-pf, IDE, terminal), and `CliFormat` (shared output helpers and the help text). Each group's frozen
+pf, IDE, terminal), `CliSetup` (how qm itself runs: pin-ruby), and `CliFormat` (shared output helpers and the help text). Each group's frozen
 `COMMANDS` maps a word to the method `CLI#run` calls with argv; `CLI.commands` merges them and
 refuses a word claimed twice. A new command touches only its group's file (and `qm help`). Hooks
 and commands called otherwise (no argv, extra arguments, another class) stay explicit `when`
@@ -96,6 +105,7 @@ refused ("switch to its Warp tab"): it would fork the conversation.
 ## Rules
 
 - Never rename or move `./quartermaster`: the `~/bin` symlinks and the hook registrations point at it.
+- The launcher's `sh` half stays before `=end` and its Ruby half after `#!ruby`; `ruby_floor.rb`, which runs before `lib/` loads, must parse on Ruby 2.x and require nothing.
 - Commands that act on the GUI (`caffeinate`, `pane-start`, `pane-resume`, `rotate`, `start-issue`, `loose`) POST `/api/action` to `127.0.0.1:$QM_GUI_PORT` (default 49737) without an Origin; with no GUI they say so, do nothing and exit 1 — except `start-issue`, which then makes the item and worktree itself and prints how to start the chat, and `loose`, which prints how to start it. Each needs its action in `LoopbackGuard::LOCAL_ACTIONS`.
 - `qm install-hooks` prints the snippet and never writes `~/.claude/settings.json`; that file is the user's.
 - Hook commands never print except SessionStart's context, honour `QM_SKIP`, rescue everything and exit 0.
@@ -111,3 +121,4 @@ refused ("switch to its Warp tab"): it would fork the conversation.
 
 - `viewer-filter` — the viewer's current state filter.
 - `feature-use.jsonl` — one line per feature use, append-only, never pruned.
+- `ruby-version` — one Ruby version and a newline, written by `qm pin-ruby`, read by the launcher's `sh` half.
