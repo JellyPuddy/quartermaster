@@ -144,7 +144,9 @@ and empty files; the page then opens its chat with the `automation-chat` action,
 Claude does). Every network call is a `GuiJobs` job (`automations`, `automation-<slug>`,
 `automation-runs-<slug>`, `automation-adopt-<id>`); each action ends with one list call, and the
 page reloads the tab when the state poll hands it the job's end. The page opens the tab with
-one refresh and loads runs once per automation shown; Apply is per automation.
+one refresh and loads runs once per automation shown; Apply is per automation. The detail's
+Description has an edit control that saves through the GUI's `describe` action (`/api/action`,
+as `qm describe` does): the item's text, local, never pushed.
 
 ## Rules
 

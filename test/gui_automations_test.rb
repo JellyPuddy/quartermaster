@@ -200,6 +200,24 @@ class GuiAutomationsTest < Minitest::Test
     assert_includes @client.calls, [:runs, ID, 10]
   end
 
+  def test_the_detail_edits_the_items_description_through_the_describe_action
+    adopt
+    describe = { "cmd" => "describe", "slug" => "digest", "args" => { "text" => "Mondays and Thursdays: what shipped.\n" } }
+    status, = post("/api/action", describe, { "host" => "127.0.0.1:4567", "origin" => "http://evil.example" })
+    assert_equal "403 Forbidden", status
+    status, = post("/api/action", describe, { "host" => "127.0.0.1:4567" })
+    assert_equal "403 Forbidden", status
+
+    status, answer = post("/api/action", describe)
+    assert_equal ["200 OK", true], [status, answer["ok"]]
+    assert_equal "Mondays and Thursdays: what shipped.", get("/api/automations/digest")["item"]["description"]
+    assert_empty @client.calls, "a description is the item's, never pushed"
+
+    page = served_page(gui, ok_host)
+    assert_includes page, %(data-au="edit-description")
+    assert_includes page, %(act("describe", { slug, args: { text } }))
+  end
+
   def test_new_creates_the_item_and_its_empty_files_for_the_chat_to_fill
     status, answer = post("/api/automations/new", "title" => "Weekly report", "project" => "MyApp")
     assert_equal ["200 OK", true, "weekly-report"], [status, answer["ok"], answer["slug"]]
