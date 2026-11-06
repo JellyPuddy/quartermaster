@@ -53,6 +53,9 @@ Headers: `Authorization: Bearer <token>`, `anthropic-version`, the `ccr-triggers
 - `list` — `GET /v1/code/triggers`, the `data` routines as the API gives them.
 - `get(id)`, `create(fields)` (`POST /v1/code/triggers`), `update(id, fields)` (`POST
   /v1/code/triggers/{id}`, partial), `run(id)` (`POST …/{id}/run`).
+- Response shapes: a list answers `{"data": [routines], "has_more"}`, a single routine (get,
+  verified; create and update assumed) `{"trigger": routine}`, which `get`, `create` and `update`
+  unwrap in one place before the id check, still accepting a bare routine.
 - `runs(id, limit:)` — `GET /v1/code/sessions?trigger_id=…&limit=…`, at most `limit` runs as
   `{id, title, status, created_at, updated_at, url}`; fields the API leaves out are nil.
 - `delete(id)` — tries `DELETE /v1/code/triggers/{id}`; answers `:deleted`, or `:unsupported`

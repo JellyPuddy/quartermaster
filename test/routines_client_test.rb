@@ -9,6 +9,8 @@ class RoutinesClientTest < Minitest::Test
   include QmTestHelpers
 
   FIXTURE = File.read(File.expand_path("fixtures/routines-list-response.json", __dir__))
+  # The real single-routine answer: the routine wrapped in {"trigger": …}.
+  GET_FIXTURE = File.read(File.expand_path("fixtures/routine-get-response.json", __dir__))
   TOKEN = "sk-ant-oat01-SECRET-TOKEN"
   ORG = "0f1e2d3c-org-uuid"
   ID = "trig_01AAAAAAAAAAAAAAAAAAAAAAAA"
@@ -83,15 +85,20 @@ class RoutinesClientTest < Minitest::Test
                  fields)
   end
 
+  def wrapped(routine) = JSON.generate("trigger" => routine)
+
   def test_get_run_and_partial_update_hit_their_endpoints
-    routine = JSON.generate(JSON.parse(FIXTURE)["data"].first)
-    transport = StubTransport.new([200, routine])
+    transport = StubTransport.new([200, GET_FIXTURE])
     api = client(transport)
 
-    assert_equal ID, api.get(ID)["id"]
+    routine = api.get(ID)
     assert_equal ["GET", "https://api.anthropic.com/v1/code/triggers/#{ID}"], transport.last.values_at(:method, :url)
+    assert_equal JSON.parse(GET_FIXTURE)["trigger"], routine
+    assert_equal Quartermaster::RoutinesClient.fields(JSON.parse(FIXTURE)["data"].first),
+                 Quartermaster::RoutinesClient.fields(routine)
 
-    api.update(ID, "enabled" => false)
+    assert_equal ID, api.update(ID, "enabled" => false)["id"]
+
     assert_equal ["POST", "https://api.anthropic.com/v1/code/triggers/#{ID}", { "enabled" => false }],
                  transport.last.values_at(:method, :url, :body)
 
@@ -104,9 +111,9 @@ class RoutinesClientTest < Minitest::Test
 
   def test_create_mirrors_the_fixtures_job_config
     routine = JSON.parse(FIXTURE)["data"].first
-    transport = StubTransport.new([200, JSON.generate(routine)])
+    transport = StubTransport.new([200, wrapped(routine)])
     fields = Quartermaster::RoutinesClient.fields(routine).except("id", "updated_at")
-    client(transport).create(fields)
+    assert_equal routine, client(transport).create(fields)
 
     body = transport.last[:body]
     assert_equal ["POST", "https://api.anthropic.com/v1/code/triggers"], transport.last.values_at(:method, :url)
@@ -123,7 +130,7 @@ class RoutinesClientTest < Minitest::Test
   end
 
   def test_an_empty_connector_list_clears_the_routines_connectors
-    transport = StubTransport.new([200, JSON.generate(JSON.parse(FIXTURE)["data"].first)])
+    transport = StubTransport.new([200, wrapped(JSON.parse(FIXTURE)["data"].first)])
     client(transport).create("name" => "Bare", "connectors" => [])
 
     body = transport.last[:body]
@@ -134,7 +141,7 @@ class RoutinesClientTest < Minitest::Test
   end
 
   def test_a_connector_list_is_sent_exactly_without_the_clear_flag
-    transport = StubTransport.new([200, JSON.generate(JSON.parse(FIXTURE)["data"].first)])
+    transport = StubTransport.new([200, wrapped(JSON.parse(FIXTURE)["data"].first)])
     slack = { "connector_uuid" => "00000000-0000-4000-8000-000000000002", "name" => "Slack",
               "url" => "https://mcp.slack.com/mcp" }
     client(transport).create("name" => "Digest", "connectors" => [slack])
@@ -146,7 +153,7 @@ class RoutinesClientTest < Minitest::Test
 
   def test_updating_the_prompt_sends_the_whole_job_config
     routine = JSON.parse(FIXTURE)["data"].first
-    transport = StubTransport.new([200, JSON.generate(routine)])
+    transport = StubTransport.new([200, wrapped(routine)])
     fields = Quartermaster::RoutinesClient.fields(routine)
     client(transport).update(ID, fields.slice("prompt", "model", "sources", "allowed_tools", "environment_id")
                                        .merge("prompt" => "New prompt"))
@@ -155,6 +162,30 @@ class RoutinesClientTest < Minitest::Test
     assert_equal ["job_config"], body.keys
     assert_equal "New prompt", body.dig("job_config", "ccr", "events", 0, "data", "message", "content")
     assert_equal routine.dig("job_config", "ccr", "session_context"), body.dig("job_config", "ccr", "session_context")
+  end
+
+  def test_a_bare_routine_is_still_read_and_anything_else_is_a_bad_shape
+    routine = JSON.parse(FIXTURE)["data"].first
+    assert_equal routine, client(StubTransport.new([200, JSON.generate(routine)])).get(ID)
+
+    ['{"trigger":"trig_x"}', '{"trigger":{"name":"no id"}}', "{}", "[]"].each do |answer|
+      error = assert_raises(Quartermaster::RoutinesClient::BadShape) { client(StubTransport.new([200, answer])).get(ID) }
+      assert_equal "routines API answered a routine without an id", error.message
+    end
+  end
+
+  def test_adopt_reads_the_real_get_response_end_to_end
+    transport = StubTransport.new([200, GET_FIXTURE])
+    automations = Quartermaster::Automations.new(client: client(transport))
+    entry = automations.adopt(ID, project: "MyApp")
+
+    assert_equal ["GET", "https://api.anthropic.com/v1/code/triggers/#{ID}"], transport.last.values_at(:method, :url)
+    assert_equal "shipped-digest-dm", entry.slug
+    assert_equal [ID, "0 7 * * 1,4", true, "2026-10-27T12:21:01.911143Z"],
+                 entry.record.values_at("routine", "cron", "enabled", "remote_updated_at")
+    assert_equal "PROMPT", entry.prompt
+    item = Quartermaster::WorkItem.find("shipped-digest-dm")
+    assert_equal ["automation", ID, "MyApp", "active"], [item.kind, item.routine, item.project, item.state]
   end
 
   def test_runs_tolerate_missing_fields_and_link_to_claude_ai

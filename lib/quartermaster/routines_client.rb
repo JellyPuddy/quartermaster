@@ -152,7 +152,12 @@ module Quartermaster
       list.each { |r| self.class.fields(r) }
     end
 
-    def routine(answer) = answer.tap { self.class.fields(answer) }
+    # A single-routine answer: the API wraps it as {"trigger": routine}; a
+    # bare routine is read as well.
+    def routine(answer)
+      routine = answer.is_a?(Hash) && answer.key?("trigger") ? answer["trigger"] : answer
+      routine.tap { self.class.fields(routine) }
+    end
 
     def request(method, path, body = nil, unsupported: [])
       token = token!
