@@ -17,11 +17,10 @@ module Quartermaster
 
     # The runner is the seam to the dev server, the IDE and worktrees; tests pass a stub. Off the live
     # data root (pf_live false) it is fenced: no dev-server command that changes what it serves (PfFence).
-    # tmux is where the chat panes live (Tmux; tests pass one on a test
-    # socket). The terminal token is minted per start and embedded in the page:
-    # only a page this server rendered can open a terminal WebSocket.
-    # caffeinate is the header's ☕ toggle (Caffeinate; tests pass stubbed spawns).
-    def initialize(port: nil, runner: CommandRunner.new, tmux: Tmux.new, caffeinate: Caffeinate.new,
+    # tmux is where the chat panes live (Tmux; tests pass one on a test socket). The terminal token is
+    # minted per start and embedded in the page: only a page this server rendered can open a terminal
+    # WebSocket. caffeinate is the header's ☕ toggle, settings_probe what the Settings warnings look at.
+    def initialize(port: nil, runner: CommandRunner.new, tmux: Tmux.new, caffeinate: Caffeinate.new, settings_probe: ConfigCheck::Probe.new,
                    pr_deployment: PrDeployment.new, pr_memo: PrMemo.new, pf_live: Quartermaster.live_root?, benchmarks: nil)
       fence = PfFence.new(runner) unless pf_live
       @runner = runner = fence || runner
@@ -36,6 +35,7 @@ module Quartermaster
       @notifier = TurnNotifier.new(runner: runner)
       @state = GuiState.new(runner: runner, tmux: tmux, caffeinate: caffeinate, jobs: @jobs,
                             terminal_token: @terminal_token, notifier: @notifier, pf_off: fence&.reason, benchmarks: benchmarks)
+      @settings = GuiSettings.new(state: @state, probe: settings_probe)
       @pr_items = PrItems.new
       @actions = GuiActions.new(runner: runner, tmux: tmux, caffeinate: caffeinate, jobs: @jobs, state: @state,
                                 pr_items: @pr_items)
@@ -150,8 +150,8 @@ module Quartermaster
         json(workspace_payload(route.delete_prefix("/api/workspace/"), path.split("?", 2)[1]))
       elsif method == "POST" && route == "/api/cleanup-plan"
         json(@actions.cleanup_plan(parse_json(body)["scope"]))
-      else
-        ["404 Not Found", "text/plain; charset=utf-8", "not found"]
+      else # GET /api/settings, POST /api/settings/check and /api/settings/save (GuiSettings)
+        @settings.respond(method, route, parse_json(body)) || ["404 Not Found", "text/plain; charset=utf-8", "not found"]
       end
     end
 

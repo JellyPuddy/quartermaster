@@ -1,8 +1,8 @@
 # Settings
 
-**Code:** `lib/quartermaster/config_schema.rb`, `lib/quartermaster/config_check.rb`, `lib/quartermaster/config_file.rb`, `lib/quartermaster/cli_config.rb`
-**Tests:** `test/config_file_test.rb`, `test/config_cli_test.rb`
-**Depends on:** [capture](capture.md) (`ProjectConfig` reads the same file)
+**Code:** `lib/quartermaster/config_schema.rb`, `lib/quartermaster/config_check.rb`, `lib/quartermaster/config_file.rb`, `lib/quartermaster/cli_config.rb`, `lib/quartermaster/gui_settings.rb`
+**Tests:** `test/config_file_test.rb`, `test/config_cli_test.rb`, `test/gui_settings_test.rb`
+**Depends on:** [capture](capture.md) (`ProjectConfig` reads the same file), [gui-shell](gui-shell.md) (the router and its Origin guard)
 
 ## What it does
 
@@ -64,6 +64,18 @@ fails as `qm: unknown config key: …`. Every error the edited file has goes to 
 under or above it) go to stderr as `qm: warning: …` after the write, exit 0. `unset projects.X`
 warns how many work items still have `project: X` (they keep it; `qm move` reassigns).
 
+**GUI endpoints** (`GuiSettings`, routed by `Gui#respond`). `GET /api/settings` is the form's
+payload: `schema` (`ConfigSchema.payload`), `config` (the file's mapping normalized for the form:
+tidied, every shorthand opened into its mapping, ungoverned keys as they are; `{}` when the file
+doesn't parse, with that error in `issues`), `digest`, `issues`, `features` (the grid's cells per
+project), `items` (work items per project name; a name missing is 0), `priceDefaults`
+(`PriceTable::DEFAULTS`) and `path` (the file). `POST /api/settings/check {config}` answers
+`{issues, features}` for a draft and writes nothing. `POST /api/settings/save {config, digest}`
+answers `{ok: true, settings, state}` — the new payload (its new digest) and a state build made
+after the write (the cached dev-server status forgotten), so the page's buttons follow at once;
+`409 {ok: false, stale: true, error, settings}` when the file changed since `digest`, carrying the
+current payload to reload; `422 {ok: false, error, issues, features}` while the draft has errors.
+
 ## Rules
 
 - `ConfigSchema` is the one list of config keys: a new key goes there, in docs/overview.md
@@ -76,7 +88,13 @@ warns how many work items still have `project: X` (they keep it; `qm move` reass
 - A write is atomic (temp file + rename in the same folder), keeps the previous file as
   `config.yml.bak`, and is refused as stale when the file changed since the editor loaded it.
 - Projects are never renamed (work items store the name): renaming is remove + add.
-- Validation lives here only; the GUI never re-implements it in JS.
+- Validation lives here only; the GUI never re-implements it in JS: the page posts its draft to
+  check.
+- The settings POSTs are the page's: they need our `Origin` and are not in
+  `LoopbackGuard::LOCAL_ACTIONS` (a local tool edits config through `qm config`).
+- The settings routes stay off the action mutex: the write is quick and serialised by
+  `GuiSettings`' own lock, the digest keeps editors apart, and the state build after a save runs
+  outside every lock.
 
 ## Data
 
