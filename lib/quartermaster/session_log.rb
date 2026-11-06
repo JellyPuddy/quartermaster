@@ -65,11 +65,7 @@ module Quartermaster
     def read_events
       return [] unless File.exist?(path)
 
-      File.readlines(path).filter_map do |line|
-        JSON.parse(line)
-      rescue JSON::ParserError
-        nil
-      end
+      File.readlines(path).filter_map { |line| Quartermaster.json_object(line) }
     end
 
     def alive?(pid)

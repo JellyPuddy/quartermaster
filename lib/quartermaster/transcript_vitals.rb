@@ -60,7 +60,7 @@ module Quartermaster
     def scan_lines(lines)
       usage_seen = tier = nil
       lines.reverse_each do |line|
-        entry = parse(line) or next
+        entry = Quartermaster.json_object(line) or next
         next if entry["isSidechain"]
 
         case entry["type"]
@@ -100,12 +100,6 @@ module Quartermaster
       content = entry.dig("message", "content")
       texts = content.is_a?(String) ? [content] : Array(content).filter_map { |c| c["text"] if c.is_a?(Hash) }
       texts.any? { |t| t.is_a?(String) && t.start_with?(INTERRUPT_MARK) }
-    end
-
-    def parse(line)
-      JSON.parse(line)
-    rescue JSON::ParserError
-      nil
     end
 
     def time(ts)

@@ -110,9 +110,8 @@ module Quartermaster
       return if complete.empty?
 
       complete.force_encoding(Encoding::UTF_8).each_line do |line|
-        self.class.apply(@fold["sessions"], JSON.parse(line))
-      rescue JSON::ParserError
-        next
+        event = Quartermaster.json_object(line)
+        self.class.apply(@fold["sessions"], event) if event
       end
       @fold["offset"] += complete.bytesize
       save_fold

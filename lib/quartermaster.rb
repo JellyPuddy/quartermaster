@@ -207,15 +207,20 @@ module Quartermaster
     30
   end
 
+  # One JSONL line as an object, or nil when it is garbled or valid JSON of
+  # another kind (5, [], "x", null): every per-line reader skips both alike.
+  def self.json_object(line)
+    entry = JSON.parse(line)
+    entry.is_a?(Hash) ? entry : nil
+  rescue JSON::ParserError
+    nil
+  end
+
   def self.first_prompt(transcript_path)
     return nil unless transcript_path && File.exist?(transcript_path)
 
     File.foreach(transcript_path) do |line|
-      entry = begin
-        JSON.parse(line)
-      rescue JSON::ParserError
-        next
-      end
+      entry = json_object(line) or next
       next unless entry["type"] == "user"
 
       text = prompt_text(entry)
@@ -261,11 +266,7 @@ module Quartermaster
     turns = []
     title = branch = model = nil
     File.foreach(transcript_path) do |line|
-      entry = begin
-        JSON.parse(line)
-      rescue JSON::ParserError
-        next
-      end
+      entry = json_object(line) or next
       next if entry["isSidechain"]
 
       branch = entry["gitBranch"] if entry["gitBranch"] && !entry["gitBranch"].empty?

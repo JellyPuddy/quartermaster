@@ -112,7 +112,9 @@ finishes with " answer my question about them: …" or " ask me what I want to k
   its own checkout (`branch-stats.sh`, `page.html`), never through `~/.claude/skills/`.
 - `fzf` for the terminal viewer, `gh` for GitHub (always offline-tolerant), tmux for chats.
 - **Data formats are versioned**: a `v:` field in JSONL events and work-item frontmatter;
-  bump on a breaking schema change, readers tolerate unknown fields.
+  bump on a breaking schema change, readers tolerate unknown fields. A per-line JSONL reader
+  takes each line through `Quartermaster.json_object`, so a line that doesn't parse or isn't an
+  object (`5`, `[]`, `null`) is skipped, never raised.
 - One file per class, named by intent (`SessionLog`, `WorkItem`, `HookHandler`, `CLI`, …).
 - Rationale lives in commit messages, not code comments or these pages.
 

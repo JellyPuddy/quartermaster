@@ -55,11 +55,7 @@ module Quartermaster
     end
 
     def self.events(dir)
-      File.readlines(File.join(dir, "events.jsonl")).filter_map do |line|
-        JSON.parse(line)
-      rescue JSON::ParserError
-        nil
-      end
+      File.readlines(File.join(dir, "events.jsonl")).filter_map { |line| Quartermaster.json_object(line) }
     rescue SystemCallError
       []
     end

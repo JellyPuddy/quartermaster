@@ -161,7 +161,7 @@ module Quartermaster
     def open_from_journal(journal)
       open = {}
       File.foreach(journal) do |line|
-        entry = JSON.parse(line) rescue next
+        entry = Quartermaster.json_object(line) or next
         case entry["type"]
         when "started" then open[entry["key"]] = entry
         when "result", "failed" then open.delete(entry["key"])
@@ -189,7 +189,7 @@ module Quartermaster
     def brief(path)
       texts = []
       File.foreach(path) do |line|
-        entry = JSON.parse(line) rescue next
+        entry = Quartermaster.json_object(line) or next
         break if entry["type"] == "assistant"
         next unless entry["type"] == "user"
 
@@ -202,7 +202,7 @@ module Quartermaster
 
     def first_timestamp(path)
       File.foreach(path) do |line|
-        stamp = (JSON.parse(line)["timestamp"] rescue nil)
+        stamp = Quartermaster.json_object(line)&.dig("timestamp")
         return Time.iso8601(stamp) if stamp
       end
       nil
@@ -239,7 +239,7 @@ module Quartermaster
       end
       lines = data.force_encoding("UTF-8").scrub.split("\n")
       lines.shift if size > TAIL_BYTES # a cut-off first line
-      lines.filter_map { |line| JSON.parse(line) rescue nil }
+      lines.filter_map { |line| Quartermaster.json_object(line) }
     end
 
     def tool_uses(entry)

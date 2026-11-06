@@ -134,6 +134,22 @@ class BuildProgressTest < Minitest::Test
     refute_includes text, "x" * 50
   end
 
+  # martijnpieters/quartermaster#5: lines that parse but are no object are skipped.
+  def test_non_object_lines_in_journal_and_transcript_are_skipped
+    orchestrator("s1")
+    workflow_run("s1", "wf_live", { "a1" => ["build:alpha", builder_entries] }, journal: [started("a1", "build:alpha")])
+    run_dir = File.join(session_dir("s1"), "subagents", "workflows", "wf_live")
+    File.write(File.join(run_dir, "journal.jsonl"), "5\nnull\n" + File.read(File.join(run_dir, "journal.jsonl")))
+    transcript = File.join(run_dir, "agent-a1.jsonl")
+    File.write(transcript, "5\n[]\n\"x\"\nnull\n" + File.read(transcript) + "5\nnull\n")
+    agent = progress.active_agents(item_with("s1")).first
+
+    text = progress.condense(agent)
+
+    assert_includes text, "You are the builder of task \"alpha\": add the widget"
+    assert_includes text, "- Edit: /w/widget.rb"
+  end
+
   def test_condense_stays_small_for_a_long_transcript
     orchestrator("s1")
     long = builder_entries + Array.new(300) { |n| assistant(tool("Bash", { "command" => "step #{n} #{"y" * 1_000}" })) }

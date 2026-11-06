@@ -117,9 +117,9 @@ module Quartermaster
       return [] unless File.exist?(@path)
 
       File.foreach(@path).filter_map do |line|
-        use = JSON.parse(line)
+        use = Quartermaster.json_object(line) or next
         { kind: use["kind"], name: use["name"], at: Time.iso8601(use["at"]) }
-      rescue JSON::ParserError, ArgumentError, TypeError
+      rescue ArgumentError, TypeError
         nil
       end
     end

@@ -124,7 +124,7 @@ fallback protocol for when the injection is missing.
 - **Path comparisons go through realpath on both sides** (`ProjectMap#normalize`): macOS
   `/var` → `/private/var` and git returning realpaths would otherwise miss matches.
 - **`sessions.jsonl` is append-only** under an exclusive `flock`, every event stamped with
-  `v`. A dismissal is another appended event, never an edit; unparseable lines are skipped.
+  `v`. A dismissal is another appended event, never an edit; a line that isn't a JSON object is skipped.
 
 ## Data
 

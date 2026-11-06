@@ -88,7 +88,7 @@ module Quartermaster
       return if shells.any? && shell_result(jobs, shells, line)
       return unless MARKERS.any? { |marker| line.include?(marker) }
 
-      entry = JSON.parse(line)
+      entry = Quartermaster.json_object(line) or return
       if (id = stopped_id(entry))
         jobs.delete(id)
       elsif (text = notification(entry))
@@ -105,7 +105,7 @@ module Quartermaster
       else
         remember_shells(shells, entry)
       end
-    rescue JSON::ParserError, ArgumentError
+    rescue ArgumentError
       nil
     end
 
@@ -184,7 +184,7 @@ module Quartermaster
     # entry counts.
     def shell_result(jobs, shells, line)
       use_id = shells.each_key.find { |id| line.include?(id) } or return false
-      entry = JSON.parse(line)
+      entry = Quartermaster.json_object(line) or return false
       answers = Array(entry.dig("message", "content")).any? do |block|
         block.is_a?(Hash) && block["type"] == "tool_result" && block["tool_use_id"] == use_id
       end
