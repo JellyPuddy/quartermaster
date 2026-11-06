@@ -8,8 +8,9 @@ module Quartermaster
   # write is logged to qm.log and never reaches the request or command.
   class FeatureUse
     FILE = File.join(ROOT, "feature-use.jsonl")
-    # The page polls these every second or so; a poll is not a use.
-    POLLS = %w[/api/state /api/pulse].freeze
+    # The page polls these every second or so, and the CLI probes /api/root
+    # before every hand-off; neither is a use.
+    POLLS = %w[/api/state /api/pulse /api/root].freeze
     KINDS = %w[action get cli].freeze
     # `qm doctor` writes nothing, so it must not create the root it checks for.
     UNRECORDED = %w[doctor].freeze

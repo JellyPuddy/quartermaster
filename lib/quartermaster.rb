@@ -87,6 +87,15 @@ module Quartermaster
   # Whether this process runs on the live data root, not a test or smoke-test one.
   def self.live_root?(root = ROOT) = root == LIVE_ROOT
 
+  # Which data root a process serves, as a digest of its realpath so a reply
+  # never carries the path: GET /api/root answers it, and the CLI hands off
+  # only to a qm gui on its own root (CliChats#gui_action).
+  def self.root_id(root = ROOT)
+    Digest::SHA256.hexdigest(File.realpath(root))
+  rescue SystemCallError
+    Digest::SHA256.hexdigest(File.expand_path(root))
+  end
+
   def self.ensure_setup
     FileUtils.mkdir_p(WORK_ITEMS_DIR)
     File.write(CONFIG_FILE, CONFIG_SEED) unless File.exist?(CONFIG_FILE)

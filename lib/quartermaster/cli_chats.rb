@@ -187,14 +187,23 @@ module Quartermaster
     # POSTs one action to the running GUI like its page does; a local process
     # sends no Origin, which the GUI's POST check lets through only for
     # LoopbackGuard::LOCAL_ACTIONS (a browser page sends one, and a foreign
-    # one is refused). No GUI → say so and do nothing, or (optional) return
-    # nil. Returns the action's reply; a refusal aborts with its error.
+    # one is refused). First asks the GUI which data root it serves: one on
+    # another root (a CLI under a test QM_ROOT beside the user's live GUI),
+    # or a server that doesn't say, counts as no GUI. No GUI → say so and do
+    # nothing, or (optional) return nil. Returns the action's reply; a
+    # refusal aborts with its error.
     def gui_action(name, cmd, slug: nil, args: {}, optional: false)
       port = Gui.port
       reply = begin
-        http = Net::HTTP.new("127.0.0.1", port)
+        http = gui_http(port)
         http.open_timeout = 2
         http.read_timeout = 10
+        unless gui_on_this_root?(http)
+          return nil if optional
+
+          abort("qm #{name}: 127.0.0.1:#{port} is not a qm gui on this data root " \
+                "(#{Quartermaster.shorten_home(ROOT)}) — nothing done")
+        end
         response = http.post("/api/action", JSON.generate({ "cmd" => cmd, "slug" => slug, "args" => args }.compact),
                              "Content-Type" => "application/json")
         JSON.parse(response.body)
@@ -210,6 +219,14 @@ module Quartermaster
       abort("qm #{name}: #{reply["error"]}") unless reply["ok"]
 
       reply
+    end
+
+    def gui_http(port) = @gui_http ? @gui_http.call(port) : Net::HTTP.new("127.0.0.1", port)
+
+    def gui_on_this_root?(http)
+      response = http.get("/api/root")
+      root = Quartermaster.json_object(response.body.to_s)&.dig("root")
+      response.code == "200" && root == Quartermaster.root_id
     end
   end
 end

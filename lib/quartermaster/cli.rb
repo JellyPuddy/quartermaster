@@ -42,11 +42,13 @@ module Quartermaster
     # prerequisites: a PrPrerequisites with a stubbed gh in tests.
     # caller_pids: this process and its ancestors (qm rotate --self), stubbed in tests.
     # runner: the CommandRunner for external tools (qm open-chat), stubbed in tests.
-    def initialize(prerequisites: nil, cwd: nil, caller_pids: nil, runner: nil)
+    # gui_http: port → the Net::HTTP the GUI hand-off talks through, stubbed in tests.
+    def initialize(prerequisites: nil, cwd: nil, caller_pids: nil, runner: nil, gui_http: nil)
       @prerequisites = prerequisites
       @cwd = cwd
       @caller_pids = caller_pids
       @runner = runner
+      @gui_http = gui_http
     end
 
     def run(argv)

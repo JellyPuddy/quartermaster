@@ -110,7 +110,7 @@ item from session, `^D` dismiss), `^S` state, `^P` project, `^O` PR, `^T` distil
 
 **Feature use** (`FeatureUse`). Every `qm` command (by its word; not hooks, not `qm doctor`
 (`FeatureUse::UNRECORDED`, also left out of the never-used list), not `QM_SKIP` runs), every
-GUI action (by `cmd`; other POST routes by route) and every GUI `/api/` read except the `/api/state` and `/api/pulse` polls (by route, cut to `/api/<word>`) appends one
+GUI action (by `cmd`; other POST routes by route) and every GUI `/api/` read except the `/api/state` and `/api/pulse` polls and the CLI's `/api/root` probe (by route, cut to `/api/<word>`) appends one
 `{v, at, kind, name}` line to `feature-use.jsonl`: the evidence for deleting unused features.
 `qm feature-use` reads it back. Its never-used lists come from the dispatchers themselves —
 `GuiActions#dispatch` and `Gui#respond`'s other POST routes, `Gui#respond`'s `/api/` GET routes,
@@ -125,7 +125,7 @@ refused ("switch to its Warp tab"): it would fork the conversation.
 
 - Never rename or move `./quartermaster`: the `~/bin` symlinks and the hook registrations point at it.
 - The launcher's `sh` half stays before `=end` and its Ruby half after `#!ruby`; `ruby_floor.rb`, which runs before `lib/` loads, must parse on Ruby 2.x and require nothing.
-- Commands that act on the GUI (`caffeinate`, `pane-start`, `pane-resume`, `rotate`, `start-issue`, `loose`, `automation new|edit`) POST `/api/action` to `127.0.0.1:$QM_GUI_PORT` (default 49737) without an Origin; with no GUI they say so, do nothing and exit 1 — except `start-issue`, which then makes the item and worktree itself and prints how to start the chat, and `loose` and `automation new|edit`, which print how to start it. Each needs its action in `LoopbackGuard::LOCAL_ACTIONS`.
+- Commands that act on the GUI (`caffeinate`, `pane-start`, `pane-resume`, `rotate`, `start-issue`, `loose`, `automation new|edit`) POST `/api/action` to `127.0.0.1:$QM_GUI_PORT` (default 49737) without an Origin, after `GET /api/root` shows that GUI serves their own data root (`Quartermaster.root_id`); a GUI on another root (a CLI under a test `QM_ROOT` beside the live GUI) or a server that names no root counts as no GUI. With no GUI they say so, do nothing and exit 1 — except `start-issue`, which then makes the item and worktree itself and prints how to start the chat, and `loose` and `automation new|edit`, which print how to start it. Each needs its action in `LoopbackGuard::LOCAL_ACTIONS`.
 - `qm install-hooks` prints the snippet and never writes `~/.claude/settings.json`; that file is the user's.
 - Hook commands never print except SessionStart's context, honour `QM_SKIP`, rescue everything and exit 0.
 - `qm board SLUG` with no URL prints only the URL and exits non-zero when unset, so a shell can test it in one call.
