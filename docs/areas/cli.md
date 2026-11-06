@@ -72,7 +72,7 @@ settings snippet) — see [capture](capture.md).
   on every event `qm install-hooks` gives it) in `$QM_CLAUDE_SETTINGS` (default
   `~/.claude/settings.json`) and pointing at existing files; the Ruby pin (`!` when absent, `✗`
   when below the floor or not installed); the running Ruby against `RubyFloor::FLOOR`; the data
-  root writable; unseen `qm.log` errors (`!` with the newest, counted by `ErrorLog`: header
+  root present and writable (doctor never creates it); unseen `qm.log` errors (`!` with the newest, counted by `ErrorLog`: header
   lines that are neither `transient` nor `recovered`, newer than `errors-seen-at` or else the
   last day, from the log's last 256 KB; [capture](capture.md) owns it); and capture (`!` when neither `sessions.jsonl` nor
   `events.jsonl`'s tail has an event from the last day).
@@ -100,8 +100,8 @@ new session, `^X` the item's sessions (Enter resumes one), `^B` the inbox (Enter
 item from session, `^D` dismiss), `^S` state, `^P` project, `^O` PR, `^T` distill, `^A` ack,
 `^Z` snooze, `^R` reload. The viewer stays open while actions run.
 
-**Feature use** (`FeatureUse`). Every `qm` command (by its word; not hooks, not `QM_SKIP`
-runs), every GUI action (by `cmd`; other POST routes by route) and every GUI `/api/` read
+**Feature use** (`FeatureUse`). Every `qm` command (by its word; not hooks, not `qm doctor`
+(`FeatureUse::UNRECORDED`, also left out of the never-used list), not `QM_SKIP` runs), every GUI action (by `cmd`; other POST routes by route) and every GUI `/api/` read
 except the `/api/state` and `/api/pulse` polls (by route, cut to `/api/<word>`) appends one
 `{v, at, kind, name}` line to `feature-use.jsonl`: the evidence for deleting unused features.
 `qm feature-use` reads it back. Its never-used lists come from the dispatchers themselves —
@@ -126,7 +126,7 @@ refused ("switch to its Warp tab"): it would fork the conversation.
 - The viewer's actions are plain `qm` subcommands, so the viewer, the GUI and Claude share one implementation; mouse support is double-click resume only — fzf's `click-header` + `execute` handoff didn't reliably hand the terminal to picker actions, so clickable actions live in the GUI.
 - The feature-use log holds a kind and a name only — never a slug, argument, path or session id — is only appended to, and recording is best-effort: a failed write goes to `qm.log` and never fails the command or request.
 - `FeatureUse.known_names` reads `CLI.commands`, plus `when "…" then` branches and `method == … && route …` conditions; a dispatcher reshaped away from that loses its names from the never-used lists (the known-names test pins a few).
-- `qm doctor` writes nothing of its own (its feature-use line aside): `events.jsonl` is read from its tail through `EventLog#last_ts`, never folded, so not even `events-fold.json` changes.
+- `qm doctor` writes nothing, not even a feature-use line, so a missing data root stays missing and fails its check: `events.jsonl` is read from its tail through `EventLog#last_ts`, never folded, so not even `events-fold.json` changes.
 - `ArgumentError` from any command becomes `qm: <message>` and exit 1, never a backtrace.
 
 ## Data

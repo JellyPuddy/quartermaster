@@ -70,6 +70,7 @@ class FeatureUseTest < Minitest::Test
   def test_hook_commands_and_qm_skip_runs_are_not_uses
     _out, _err, status = run_hook("hook-session-end", "{}", "QM_SKIP" => nil)
     assert status.success?
+    Quartermaster::FeatureUse.new.command("doctor")
     original = ENV.fetch("QM_SKIP", nil)
     begin
       ENV["QM_SKIP"] = "1"
@@ -162,6 +163,7 @@ class FeatureUseReportTest < Minitest::Test
     refute_includes get, "/api/pulse"
     %w[note pane-start feature-use].each { |name| assert_includes cli, name }
     assert cli.none? { |word| word.start_with?("hook-", "-") }, "no hooks or flag aliases"
+    refute_includes cli, "doctor", "doctor is never recorded, so it can't count as unused"
   end
 
   # The command tables are what known_names reads, so a stale entry would

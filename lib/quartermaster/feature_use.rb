@@ -11,6 +11,8 @@ module Quartermaster
     # The page polls these every second or so; a poll is not a use.
     POLLS = %w[/api/state /api/pulse].freeze
     KINDS = %w[action get cli].freeze
+    # `qm doctor` writes nothing, so it must not create the root it checks for.
+    UNRECORDED = %w[doctor].freeze
 
     def initialize(path: FILE, clock: -> { Time.now })
       @path = path
@@ -44,9 +46,10 @@ module Quartermaster
     end
 
     # A `qm` run, by its command word. Hook commands and QM_SKIP runs (qm's
-    # own headless subprocesses) are capture plumbing, not uses.
+    # own headless subprocesses) are capture plumbing, not uses; UNRECORDED
+    # commands are left out too.
     def command(word)
-      return if word.nil? || word.start_with?("hook-") || ENV["QM_SKIP"]
+      return if word.nil? || word.start_with?("hook-") || UNRECORDED.include?(word) || ENV["QM_SKIP"]
 
       record("cli", word)
     end
@@ -84,12 +87,12 @@ module Quartermaster
     # The names a kind can have, read from the code that dispatches them so
     # no second list can drift: GuiActions#dispatch's cmds plus Gui#respond's
     # other POST routes, Gui#respond's /api/ GET routes (polls left out), and
-    # CLI.commands plus CLI#run's explicit branches (hooks and flag aliases left out).
+    # CLI.commands plus CLI#run's explicit branches (hooks, flag aliases and UNRECORDED left out).
     def self.known_names(kind)
       case kind
       when "action" then (branches(source("gui_actions.rb", /def dispatch\(.*?\n      else /m)) + gui_routes("POST")).uniq.sort
       when "get" then (gui_routes("GET") - POLLS).uniq.sort
-      when "cli" then (CLI.commands.keys + cli_branches).reject { |w| w.start_with?("hook-", "-") }.uniq.sort
+      when "cli" then (CLI.commands.keys + cli_branches).reject { |w| w.start_with?("hook-", "-") }.uniq.sort - UNRECORDED
       else []
       end
     end

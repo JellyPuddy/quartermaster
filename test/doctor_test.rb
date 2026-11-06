@@ -157,6 +157,17 @@ class DoctorTest < Minitest::Test
     assert_equal before, Dir.children(Quartermaster::ROOT).sort
   end
 
+  def test_qm_doctor_on_a_missing_root_fails_and_leaves_it_missing
+    write_settings
+    root = File.join(@dir, "no-root")
+    out, _err, status = Open3.capture3({ "QM_ROOT" => root, "QM_CLAUDE_SETTINGS" => @settings,
+                                         "ASDF_DATA_DIR" => @asdf }, RbConfig.ruby, QM_BIN, "doctor")
+
+    assert_equal 1, status.exitstatus
+    assert_match(/^✗ Data root: #{Regexp.escape(root)} is missing/, out)
+    refute File.exist?(root)
+  end
+
   def test_qm_doctor_prints_a_line_per_check_and_exits_one_on_a_failure
     out, _err, status = Open3.capture3({ "QM_ROOT" => Quartermaster::ROOT, "QM_CLAUDE_SETTINGS" => @settings,
                                          "ASDF_DATA_DIR" => @asdf }, RbConfig.ruby, QM_BIN, "doctor")
