@@ -77,7 +77,6 @@ module Quartermaster
       return "waiting: #{waiting}" if waiting
       return "the tick failed (see qm.log); the next tick starts it" if summary.nil?
       return "a tick is running; the next tick starts it" if summary["locked"]
-      return "#{slug} is paused (qm automation resume #{slug})" if service.store.read(slug).record["enabled"] == false
       return "local automations are paused (qm config set automations.local_paused false)" if summary["paused"]
       return "held: #{summary["held"]}" if summary["held"]
 

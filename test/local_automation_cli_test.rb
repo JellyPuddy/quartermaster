@@ -155,6 +155,17 @@ class LocalAutomationCliTest < Minitest::Test
     assert_includes out, "nightly: started run #{queued.id}"
   end
 
+  def test_run_of_a_disabled_automation_starts_and_a_held_one_names_the_global_pause
+    local_automation("enabled" => false)
+
+    out, = qm("run", "nightly")
+    assert_includes out, "nightly: started run #{log.runs.first.id}"
+
+    Quartermaster::ConfigFile.load.set("automations.local_paused", true).write!
+    out, = qm("run", "nightly")
+    assert_includes out, "nightly: queued run #{log.queue.first.id} — local automations are paused"
+  end
+
   def test_run_with_a_guard_queues_its_new_items_and_says_when_there_are_none
     local_automation("when" => GUARD)
     guard_says("a\nb\n")

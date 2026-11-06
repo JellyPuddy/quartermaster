@@ -136,7 +136,6 @@ module Quartermaster
       waiting = ids.filter_map { |id| @local.run_log(slug).run(id)&.waiting }.first
       return "waiting: #{waiting}" if waiting
       return "the next tick starts it" if summary.nil? || summary["locked"]
-      return "#{slug} is paused" if @store.read(slug).record["enabled"] == false
       return "local automations are paused" if summary["paused"]
       return "held: #{summary["held"]}" if summary["held"]
 
