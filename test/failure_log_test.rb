@@ -4,7 +4,8 @@
 require_relative "test_helper"
 
 # qm.log's line format: one header per failure, two-space-indented lib/
-# frames under it, transient network failures once per outage.
+# frames under it, a success-reporting context's transient failures once per
+# outage.
 class FailureLogTest < Minitest::Test
   include QmTestHelpers
 
@@ -72,6 +73,22 @@ class FailureLogTest < Minitest::Test
     assert_match(/\A\S+ \[pr-inbox\] transient RuntimeError: gh api graphql failed/, lines[0])
     assert_match(/\A\S+ \[pr-inbox\] recovered after 3 failures\z/, lines[1])
     assert_match(/\] transient RuntimeError/, lines[2])
+  end
+
+  def test_a_context_that_never_reports_success_logs_every_transient_failure
+    3.times { Quartermaster.log_error("gui-prs", error(RuntimeError, OFFLINE)) }
+    Quartermaster.log_success("gui-prs")
+
+    assert_equal 3, log_lines.size
+    log_lines.each { |line| assert_match(/\A\S+ \[gui-prs\] transient RuntimeError: gh api graphql failed/, line) }
+  end
+
+  def test_the_success_reporting_contexts_are_exactly_those_with_a_log_success_call_site
+    calls = Dir[File.join(REPO, "lib", "**", "*.rb")].flat_map { |path| File.read(path).scan(/log_success\((.*?)\)/).flatten }
+    literal = calls.filter_map { |arg| arg[/\A"([^"]+)"\z/, 1] }
+
+    assert_equal ["context"], calls - calls.grep(/\A"/), "log_success takes a literal context outside its definition"
+    assert_equal Quartermaster::FailureLog::SUCCESS_REPORTING.sort, literal.uniq.sort
   end
 
   def test_a_single_failure_outage_recovers_in_the_singular

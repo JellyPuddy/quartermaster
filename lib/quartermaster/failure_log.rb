@@ -5,11 +5,14 @@ module Quartermaster
   # <Class>: <message>`, followed by up to BACKTRACE_FRAMES lines indented two
   # spaces: its first frames inside the repo's lib/, repo-relative. A transient
   # failure (the network, or a browser tab gone mid-write) carries TRANSIENT
-  # after its context and is written only once per outage of that context; the
-  # context's next success ends the outage with one `recovered after <n>
-  # failure(s)` header. Outages live in this process only.
+  # after its context. In a SUCCESS_REPORTING context it is written only once
+  # per outage, and the context's next success ends the outage with one
+  # `recovered after <n> failure(s)` header; any other context could never end
+  # an outage, so it writes every failure. Outages live in this process only.
   module FailureLog
     TRANSIENT = "transient"
+    # The contexts with a Quartermaster.log_success call site.
+    SUCCESS_REPORTING = %w[pr-inbox pr-deployment pr-refresh gui-client].freeze
     BACKTRACE_FRAMES = 3
     REPO = File.expand_path("../..", __dir__)
     LIB = File.join(REPO, "lib", "")
@@ -33,12 +36,16 @@ module Quartermaster
 
     def failure(context, error)
       if transient?(error)
-        return unless MUTEX.synchronize { (OUTAGES[context] = OUTAGES.fetch(context, 0) + 1) == 1 }
+        return if SUCCESS_REPORTING.include?(context) && !first_of_outage?(context)
 
         tag = "#{TRANSIENT} "
       end
       message = error.message.to_s.split("\n").map(&:strip).reject(&:empty?).join(" ")
       append(["#{Time.now.iso8601} [#{context}] #{tag}#{error.class}: #{message}", *lib_frames(error)])
+    end
+
+    def first_of_outage?(context)
+      MUTEX.synchronize { (OUTAGES[context] = OUTAGES.fetch(context, 0) + 1) == 1 }
     end
 
     def success(context)

@@ -57,10 +57,12 @@ fallback protocol for when the injection is missing.
   can't reach GitHub (`error connecting to api.github.com`, `connection reset`, `dial tcp`,
   `read tcp`, `i/o timeout`, `TLS handshake timeout`, `githubstatus.com`, a bare `EOF`), or
   a browser tab gone mid-response (`Errno::EPIPE`, `Errno::ECONNRESET`) — reads
-  `<iso8601> [<context>] transient <Class>: <message>` and is written only for the first
-  failure of an outage of that context. The context's next `Quartermaster.log_success`
-  ends the outage with `<iso8601> [<context>] recovered after <n> failure(s)`. Pollers that
-  report success: `pr-inbox`, `pr-deployment`, `pr-refresh`, `gui-client`.
+  `<iso8601> [<context>] transient <Class>: <message>`. Only the contexts in
+  `FailureLog::SUCCESS_REPORTING` (`pr-inbox`, `pr-deployment`, `pr-refresh`, `gui-client`:
+  the ones that call `Quartermaster.log_success`) write just the first failure of an outage;
+  their next success ends it with `<iso8601> [<context>] recovered after <n> failure(s)`.
+  Every other context writes each transient failure, since nothing would ever end its
+  outage. A test holds the list equal to the `log_success` call sites in `lib/`.
 - **Unseen errors** (`ErrorLog`): the header lines of the log's last 256 KB that are neither
   transient nor recovered, newer than the iso8601 time in `errors-seen-at` (absent or
   unreadable: the last 24 h), each with its continuation lines. They feed the GUI's error
@@ -83,7 +85,8 @@ fallback protocol for when the injection is missing.
 - **Every `qm.log` line other than a header starts with whitespace**, and only headers carry
   `[<context>] transient` or `[<context>] recovered`: readers (an error count) tell lines
   apart by that alone. Non-transient failures are always written in full. Outage state is
-  per process; a fresh process may write one more first failure.
+  per process; a fresh process may write one more first failure. A new `log_success` call
+  site takes a literal context and joins `SUCCESS_REPORTING` in the same commit.
 - **Only SessionStart may print**, and only the injected context. SessionEnd and every error
   path stay silent — stray stdout would leak into Claude's context.
 - **Per-tool-call hooks are plain POSIX `sh`, not Ruby**: PostToolUse fires on every tool
