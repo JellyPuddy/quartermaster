@@ -7,7 +7,7 @@
   "lib/quartermaster/gui/js/chat-side.js": 496,
   "lib/quartermaster/gui/js/drafts.js": 553,
   "lib/quartermaster/gui/js/issues.js": 593,
-  "lib/quartermaster/gui_actions.rb": 905,
+  "lib/quartermaster/gui_actions.rb": 906,
   "lib/quartermaster/work_item.rb": 609,
   "test/chat_attention_test.rb": 832,
   "test/diff_pane_test.rb": 1090

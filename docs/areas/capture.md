@@ -1,7 +1,7 @@
 # Capture
 
-**Code:** `lib/quartermaster/hook_handler.rb`, `lib/quartermaster/session.rb`, `lib/quartermaster/session_log.rb`, `lib/quartermaster/project_map.rb`, `lib/quartermaster/project_config.rb`, `lib/quartermaster/project_settings.rb`, `lib/quartermaster/failure_log.rb`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
-**Tests:** `test/hook_test.rb`, `test/chat_attention_test.rb`, `test/prompt_snapshots_test.rb`, `test/failure_log_test.rb`
+**Code:** `lib/quartermaster/hook_handler.rb`, `lib/quartermaster/session.rb`, `lib/quartermaster/session_log.rb`, `lib/quartermaster/project_map.rb`, `lib/quartermaster/project_config.rb`, `lib/quartermaster/project_settings.rb`, `lib/quartermaster/failure_log.rb`, `lib/quartermaster/error_log.rb`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
+**Tests:** `test/hook_test.rb`, `test/chat_attention_test.rb`, `test/prompt_snapshots_test.rb`, `test/failure_log_test.rb`, `test/error_log_test.rb`
 **Depends on:** none
 
 ## What it does
@@ -61,6 +61,12 @@ fallback protocol for when the injection is missing.
   failure of an outage of that context. The context's next `Quartermaster.log_success`
   ends the outage with `<iso8601> [<context>] recovered after <n> failure(s)`. Pollers that
   report success: `pr-inbox`, `pr-deployment`, `pr-refresh`, `gui-client`.
+- **Unseen errors** (`ErrorLog`): the header lines of the log's last 256 KB that are neither
+  transient nor recovered, newer than the iso8601 time in `errors-seen-at` (absent or
+  unreadable: the last 24 h), each with its continuation lines. They feed the GUI's error
+  badge (`errors` in the state, Mark seen = the `errors-seen` action, which writes now into
+  `errors-seen-at`; [gui-shell](gui-shell.md)) and the status line's `⚠ N qm errors`
+  ([side-panel](side-panel.md)), which repeats the parse because it may not load lib/.
 
 ## Rules
 

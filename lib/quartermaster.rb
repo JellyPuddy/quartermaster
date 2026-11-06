@@ -431,6 +431,7 @@ module Quartermaster
 end
 
 require_relative "quartermaster/failure_log"
+require_relative "quartermaster/error_log"
 require_relative "quartermaster/note"
 require_relative "quartermaster/ide"
 require_relative "quartermaster/project_settings"

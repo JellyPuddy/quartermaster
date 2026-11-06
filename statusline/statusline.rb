@@ -82,6 +82,41 @@ ensure
   end
 end
 
+# How many qm.log errors the user hasn't marked seen: lib's ErrorLog parse,
+# repeated because this file never loads lib/. A header line not tagged
+# transient or recovered, newer than <qm root>/errors-seen-at (else the last
+# day), within the log's last 256 KB. A log untouched since then is skipped
+# unread. Any failure counts as none.
+def qm_error_count
+  log = File.join(qm_root, 'qm.log')
+  since =
+    begin
+      Time.iso8601(File.read(File.join(qm_root, 'errors-seen-at')).strip)
+    rescue StandardError
+      Time.now - 86_400
+    end
+  return 0 unless File.file?(log) && File.mtime(log) > since
+
+  text = File.open(log, 'rb') do |f|
+    start = [f.size - 262_144, 0].max
+    f.seek(start)
+    chunk = f.read.to_s
+    start.zero? ? chunk : chunk.partition("\n").last
+  end
+  text.each_line.count do |line|
+    header = /\A(\S+) \[[^\]]*\] (.*)/.match(line)
+    next false if header.nil? || header[2] =~ /\A(?:transient |recovered after )/
+
+    begin
+      Time.iso8601(header[1]) > since
+    rescue ArgumentError
+      false
+    end
+  end
+rescue StandardError
+  0
+end
+
 # True inside a chat qm runs in its own tmux server (`tmux -L qm`, or the
 # QM_TMUX_SOCKET a test GUI uses). $TMUX is "<socket path>,<pid>,<session>".
 def in_qm_chat?
@@ -191,6 +226,10 @@ end
 left = "#{GREEN}➜#{RESET} #{CYAN}#{dir}#{RESET}#{git_part}"
 
 left = "#{left} | #{VIVID_BLUE}[#{model}]#{RESET}" if model && !model.empty?
+
+# Unseen qm errors; a qm chat has the GUI's badge right above it.
+error_count = qm_chat ? 0 : qm_error_count
+left = "#{left} #{RED}⚠ #{error_count} qm error#{'s' unless error_count == 1}#{RESET}" if error_count > 0
 
 # Build the usage segment (ctx / 5h / weekly), omitted entirely when no data present.
 usage_part = ''

@@ -98,6 +98,8 @@ module Quartermaster
         "notifications" => @notifier ? @notifier.recent : [],
         # The header chip: the account's limits as the status line last wrote them.
         "rateLimits" => RateLimits.new.payload,
+        # The header's error badge: qm.log errors since the user last marked them seen.
+        "errors" => ErrorLog.new.summary,
         "finished" => @jobs.take_finished
       }
     end

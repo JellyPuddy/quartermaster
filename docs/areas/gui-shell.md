@@ -1,7 +1,7 @@
 # GUI shell
 
-**Code:** `lib/quartermaster/gui.rb`, `lib/quartermaster/gui_actions.rb`, `lib/quartermaster/gui_jobs.rb`, `lib/quartermaster/gui_state.rb`, `lib/quartermaster/loopback_guard.rb`, `lib/quartermaster/command_runner.rb`, `lib/quartermaster/pf.rb`, `lib/quartermaster/pf_fence.rb`, `lib/quartermaster/transcript_search.rb`, `lib/quartermaster/ask_search.rb`, `lib/quartermaster/gui/page.html`, `lib/quartermaster/gui/js/core.js`, `lib/quartermaster/gui/js/server.js`, `lib/quartermaster/gui/js/events.js`, `lib/quartermaster/gui/js/board.js`, `lib/quartermaster/gui/js/detail.js`, `lib/quartermaster/gui/js/session-sheet.js`, `lib/quartermaster/gui/js/search.js`, `lib/quartermaster/gui/js/transcript-search.js`, `lib/quartermaster/gui/js/popovers.js`, `lib/quartermaster/gui/js/modals.js`, `lib/quartermaster/gui/js/focus.js`, `lib/quartermaster/gui/js/long-actions.js`, `lib/quartermaster/gui/css/base.css`, `lib/quartermaster/gui/css/board.css`, `lib/quartermaster/gui/css/header.css`, `lib/quartermaster/gui/css/overlays.css`, `lib/quartermaster/gui/css/responsive.css`
-**Tests:** `test/gui_test.rb`, `test/pf_test.rb`, `test/distill_test.rb`, `test/transcript_search_test.rb`
+**Code:** `lib/quartermaster/gui.rb`, `lib/quartermaster/gui_actions.rb`, `lib/quartermaster/gui_jobs.rb`, `lib/quartermaster/gui_state.rb`, `lib/quartermaster/loopback_guard.rb`, `lib/quartermaster/command_runner.rb`, `lib/quartermaster/pf.rb`, `lib/quartermaster/pf_fence.rb`, `lib/quartermaster/transcript_search.rb`, `lib/quartermaster/ask_search.rb`, `lib/quartermaster/gui/page.html`, `lib/quartermaster/gui/js/core.js`, `lib/quartermaster/gui/js/server.js`, `lib/quartermaster/gui/js/events.js`, `lib/quartermaster/gui/js/board.js`, `lib/quartermaster/gui/js/detail.js`, `lib/quartermaster/gui/js/session-sheet.js`, `lib/quartermaster/gui/js/search.js`, `lib/quartermaster/gui/js/transcript-search.js`, `lib/quartermaster/gui/js/popovers.js`, `lib/quartermaster/gui/js/modals.js`, `lib/quartermaster/gui/js/focus.js`, `lib/quartermaster/gui/js/long-actions.js`, `lib/quartermaster/gui/js/errors.js`, `lib/quartermaster/gui/css/base.css`, `lib/quartermaster/gui/css/board.css`, `lib/quartermaster/gui/css/header.css`, `lib/quartermaster/gui/css/overlays.css`, `lib/quartermaster/gui/css/responsive.css`
+**Tests:** `test/gui_test.rb`, `test/pf_test.rb`, `test/distill_test.rb`, `test/transcript_search_test.rb`, `test/error_log_test.rb`
 **Depends on:** [work-items](work-items.md), [attention](attention.md), [chats](chats.md), [worktrees](worktrees.md), [side-panel](side-panel.md)
 
 ## What it does
@@ -52,7 +52,7 @@ from the plan its reply carries ("Resolved. Clean up N worktrees?"). The header'
 **State** (`GuiState#build`, `/api/state`): `items`, `inbox`, `projects`, `attention` (the
 chat view's list, already in attention order), `pulse`, `refreshing`, `distilling`,
 `distilled`, `pf`, `jobs`, `finished`, `buildActive`, `buildProgress`, `panes`,
-`terminalToken`, `asideModels`, `caffeinate`, `notifications`, `rateLimits`, `benchmark`. Per item: slug,
+`terminalToken`, `asideModels`, `caffeinate`, `notifications`, `rateLimits`, `benchmark`, `errors` (the header's ⚠ badge: the unseen qm.log errors' count and newest 20 entries, from `ErrorLog` in [capture](capture.md); clicking it lists them, and **Mark seen** posts the `errors-seen` action). Per item: slug,
 title, state, project, branches, issue, sessions (`sessionList` with id, tier, when, prompt),
 `updated`, `live`, `badges` (stale / degrading / merged, from `Attention`), headline `note`,
 `injected` positions, `worktrees`, `chains`, `prStates`, `served`/`servedBranch`, `pane`,

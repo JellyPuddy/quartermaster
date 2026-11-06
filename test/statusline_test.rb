@@ -133,6 +133,50 @@ class StatuslineTest < Minitest::Test
     assert_equal [".", "..", "rate-limits.json"].sort, Dir.entries(Quartermaster::ROOT).sort
   end
 
+  def write_qm_log(text) = File.write(File.join(Quartermaster::ROOT, "qm.log"), text)
+  def ago(seconds) = (Time.now - seconds).iso8601
+
+  def test_counts_unseen_qm_errors_of_the_last_day
+    write_qm_log(<<~LOG)
+      #{ago(30 * 3600)} [gui-client] TypeError: too old
+      #{ago(600)} [gh-stack-sync] TypeError: no implicit conversion of Hash into String
+        lib/quartermaster/gh_stack.rb:12:in `sync'
+      #{ago(500)} [pr-inbox] transient RuntimeError: gh: error connecting to api.github.com
+      #{ago(400)} [pr-inbox] recovered after 3 failures
+      #{ago(300)} [hook-session-start] Errno::ENOENT: No such file
+    LOG
+
+    out = statusline
+
+    assert_includes out.lines.first, "⚠ 2 qm errors"
+    assert_match(/5h \[.*\] 42%/, out)
+  end
+
+  def test_errors_before_the_seen_marker_drop_the_segment
+    write_qm_log("#{ago(600)} [x] RuntimeError: seen\n")
+    File.write(File.join(Quartermaster::ROOT, "errors-seen-at"), ago(60))
+
+    refute_includes statusline, "qm error"
+  end
+
+  def test_one_error_is_singular_and_a_qm_chat_leaves_it_to_the_gui
+    write_qm_log("#{ago(60)} [x] RuntimeError: boom\n")
+
+    assert_includes statusline, "⚠ 1 qm error"
+    refute_includes statusline, "qm errors"
+    refute_includes statusline(TMUX: "/private/tmp/tmux-501/qm,4242,3"), "qm error"
+  end
+
+  def test_an_unreadable_log_never_breaks_the_status_line
+    FileUtils.mkdir_p(File.join(Quartermaster::ROOT, "qm.log")) # a directory where the log goes
+    File.write(File.join(Quartermaster::ROOT, "errors-seen-at"), "garbage")
+
+    out = statusline
+
+    refute_includes out, "qm error"
+    assert_match(/5h \[.*\] 42%/, out)
+  end
+
   def test_also_runs_on_the_suite_ruby
     out = statusline(ruby: RbConfig.ruby)
 
