@@ -30,7 +30,10 @@ module Quartermaster
       return question unless starter
 
       known = starters[starter]
-      raise ArgumentError, "unknown starter #{starter.inspect} (config.yml loose_starters: #{starters.keys.join(", ")})" unless known
+      unless known
+        raise ArgumentError, "unknown starter #{starter.inspect} (configured: #{starters.keys.join(", ")}; add one with " \
+                             "`qm config set loose_starters.#{starter}.prompt <prompt>`)"
+      end
 
       "#{known.prompt} " + (question ? "answer my question about them:\n\n#{question}" : "ask me what I want to know about them.")
     end

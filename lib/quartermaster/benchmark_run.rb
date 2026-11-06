@@ -84,7 +84,9 @@ module Quartermaster
     def self.enabled?(item) = !settings(item.project).nil?
 
     def self.settings!(project)
-      settings(project) || raise(ArgumentError, "#{project} has no benchmarks: set projects.#{project}.benchmark in config.yml")
+      settings(project) || raise(ArgumentError, "#{project} has no benchmarks: run " \
+                                                "`qm config set projects.#{project}.benchmark.database <database>` and " \
+                                                "`qm config set projects.#{project}.benchmark.skill <skill folder>`")
     end
 
     # The template database a run measures on: the one it started with,

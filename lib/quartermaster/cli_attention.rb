@@ -70,8 +70,8 @@ module Quartermaster
       when "--url"
         url = Overview.artifact_url
         unless url
-          abort("qm overview: no #{Overview::CONFIG_KEY}: in #{Quartermaster.shorten_home(CONFIG_FILE)} — " \
-                "publish skills/work-items/page.html and put its claude.ai URL there")
+          abort("qm overview: no #{Overview::CONFIG_KEY} configured — publish skills/work-items/page.html, " \
+                "then run `qm config set #{Overview::CONFIG_KEY} <its claude.ai URL>`")
         end
         puts url
       when "--page"

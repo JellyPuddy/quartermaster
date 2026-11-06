@@ -356,7 +356,7 @@ class GuiPanelTest < Minitest::Test
       assert_nil JSON.parse(server.respond("GET", "/api/workspace/plain", ok_host, "")[2])["devServer"]
       refused = post(server, "/api/action", "cmd" => "pf-switch", "slug" => "plain", "args" => {})
       assert_equal true, refused["ok"]
-      assert_match(/Docs has no dev server: set projects.Docs.dev_server in config.yml/, settled(server)["finished"].first["error"])
+      assert_match(/Docs has no dev server: run `qm config set projects.Docs.dev_server.command <command>`/, settled(server)["finished"].first["error"])
     end
   end
 

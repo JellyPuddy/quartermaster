@@ -103,7 +103,7 @@ class PfModeTest < Minitest::Test
     other = Quartermaster::WorkItem.create("Elsewhere", project: "Docs")
     assert_nil other.pf_mode
     error = assert_raises(ArgumentError) { other.update_pf_mode("dev") }
-    assert_includes error.message, "set projects.Docs.dev_server in config.yml"
+    assert_includes error.message, "`qm config set projects.Docs.dev_server.command <command>`"
 
     item = Quartermaster::WorkItem.create("Pf item", project: "WebApp")
     assert_raises(ArgumentError) { item.update_pf_mode("production") }
@@ -204,9 +204,9 @@ class WorkspaceTest < Minitest::Test
 
       assert_equal [["open", "-a", "My IDE", repo]], runner.argvs, "a bare PATH element is the path, unescaped"
       assert_equal "IDE opened #{Quartermaster.shorten_home(repo)}", report.steps.last, "the label defaults to IDE"
-      assert_equal "dev server skipped: Docs has none configured", report.steps.first
+      assert_equal "dev server skipped: Docs has none (qm config set projects.Docs.dev_server.command <command>)", report.steps.first
       error = assert_raises(ArgumentError) { workspace.switch_pf(item) }
-      assert_includes error.message, "Docs has no dev server: set projects.Docs.dev_server in config.yml"
+      assert_includes error.message, "Docs has no dev server: run `qm config set projects.Docs.dev_server.command <command>`"
     end
   end
 
@@ -231,7 +231,7 @@ class WorkspaceTest < Minitest::Test
       report = workspace.work_on(item)
 
       assert_equal [["pf", "switch", report.target.path, "dev"]], runner.argvs.reject { |argv| argv.first == "git" }
-      assert_equal "IDE skipped: no ide_command in config.yml", report.steps.last
+      assert_equal "IDE skipped: none configured (qm config set ide_command '[open, -a, <IDE>, PATH]')", report.steps.last
     end
   end
 

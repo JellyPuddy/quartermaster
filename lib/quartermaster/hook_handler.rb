@@ -192,7 +192,7 @@ module Quartermaster
       CONTEXT
     end
 
-    # Only a project with a dev server (config.yml) pays these tokens.
+    # Only a project with a dev server (projects.<name>.dev_server.command) pays these tokens.
     def pf_protocol_line(item)
       return "" unless (server = item.dev_server)
 
@@ -201,7 +201,7 @@ module Quartermaster
     end
 
     # PR prerequisites (PrPrerequisites) matter where PRs ship by release;
-    # only projects whose config.yml says so (pr_prerequisites) pay for the hint.
+    # only projects that say so (projects.<name>.pr_prerequisites) pay for the hint.
     def pr_requires_protocol_line(item)
       return "" unless ProjectConfig.current.settings(item.project).pr_prerequisites?
 

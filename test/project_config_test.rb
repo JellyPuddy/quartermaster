@@ -141,4 +141,40 @@ class ProjectConfigTest < Minitest::Test
     assert_nil map.settings_for("Plain").test_db
     assert_nil map.settings_for("Unknown").dev_server
   end
+
+  def test_asking_for_a_key_the_schema_does_not_list_raises_in_tests
+    settings = config("projects:\n  App:\n    root: /code/app\n    tset_db: typo\n").settings("App")
+
+    error = assert_raises(Quartermaster::ConfigReader::UnknownKey) { settings["tset_db"] }
+    assert_match "projects.App.tset_db", error.message
+    assert_raises(Quartermaster::ConfigReader::UnknownKey) { Quartermaster::ConfigReader.new({}).section("project") }
+  end
+
+  def test_outside_tests_an_unknown_key_reads_nil_and_is_logged
+    Quartermaster.ensure_setup
+    ENV.delete(Quartermaster::ConfigReader::STRICT_ENV)
+    reader = Quartermaster::ConfigReader.new({ "projects" => {}, "colour" => "red" })
+
+    assert_nil reader["colour"]
+    refute reader.section("colour").mapping?
+    assert_match "config key colour is not in ConfigSchema", File.read(Quartermaster::LOG_FILE)
+  ensure
+    ENV[Quartermaster::ConfigReader::STRICT_ENV] = "1"
+  end
+
+  def test_the_overview_url_and_price_overrides_come_from_the_current_config
+    Quartermaster.ensure_setup
+    File.write(Quartermaster::CONFIG_FILE, <<~YAML)
+      overview_artifact: " https://claude.ai/artifact/abc "
+      prices:
+        claude-opus-5-5: { output: 30 }
+        broken: 7
+    YAML
+
+    assert_equal "https://claude.ai/artifact/abc", Quartermaster::Overview.artifact_url
+    assert_equal({ "claude-opus-5-5" => { "output" => 30 } }, Quartermaster::ProjectConfig.current.prices)
+
+    File.write(Quartermaster::CONFIG_FILE, "overview_artifact: [::")
+    assert_nil Quartermaster::Overview.artifact_url
+  end
 end

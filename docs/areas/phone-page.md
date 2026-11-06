@@ -35,8 +35,8 @@ shows the usage limits like the GUI chip (`5h 42% · 2h15m │ wk 61% · 3d4h`, 
 greyed with "seen 8 h ago" past 6 h).
 
 **Config** — `overview_artifact:` in `config.yml` holds the published page's URL;
-`qm overview --url` prints it (exit 1 with a pointer while unset); `Overview.artifact_url`
-reads it.
+`qm overview --url` prints it (exit 1 naming `qm config set overview_artifact <its claude.ai URL>`
+while unset); `Overview.artifact_url` asks `ProjectConfig.current` for it (a broken config reads as unset).
 
 **Republishing** — `qm overview --page` prints the page file's path when its SHA-256 differs
 from the one `qm overview --page-published` recorded in `overview-page.sha256`, else nothing.

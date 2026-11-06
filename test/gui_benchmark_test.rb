@@ -72,7 +72,8 @@ class GuiBenchmarkTest < Minitest::Test
       reply = act(server_with(benchmarks(FakeRunner.new, spawned: spawned)), "benchmark-start", slug: item.slug,
                                                                                                 branch: "feature")
 
-      assert_equal [false, "other-app has no benchmarks: set projects.other-app.benchmark in config.yml"],
+      assert_equal [false, "other-app has no benchmarks: run `qm config set projects.other-app.benchmark.database <database>` " \
+                           "and `qm config set projects.other-app.benchmark.skill <skill folder>`"],
                    reply.values_at("ok", "error")
       assert_empty spawned
     end

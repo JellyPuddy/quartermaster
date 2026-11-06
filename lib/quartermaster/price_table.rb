@@ -51,11 +51,11 @@ module Quartermaster
       "claude-3-5-haiku" => rates(0.8, 1, 1.6, 0.08, 4)
     }.freeze
 
-    # Defaults merged with config.yml's `prices:` (per model, per field). A
-    # broken config never breaks a page: it falls back to the defaults.
-    def self.load(config_file = CONFIG_FILE)
-      overrides = File.exist?(config_file) ? (YAML.safe_load(File.read(config_file)) || {})["prices"] : nil
-      new(overrides.is_a?(Hash) ? overrides : {})
+    # Defaults merged with config.yml's `prices:` (ProjectConfig#prices, per
+    # model, per field). A broken config never breaks a page: it falls back
+    # to the defaults.
+    def self.load
+      new(ProjectConfig.current.prices)
     rescue StandardError => e
       Quartermaster.log_error("price-table", e)
       new({})

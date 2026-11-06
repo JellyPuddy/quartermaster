@@ -40,7 +40,10 @@ module Quartermaster
 
       item = WorkItem.find(slug)
       server = item.dev_server
-      return puts(item.pf_mode || abort("qm: '#{slug}' is #{item.project}, which has no dev_server in config.yml")) unless mode
+      unless mode
+        return puts(item.pf_mode || abort("qm: '#{slug}' is #{item.project}, which has no dev server: run " \
+                                          "`#{ProjectConfig.current.settings(item.project).config_command("dev_server.command", "<command>")}`"))
+      end
 
       item.update_pf_mode(mode)
       puts "#{slug} → #{server.command} #{mode}"
@@ -66,7 +69,7 @@ module Quartermaster
 
     def cmd_pf_status
       server = ProjectConfig.current.dev_server
-      abort("qm: no project configures a dev_server in config.yml") unless server
+      abort("qm: no project configures a dev server: run `qm config set projects.<project>.dev_server.command <command>`") unless server
 
       status = Pf.new(server: server).status
       state = status.running ? (status.switching ? "switching" : "running") : "stopped"

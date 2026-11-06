@@ -75,12 +75,10 @@ module Quartermaster
     end
 
     # nil until the user (or the main session) puts the published page's URL in
-    # config.yml. A broken config reads as unset.
-    def self.artifact_url(config_file = CONFIG_FILE)
-      return nil unless File.exist?(config_file)
-
-      value = (YAML.safe_load(File.read(config_file)) || {})[CONFIG_KEY]
-      value.is_a?(String) && !value.strip.empty? ? value.strip : nil
+    # config.yml (ProjectConfig#overview_artifact). A broken config reads as
+    # unset.
+    def self.artifact_url
+      ProjectConfig.current.overview_artifact
     rescue StandardError => e
       Quartermaster.log_error("overview-config", e)
       nil

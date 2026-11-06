@@ -1,8 +1,8 @@
 # Settings
 
-**Code:** `lib/quartermaster/config_schema.rb`, `lib/quartermaster/config_check.rb`, `lib/quartermaster/config_file.rb`, `lib/quartermaster/cli_config.rb`, `lib/quartermaster/gui_settings.rb`
-**Tests:** `test/config_file_test.rb`, `test/config_cli_test.rb`, `test/gui_settings_test.rb`
-**Depends on:** [capture](capture.md) (`ProjectConfig` reads the same file), [gui-shell](gui-shell.md) (the router and its Origin guard)
+**Code:** `lib/quartermaster/config_schema.rb`, `lib/quartermaster/config_check.rb`, `lib/quartermaster/config_file.rb`, `lib/quartermaster/config_reader.rb`, `lib/quartermaster/cli_config.rb`, `lib/quartermaster/gui_settings.rb`
+**Tests:** `test/config_file_test.rb`, `test/config_reads_test.rb`, `test/config_cli_test.rb`, `test/gui_settings_test.rb`
+**Depends on:** [capture](capture.md) (`ProjectConfig` reads the same file through `ConfigReader`), [gui-shell](gui-shell.md) (the router and its Origin guard)
 
 ## What it does
 
@@ -42,6 +42,18 @@ bool, `4` a number; unreadable text stays a string). `replace` swaps in a whole 
 draft). `write!(digest:)` refuses with `Invalid` (carrying the issues) while there are errors and
 with `Stale` when the file's digest isn't the one the editor loaded; otherwise it writes a temp
 file in the same folder, copies the old file to `config.yml.bak` and renames the temp file over.
+
+**Read** — `ConfigReader` is how code reads config: a reader over a mapping at a schema pattern
+hands out `reader[key]` (the raw value), `section(key)` (a reader one level down, opening a
+shorthand) and `entries` (a map's names and readers); a non-mapping reads as empty.
+`ProjectConfig` and `ProjectSettings` (its `#[]` included) read only through it, and `PriceTable.load`
+and `Overview.artifact_url` ask `ProjectConfig.current` (`prices`, `overview_artifact`) instead of
+parsing the file. Asking for a key the schema doesn't list raises `ConfigReader::UnknownKey` while
+`QM_CONFIG_STRICT=1` (`test/test_helper.rb` sets it) and otherwise logs `[config-read]` to `qm.log`
+and reads nil. `test/config_reads_test.rb` scans `lib/` for raw reads of config key names
+(`x["test_db"]`, `.dig("prices"`) and for `CONFIG_FILE` outside this layer. A "not configured"
+message names the command that turns the feature on (`ProjectSettings#config_command`,
+`Ide::CONFIG_COMMAND`), e.g. `qm config set projects.App.dev_server.command <command>`.
 
 **Layout** — `ConfigFile.emit`: the header line
 `# Edited by qm (Settings view / qm config); key reference: docs/overview.md`, then `projects`
@@ -95,6 +107,9 @@ current payload to reload; `422 {ok: false, error, issues, features}` while the 
 - The settings routes stay off the action mutex: the write is quick and serialised by
   `GuiSettings`' own lock, the digest keeps editors apart, and the state build after a save runs
   outside every lock.
+- Code reads config only through `ConfigReader` (via `ProjectConfig` / `ProjectSettings`); only
+  this layer opens `CONFIG_FILE` or reads keys off the raw mapping.
+- A "not configured" message names the exact `qm config set <path> <value>` command.
 
 ## Data
 

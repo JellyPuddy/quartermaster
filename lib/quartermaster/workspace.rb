@@ -38,13 +38,15 @@ module Quartermaster
 
     # Whichever of the dev server and the IDE are configured; refused with neither.
     def work_on(item, mode: nil, worktree: nil, branch: nil)
-      server = @project_map.settings_for(item.project).dev_server
+      settings = @project_map.settings_for(item.project)
+      server = settings.dev_server
       ide = server ? @project_map.ide(item.project) : @project_map.ide!(item.project)
       mode = server&.check_mode!(mode || item.pf_mode)
       target = @targets.materialize(item, worktree: worktree, branch: branch)
       report(target, mode) do |steps|
-        steps << (server ? pf_step(server, target, mode) : "dev server skipped: #{item.project} has none configured")
-        steps << (ide ? ide_step(ide, target) : "IDE skipped: no ide_command in config.yml")
+        steps << (server ? pf_step(server, target, mode) : "dev server skipped: #{item.project} has none " \
+                                                           "(#{settings.config_command("dev_server.command", "<command>")})")
+        steps << (ide ? ide_step(ide, target) : "IDE skipped: none configured (#{Ide::CONFIG_COMMAND})")
       end
     end
 

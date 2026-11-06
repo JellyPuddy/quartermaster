@@ -125,7 +125,7 @@ class OverviewTest < Minitest::Test
     Quartermaster.ensure_setup
     _out, err, status = run_qm("overview", "--url")
     refute status.success?
-    assert_match "overview_artifact:", err
+    assert_match "qm config set overview_artifact <its claude.ai URL>", err
 
     File.write(Quartermaster::CONFIG_FILE, "overview_artifact: https://claude.ai/artifact/abc\n", mode: "a")
     out, _err, status = run_qm("overview", "--url")

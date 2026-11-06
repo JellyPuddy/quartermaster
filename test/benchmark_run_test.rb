@@ -482,7 +482,8 @@ class BenchmarkRunTest < Minitest::Test
       spawned = []
 
       error = assert_raises(ArgumentError) { subject(spawned: spawned).start(other, branch: "feature") }
-      assert_equal "my-app has no benchmarks: set projects.my-app.benchmark in config.yml", error.message
+      assert_equal "my-app has no benchmarks: run `qm config set projects.my-app.benchmark.database <database>` and " \
+                   "`qm config set projects.my-app.benchmark.skill <skill folder>`", error.message
       assert_empty spawned
     end
   end

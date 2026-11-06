@@ -40,7 +40,7 @@ module Quartermaster
 
     private
 
-    def command = (@server || raise(ArgumentError, "no dev server configured in config.yml")).command
+    def command = (@server || raise(ArgumentError, "no dev server configured: run `qm config set projects.<project>.dev_server.command <command>`")).command
 
     # The status URL answers from inside the running server — authoritative,
     # but only while it is up (not mid-boot).

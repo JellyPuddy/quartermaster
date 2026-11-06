@@ -9,6 +9,8 @@ module Quartermaster
   class Ide
     PLACEHOLDER = "PATH"
     DEFAULT_LABEL = "IDE"
+    # What "no IDE" messages tell the user to run.
+    CONFIG_COMMAND = "qm config set ide_command '[open, -a, <IDE>, PATH]'"
 
     attr_reader :command, :label
 

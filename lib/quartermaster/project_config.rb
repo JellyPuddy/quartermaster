@@ -1,11 +1,12 @@
 # frozen_string_literal: true
 
 module Quartermaster
-  # config.yml's project side: each project's root and settings
-  # (ProjectSettings), the default project, the IDE and the loose-chat starters.
-  # `current` parses the file once per change of its text — hooks, every GUI
-  # state build and each item's dev-server check ask it — and an unreadable
-  # or malformed file reads as no projects, never an error.
+  # What config.yml says, read through ConfigReader: each project's root and
+  # settings (ProjectSettings), the default project, the IDE, the loose-chat
+  # starters, the price overrides and the phone page's URL. `current` parses
+  # the file once per change of its text — hooks, every GUI state build and
+  # each item's dev-server check ask it — and an unreadable or malformed file
+  # reads as an empty config, never an error.
   class ProjectConfig
     Starter = Struct.new(:key, :label, :prompt, keyword_init: true) do
       def to_h = { "key" => key, "label" => label }
@@ -29,13 +30,22 @@ module Quartermaster
       nil
     end
 
+    # model → {field → number} from `prices:`, only the numeric fields of
+    # models given as a mapping (PriceTable merges them over its defaults).
+    attr_reader :prices
+
+    # The published phone page's claude.ai URL, nil while unset.
+    attr_reader :overview_artifact
+
     def initialize(data)
-      data = {} unless data.is_a?(Hash)
-      projects = data["projects"].is_a?(Hash) ? data["projects"] : {}
-      @projects = projects.to_h { |name, value| [name.to_s, ProjectSettings.new(name.to_s, value)] }.select { |_, s| s.root }
-      @default_project = data["default_project"].to_s
-      @starters = parse_starters(data["loose_starters"])
-      @ide = Ide.parse(data["ide_command"], data["ide_label"])
+      config = ConfigReader.new(data)
+      @projects = config.section("projects").entries.to_h { |name, project| [name, ProjectSettings.new(name, project)] }
+                        .select { |_, s| s.root }
+      @default_project = config["default_project"].to_s
+      @starters = parse_starters(config.section("loose_starters"))
+      @ide = Ide.parse(config["ide_command"], config["ide_label"])
+      @prices = parse_prices(config.section("prices"))
+      @overview_artifact = string(config["overview_artifact"])
     end
 
     # The IDE a project's "Open in …" launches: its own ide_command, else the
@@ -43,7 +53,7 @@ module Quartermaster
     def ide(project = nil) = @projects[project.to_s]&.ide || @ide
 
     def ide!(project = nil)
-      ide(project) || raise(ArgumentError, "no IDE configured: set ide_command (and ide_label) in config.yml")
+      ide(project) || raise(ArgumentError, "no IDE configured: run `#{Ide::CONFIG_COMMAND}`")
     end
 
     # name → repo root, the map ProjectMap matches cwds against.
@@ -67,15 +77,23 @@ module Quartermaster
 
     private
 
-    def parse_starters(value)
-      return {} unless value.is_a?(Hash)
+    def parse_starters(starters)
+      starters.entries.each_with_object({}) do |(key, starter), out|
+        next unless (prompt = string(starter["prompt"]))
 
-      value.each_with_object({}) do |(key, starter), out|
-        next unless starter.is_a?(Hash) && starter["prompt"].is_a?(String) && !starter["prompt"].strip.empty?
-
-        label = starter["label"].is_a?(String) && !starter["label"].empty? ? starter["label"] : key.to_s
-        out[key.to_s] = Starter.new(key: key.to_s, label: label, prompt: starter["prompt"].strip)
+        label = starter["label"].is_a?(String) && !starter["label"].empty? ? starter["label"] : key
+        out[key] = Starter.new(key: key, label: label, prompt: prompt)
       end
     end
+
+    def parse_prices(prices)
+      prices.entries.each_with_object({}) do |(model, fields), out|
+        next unless fields.mapping?
+
+        out[model] = PriceTable::FIELDS.to_h { |f| [f, fields[f]] }.select { |_, v| v.is_a?(Numeric) }
+      end
+    end
+
+    def string(value) = value.is_a?(String) && !value.strip.empty? ? value.strip : nil
   end
 end

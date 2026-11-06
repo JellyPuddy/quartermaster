@@ -749,7 +749,7 @@ module Quartermaster
     def pr_workspace_job(url, pf:)
       pr = PrInbox.new.find(url)
       project = @pr_items.project_for_repo(pr["repo"], ProjectMap.new)
-      raise ArgumentError, "#{pr["repo"]} is not a project in config.yml — qm doesn't know where it is checked out" unless project
+      raise ArgumentError, "#{pr["repo"]} is not a project qm knows: run `qm config set projects.<name>.root <its checkout>`" unless project
 
       label = pf ? "switching the dev server…" : "opening #{ProjectConfig.current.ide!(project).label}…"
       item = @pr_items.pr_item(pr, project, WorkItem.all)

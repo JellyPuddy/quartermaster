@@ -11,6 +11,8 @@ require "rbconfig"
 ENV["QM_ROOT"] = Dir.mktmpdir("qm-test")
 ENV["QM_TRANSCRIPTS_DIR"] = Dir.mktmpdir("qm-test-transcripts")
 ENV["QM_WARP_TAB_CONFIGS"] = Dir.mktmpdir("qm-test-warp")
+# Code asking ConfigReader for a key ConfigSchema doesn't list fails the test.
+ENV["QM_CONFIG_STRICT"] = "1"
 # Every GUI built here lists chats on this socket; never the user's `tmux -L qm`.
 ENV["QM_TMUX_SOCKET"] = "qm-test-#{Process.pid}"
 at_exit { Quartermaster::Tmux.new.kill_server }
