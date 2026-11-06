@@ -118,7 +118,10 @@ class AutomationStoreTest < Minitest::Test
       { "flow" => 3 } => /flow must be a flow name/,
       { "timeout_minutes" => 0 } => /timeout_minutes must be a positive whole number/,
       { "timeout_minutes" => "30" } => /timeout_minutes must be a positive whole number/,
-      { "allowed_tools" => "Bash" } => /allowed_tools must be a list/
+      { "allowed_tools" => "Bash" } => /allowed_tools must be a list/,
+      { "repos" => "acme/app" } => %r{repos must be a list of owner/name},
+      { "repos" => ["acme"] } => %r{repos must be a list of owner/name},
+      { "repos" => ["https://github.com/acme/app"] } => %r{repos must be a list of owner/name}
     }.each do |change, message|
       error = assert_raises(ArgumentError, change.inspect) { store.write("review-prs", local_record.merge(change), "p") }
       assert_match message, error.message

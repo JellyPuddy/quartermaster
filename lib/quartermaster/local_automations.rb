@@ -68,10 +68,16 @@ module Quartermaster
       keys.size
     end
 
-    # Queues an ended run's item again; answers the new run id.
+    # Queues an ended run's item again; answers the new run id. Refused while
+    # its flow refuses the item (a pr-review repo not in the yml's repos).
     def retry(slug, run_id)
-      entry!(slug)
-      run_log(slug).retry(run_id)
+      entry = entry!(slug)
+      log = run_log(slug)
+      old = log.run(run_id)
+      reason = old&.item && AutomationFlows.new(tmux: @tmux, runner: @runner).refusal(old.flow, entry.record, old.item)
+      raise ArgumentError, "#{slug}: can't retry run #{run_id}: #{reason}" if reason
+
+      log.retry(run_id)
     end
 
     # Removes the files and the run log and resolves the item (its notes

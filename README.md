@@ -191,6 +191,10 @@ prompt and the yml.
 - **Flows.** `flow: chat` (the default) starts a tmux chat running `claude` with the prompt
   file plus the item; you can open it from the tab and take it over. `flow: pr-review` takes
   items with a `url` and starts that PR's Review chat, as the PRs view's Review button does.
+  It only reviews repos its yml lists (`repos: [owner/name]`): an unattended review reads PR
+  text others wrote with your permissions, so a PR elsewhere could steer it (prompt
+  injection). A PR outside the list is refused, shown once as "refused" in its runs, and never
+  started; with no list, nothing is reviewed.
 - **Limits.** At most 2 runs work at once (`automations.local_max_running`); starts hold
   while your 5-hour usage is at 80% or the weekly at 90% (`local_hold_five_hour`,
   `local_hold_seven_day`); `automations.local_paused` or the tab's pause toggle stops all new

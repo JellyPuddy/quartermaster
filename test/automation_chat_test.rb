@@ -57,7 +57,7 @@ class AutomationChatTest < Minitest::Test
       ## Its files
 
       - Prompt: #{dir}/shipped-digest.prompt.md (the run's prompt, nothing else; each guard item is appended to it as a final `## Item` section)
-      - Settings: #{dir}/shipped-digest.yml (name, cron in Europe/Amsterdam local time, enabled, when (the guard command), flow, cwd, model, allowed_tools, permission_mode, timeout_minutes, notify; keep `v:` and any key you don't know)
+      - Settings: #{dir}/shipped-digest.yml (name, cron in Europe/Amsterdam local time, enabled, when (the guard command), flow, repos (required for flow pr-review: the owner/name repos it may review; an unattended review reads PR text others wrote, so a PR in any other repo is refused), cwd, model, allowed_tools, permission_mode, timeout_minutes, notify; keep `v:` and any key you don't know)
 
       ## The loop
 

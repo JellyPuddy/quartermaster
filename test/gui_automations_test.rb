@@ -468,6 +468,7 @@ class GuiLocalAutomationsTest < Minitest::Test
     waiting = log.enqueue(key: "c", item: { "key" => "c" }, flow: "chat", trigger: "guard")
     log.waiting(waiting, reason: "Review chat for o/r#1 is open")
     log.guard_error(error: "guard failed: exit 2")
+    refused = log.refuse_item(key: "d", item: { "key" => "d", "url" => "u" }, flow: "chat", reason: "repo o/r isn't in this automation's repos")
 
     d = get("/api/automations/nightly")
     assert_equal ["list-things", "chat", "attention", 30, "ok"], d.values_at("guard", "flow", "notify", "timeoutMinutes", "runsState")
@@ -477,6 +478,8 @@ class GuiLocalAutomationsTest < Minitest::Test
     assert_equal ["live", "Thing A", "nightly--run-#{live}", false, false],
                  runs[live].values_at("status", "subject", "chat", "resumable", "retryable")
     assert_equal ["failed", "boom", nil, true, true], runs[ended].values_at("status", "error", "chat", "resumable", "retryable")
+    assert_equal ["refused", "repo o/r isn't in this automation's repos", false, true],
+                 runs[refused].values_at("status", "error", "resumable", "retryable")
     assert_equal "Nightly", d["item"]["title"]
   end
 

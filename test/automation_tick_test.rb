@@ -140,6 +140,48 @@ class AutomationTickTest < Minitest::Test
     assert_includes log("reviews").last_guard_error["error"], "lacks url"
   end
 
+  PR_LINES = %({"key":"a","url":"https://github.com/acme/WebApp/pull/1"}\n{"key":"b","url":"https://github.com/stranger/fork/pull/2"}\n)
+
+  def test_a_pr_review_guard_queues_listed_repos_and_refuses_the_rest_once
+    config(local_max_running: 0)
+    automation("reviews", "when" => GUARD, "flow" => "pr-review", "repos" => ["acme/webapp"])
+
+    tick(runner: guard_says(PR_LINES)).call(now: NOW)
+    tick(runner: guard_says(PR_LINES)).call(now: NOW + 300)
+
+    assert_equal %w[a], log("reviews").queue.map(&:key)
+    refused = events("reviews").select { _1["event"] == "refused" }
+    assert_equal [["b", "repo stranger/fork isn't in this automation's repos"]], refused.map { _1.values_at("key", "reason") }
+    assert_equal "https://github.com/stranger/fork/pull/2", refused.first["item"]["url"]
+    run = log("reviews").recent.first
+    assert_equal ["refused", "b"], [run.status, run.key]
+  end
+
+  def test_a_pr_review_automation_without_repos_queues_nothing
+    automation("reviews", "when" => GUARD, "flow" => "pr-review")
+    tmux = FakeTmux.new
+
+    tick(runner: guard_says(PR_LINES), tmux: tmux).call(now: NOW)
+
+    assert_empty log("reviews").queue
+    assert_empty tmux.opened
+    assert_equal %w[a b], events("reviews").select { _1["event"] == "refused" }.map { _1["key"] }
+    assert_includes log("reviews").recent.first.error, "no repos list"
+  end
+
+  def test_a_queued_pr_review_run_whose_repo_left_the_list_is_refused_at_start
+    automation("reviews", "flow" => "pr-review", "repos" => ["acme/other"], "cron" => "")
+    id = log("reviews").enqueue(key: "a", item: { "key" => "a", "url" => "https://github.com/acme/WebApp/pull/1" },
+                                flow: "pr-review", trigger: "manual", at: NOW - 60)
+    tmux = FakeTmux.new
+
+    summary = tick(tmux: tmux).call(now: NOW)
+
+    assert_empty tmux.opened
+    assert_equal ["refused", "repo acme/WebApp isn't in this automation's repos"], log("reviews").run(id).then { [_1.status, _1.error] }
+    assert_empty summary["started"]
+  end
+
   def test_paused_runs_no_guard_and_starts_nothing
     config(local_paused: true)
     automation("triage", "when" => GUARD)

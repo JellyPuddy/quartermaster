@@ -21,7 +21,22 @@ module Quartermaster
 
     def needs = %w[url]
 
+    # Why the automation may not review the item's PR, or nil: an unattended
+    # review reads text others wrote, so only repos its yml lists (owner/name,
+    # any case) are reviewed; no list reviews nothing.
+    def refusal(record, item)
+      url = item["url"].to_s.strip
+      repo = PR_URL.match(url)&.[](1) or return "#{url.inspect} isn't a GitHub pull request URL"
+      repos = Array(record["repos"]).map { |r| r.to_s.downcase }
+      return "repo #{repo} isn't in this automation's repos (it has no repos list)" if repos.empty?
+
+      "repo #{repo} isn't in this automation's repos" unless repos.include?(repo.downcase)
+    end
+
     def start(automation, item, prompt, run_id:, session_id:)
+      reason = refusal(automation.record, item)
+      raise AutomationFlows::Refused, reason if reason
+
       pr = pr_for(item["url"].to_s.strip)
       return { waiting: "Review chat for #{@pr_items.pr_label(pr)} is open" } if @service.live?(pr)
 

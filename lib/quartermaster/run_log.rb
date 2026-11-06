@@ -61,6 +61,19 @@ module Quartermaster
       end
     end
 
+    # Records a guard item its flow refuses (it never queues) unless its key
+    # was seen; the key counts as seen, so it is reported once. Returns the
+    # refused run id or nil.
+    def refuse_item(key:, item:, flow:, reason:, trigger: "guard", at: Time.now)
+      exclusively do
+        next nil if seen_keys.include?(key)
+
+        id = new_run_id
+        append("refused", at, "run_id" => id, "key" => key, "item" => item, "flow" => flow, "trigger" => trigger, "reason" => reason)
+        id
+      end
+    end
+
     # Queues the run a due cron minute asks for, unless a cron run is
     # already queued; returns the run id or nil.
     def enqueue_cron(due:, flow:, at: Time.now)
@@ -103,6 +116,9 @@ module Quartermaster
     def timed_out(run_id, at: Time.now) = append("timed_out", at, "run_id" => run_id)
 
     def closed(run_id, at: Time.now) = append("closed", at, "run_id" => run_id)
+
+    # A queued run its flow refused at start.
+    def refused(run_id, reason:, at: Time.now) = append("refused", at, "run_id" => run_id, "reason" => reason)
 
     def failed(run_id, error:, at: Time.now) = append("failed", at, "run_id" => run_id, "error" => error)
 
@@ -187,12 +203,29 @@ module Quartermaster
         state[:seen] << event["key"]
         state[:runs][event["run_id"]] = Run.new(id: event["run_id"], key: event["key"], item: event["item"], flow: event["flow"],
                                                 trigger: event["trigger"], queued_at: at, status: "queued")
+      when "refused" then apply_refused(state, event, at)
       when "seen" then state[:seen].merge(Array(event["keys"]))
       when "guard_error" then state[:guard_error] = event
       when "guard_ran" then state[:guard_error] = nil
       when "checked" then state[:checked] = at
       else apply_to_run(state[:runs][event["run_id"]], event, at)
       end
+    end
+
+    # A refused guard item becomes a run that never queued; a refused queued
+    # run ends.
+    def apply_refused(state, event, at)
+      run = state[:runs][event["run_id"]]
+      return unless run || event["key"]
+
+      unless run
+        state[:seen] << event["key"]
+        run = state[:runs][event["run_id"]] = Run.new(id: event["run_id"], key: event["key"], item: event["item"],
+                                                     flow: event["flow"], trigger: event["trigger"], queued_at: at)
+      end
+      run.status = "refused"
+      run.ended_at = at
+      run.error = event["reason"]
     end
 
     def apply_to_run(run, event, at)

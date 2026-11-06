@@ -64,9 +64,9 @@ module Quartermaster
       seen = RunLog.new(slug, dir: @dir).seen_keys.dup
       old, fresh = items.partition { |item| !seen.add?(item["key"]) }
       flow = AutomationStore.local_settings(entry.record)["flow"]
-      refused, ok = fresh.partition { |item| @flows.problem(flow, item) }
-      DryRun.new(items: ok, seen: old,
-                 problems: problems + refused.map { |item| { "error" => @flows.problem(flow, item), "item" => item } })
+      why = ->(item) { @flows.problem(flow, item) || @flows.refusal(flow, entry.record, item) }
+      refused, ok = fresh.partition(&why)
+      DryRun.new(items: ok, seen: old, problems: problems + refused.map { |item| { "error" => why.(item), "item" => item } })
     end
 
     # Runs the guard now and queues its new items (trigger manual unless
@@ -168,6 +168,10 @@ module Quartermaster
           log.guard_error(error: problem, item: item, at: now)
           next
         end
+        if (reason = @flows.refusal(flow, entry.record, item))
+          log.refuse_item(key: item["key"], item: item, flow: flow, trigger: trigger, reason: reason, at: now)
+          next
+        end
         log.enqueue_item(key: item["key"], item: item, flow: flow, trigger: trigger, at: now)
       end
     end
@@ -224,6 +228,9 @@ module Quartermaster
       log.started(run.id, session_id: session_id, tmux: reply[:tmux], item_slug: reply[:item_slug], at: now)
       @summary["started"] << [entry.slug, run.id]
       true
+    rescue AutomationFlows::Refused => e
+      log.refused(run.id, reason: e.message, at: now)
+      false
     rescue StandardError => e
       log.failed(run.id, error: e.message, at: now)
       @summary["failed"] << [entry.slug, run.id]

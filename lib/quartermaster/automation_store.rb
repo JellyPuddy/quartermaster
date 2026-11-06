@@ -11,9 +11,10 @@ module Quartermaster
   # into a record + prompt; request bodies are RoutinesClient's to build.
   class AutomationStore
     VERSION = 1
-    FIELDS = %w[routine runner name cron when flow cwd model sources connectors allowed_tools permission_mode
+    FIELDS = %w[routine runner name cron when flow repos cwd model sources connectors allowed_tools permission_mode
                 environment_id enabled timeout_minutes notify remote_updated_at].freeze
     SLUG = /\A[a-z0-9][a-z0-9-]*\z/
+    REPO = %r{\A[\w.-]+/[\w.-]+\z}
     LOCAL_DEFAULTS = { "flow" => "chat", "timeout_minutes" => 30, "notify" => "attention" }.freeze
     NOTIFY = %w[attention quiet].freeze
 
@@ -74,6 +75,8 @@ module Quartermaster
       problems << "timeout_minutes must be a positive whole number, got #{timeout.inspect}" unless timeout.is_a?(Integer) && timeout.positive?
       tools = settings["allowed_tools"]
       problems << "allowed_tools must be a list of tool names" unless tools.nil? || (tools.is_a?(Array) && tools.all?(String))
+      repos = settings["repos"]
+      problems << "repos must be a list of owner/name strings" unless repos.nil? || (repos.is_a?(Array) && repos.all? { |r| r.is_a?(String) && r.match?(REPO) })
       raise ArgumentError, problems.join("; ") unless problems.empty?
     end
 

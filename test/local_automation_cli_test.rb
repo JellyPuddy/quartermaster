@@ -217,6 +217,24 @@ class LocalAutomationCliTest < Minitest::Test
     assert_includes err, "run #{again.id} is still queued"
   end
 
+  def test_a_refused_pr_review_item_shows_in_runs_and_retries_only_once_its_repo_is_listed
+    local_automation("reviews", "flow" => "pr-review", "repos" => ["acme/app"])
+    Quartermaster::ConfigFile.load.set("automations.local_paused", true).write!
+    url = "https://github.com/stranger/fork/pull/2"
+    id = log("reviews").refuse_item(key: url, item: { "key" => url, "url" => url }, flow: "pr-review", trigger: "guard",
+                                    reason: "repo stranger/fork isn't in this automation's repos")
+
+    out, = qm("runs", "reviews")
+    assert_match(/#{id}  refused .*repo stranger\/fork isn't in this automation's repos/, out)
+    _, err = qm_fails("retry", "reviews", id)
+    assert_includes err, "repo stranger/fork isn't in this automation's repos"
+    assert_empty log("reviews").queue
+
+    store.write("reviews", { "repos" => ["acme/app", "Stranger/Fork"] }, "Review.\n")
+    qm("retry", "reviews", id)
+    assert_equal [url], log("reviews").queue.map(&:key)
+  end
+
   def test_delete_is_refused_while_a_run_is_live_and_then_removes_files_and_runs
     local_automation
     id = log.enqueue(key: "k", item: nil, flow: "chat", trigger: "manual")

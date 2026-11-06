@@ -13,6 +13,7 @@ class AutomationFlowsTest < Minitest::Test
   URL = "https://github.com/acme/WebApp/pull/42"
   PR = { "url" => URL, "number" => 42, "title" => "Add the thing", "repo" => "acme/WebApp",
          "author" => "someone", "head" => "feature-x", "base" => "main" }.freeze
+  REVIEW = { "flow" => "pr-review", "repos" => ["acme/WebApp"] }.freeze
 
   def entry(record = {})
     Quartermaster::AutomationStore::Entry.new(slug: "nightly-triage", record: { "runner" => "local" }.merge(record),
@@ -158,7 +159,7 @@ class AutomationFlowsTest < Minitest::Test
       tmux = FakeTmux.new
       runner = FakeRunner.new
 
-      reply = flows(tmux, runner: runner).start(entry("flow" => "pr-review", "model" => "opus"), { "key" => URL, "url" => URL },
+      reply = flows(tmux, runner: runner).start(entry(REVIEW.merge("model" => "opus")), { "key" => URL, "url" => URL },
                                                 "Focus on the migrations.", run_id: "r1", session_id: SID)
 
       assert_equal({ item_slug: "review-webapp-42-add-the-thing", tmux: "review-webapp-42-add-the-thing" }, reply)
@@ -181,7 +182,7 @@ class AutomationFlowsTest < Minitest::Test
       slug = Quartermaster::PrReviewStart.new(tmux: FakeTmux.new, pr_items: Quartermaster::PrItems.new).item_for(PR).slug
       tmux = FakeTmux.new([slug])
 
-      reply = flows(tmux).start(entry("flow" => "pr-review"), { "key" => URL, "url" => URL }, "", run_id: "r1", session_id: SID)
+      reply = flows(tmux).start(entry(REVIEW), { "key" => URL, "url" => URL }, "", run_id: "r1", session_id: SID)
 
       assert_equal({ waiting: "Review chat for WebApp#42 is open" }, reply)
       assert_empty tmux.opened
@@ -196,7 +197,7 @@ class AutomationFlowsTest < Minitest::Test
       runner = FakeRunner.new(["gh", "pr", "view"] => [JSON.generate(view), "", true])
       tmux = FakeTmux.new
 
-      reply = flows(tmux, runner: runner).start(entry("flow" => "pr-review"), { "key" => URL, "url" => URL }, "",
+      reply = flows(tmux, runner: runner).start(entry(REVIEW), { "key" => URL, "url" => URL }, "",
                                                 run_id: "r1", session_id: SID)
 
       assert_equal ["gh", "pr", "view", URL, "--json", "number,title,url,headRefName,baseRefName,author"], runner.argvs.first
@@ -206,6 +207,31 @@ class AutomationFlowsTest < Minitest::Test
     end
   end
 
+  def test_a_pr_review_run_refuses_a_repo_its_automation_doesnt_list
+    cache_prs(PR)
+    tmux = FakeTmux.new
+    runner = FakeRunner.new
+
+    [{ "flow" => "pr-review" }, { "flow" => "pr-review", "repos" => ["acme/other"] }].each do |record|
+      error = assert_raises(Quartermaster::AutomationFlows::Refused) do
+        flows(tmux, runner: runner).start(entry(record), { "key" => URL, "url" => URL }, "", run_id: "r1", session_id: SID)
+      end
+      assert_includes error.message, "repo acme/WebApp isn't in this automation's repos"
+    end
+    assert_empty tmux.opened
+    assert_empty runner.calls
+  end
+
+  def test_refusal_matches_repos_case_insensitively_and_refuses_a_non_pr_url
+    registry = flows(FakeTmux.new)
+    record = { "repos" => ["ACME/webapp"] }
+
+    assert_nil registry.refusal("pr-review", record, { "key" => "k", "url" => URL })
+    assert_equal '"https://github.com/acme" isn\'t a GitHub pull request URL',
+                 registry.refusal("pr-review", record, { "key" => "k", "url" => "https://github.com/acme" })
+    assert_nil registry.refusal("chat", {}, { "key" => "k" })
+  end
+
   def test_a_pr_gh_cant_find_fails_the_run
     with_project do
       cache_prs
@@ -213,7 +239,7 @@ class AutomationFlowsTest < Minitest::Test
       tmux = FakeTmux.new
 
       error = assert_raises(ArgumentError) do
-        flows(tmux, runner: runner).start(entry("flow" => "pr-review"), { "key" => URL, "url" => URL }, "",
+        flows(tmux, runner: runner).start(entry(REVIEW), { "key" => URL, "url" => URL }, "",
                                           run_id: "r1", session_id: SID)
       end
       assert_includes error.message, "no pull requests found"

@@ -9,6 +9,10 @@ module Quartermaster
   class AutomationFlows
     DEFAULT = "chat"
 
+    # A flow refusing an item its automation may not run (pr-review: a repo
+    # outside its repos list); the tick records it as refused, not failed.
+    class Refused < ArgumentError; end
+
     def initialize(tmux:, runner: CommandRunner.new, project_map: nil, pr_items: PrItems.new, pr_inbox: PrInbox.new)
       flows = [ChatFlow.new(tmux: tmux, project_map: project_map),
                PrReviewFlow.new(tmux: tmux, runner: runner, project_map: project_map, pr_items: pr_items, pr_inbox: pr_inbox)]
@@ -33,6 +37,13 @@ module Quartermaster
       "#{what} lacks #{missing.join(", ")}, which the #{flow.name} flow needs"
     rescue ArgumentError => e
       e.message
+    end
+
+    # Why the automation may not run this item through the flow, or nil;
+    # only a flow with a refusal rule (pr-review) refuses.
+    def refusal(name, record, item)
+      flow = fetch(name)
+      flow.respond_to?(:refusal) ? flow.refusal(record, item) : nil
     end
 
     # Starts the run through the automation's flow; raises ArgumentError when
