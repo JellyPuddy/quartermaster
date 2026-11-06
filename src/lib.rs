@@ -1,3 +1,4 @@
+pub mod ask_command;
 pub mod attention;
 pub mod attention_command;
 pub mod background_jobs;

@@ -95,11 +95,8 @@ impl WorkItem {
 
     /// The number of the first branch named `issue/<number>…`, if any.
     pub fn issue_number(&self) -> Option<String> {
-        self.branches().iter().find_map(|b| {
-            let at = b.find("issue/")?;
-            let digits: String = b[at + 6..].chars().take_while(|c| c.is_ascii_digit()).collect();
-            (!digits.is_empty()).then_some(digits)
-        })
+        let issue = regex::Regex::new(r"issue/([0-9]+)").unwrap();
+        self.branches().iter().find_map(|b| issue.captures(b).map(|c| c[1].to_string()))
     }
 
     /// The session was handed over (wrapped up or distilled): its context is spent.
