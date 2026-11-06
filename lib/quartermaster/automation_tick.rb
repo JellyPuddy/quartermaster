@@ -12,6 +12,7 @@ module Quartermaster
   class AutomationTick
     INTERVAL = 300
     VERSION = 1
+    BY_HAND = %w[manual retry].freeze
 
     DryRun = Data.define(:items, :seen, :problems)
 
@@ -92,7 +93,7 @@ module Quartermaster
       @lifecycle = RunLifecycle.new(tmux: @tmux, notifier: @notifier, dir: @dir)
       locals.each { |entry| guarded(entry) { lifecycle(entry, now) } }
       running = locals.sum { |entry| RunLog.new(entry.slug, dir: @dir).live.count { |run| @lifecycle.busy?(run) } }
-      start_queued(enabled, settings.max_running.to_i - running, now) unless paused || held
+      start_queued(locals, settings.max_running.to_i - running, now) unless paused || held
       @summary.merge!("paused" => paused, "held" => held, "running" => running + @summary["started"].size,
                       "max_running" => settings.max_running)
       write_state(now)
@@ -197,10 +198,13 @@ module Quartermaster
       @lifecycle.call(entry, now).each { |outcome, ids| @summary[outcome].concat(ids.map { |id| [entry.slug, id] }) }
     end
 
-    def start_queued(enabled, slots, now)
-      queue = enabled.flat_map do |entry|
+    # A disabled automation still starts the runs the user asked for by hand.
+    def start_queued(locals, slots, now)
+      queue = locals.flat_map do |entry|
         log = RunLog.new(entry.slug, dir: @dir)
-        log.queue.map { |run| [entry, log, run] }
+        runs = log.queue
+        runs = runs.select { |run| BY_HAND.include?(run.trigger) } if entry.record["enabled"] == false
+        runs.map { |run| [entry, log, run] }
       end
       queue.each_with_index.sort_by { |(_, _, run), i| [run.queued_at, i] }.map(&:first).each do |entry, log, run|
         break if slots <= 0

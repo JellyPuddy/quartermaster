@@ -155,17 +155,38 @@ class AutomationTickTest < Minitest::Test
     assert_equal true, Quartermaster::AutomationTick.state["paused"]
   end
 
-  def test_a_disabled_automation_runs_no_guard_and_its_queue_waits
+  def test_a_disabled_automation_runs_no_guard_and_starts_only_its_manual_and_retry_runs
+    config(local_max_running: 5)
     automation("triage", "when" => GUARD, "enabled" => false)
-    log("triage").enqueue(key: "old", item: nil, flow: "chat", trigger: "manual", at: NOW - 60)
+    run_log = log("triage")
+    run_log.enqueue(key: "cron:2026-11-06T09:55:00Z", item: nil, flow: "chat", trigger: "cron", at: NOW - 240)
+    run_log.enqueue(key: "from-guard", item: nil, flow: "chat", trigger: "guard", at: NOW - 180)
+    manual = run_log.enqueue(key: "by-hand", item: nil, flow: "chat", trigger: "manual", at: NOW - 120)
+    retried = run_log.enqueue(key: "again", item: nil, flow: "chat", trigger: "retry", at: NOW - 60)
     runner = guard_says("a\n")
     tmux = FakeTmux.new
 
-    tick(runner: runner, tmux: tmux).call(now: NOW)
+    summary = tick(runner: runner, tmux: tmux).call(now: NOW)
 
     assert_empty runner.calls
+    assert_equal [["triage", manual], ["triage", retried]], summary["started"]
+    assert_equal ["triage--run-#{manual}", "triage--run-#{retried}"], tmux.opened.map { _1[:name] }
+    assert_equal ["cron:2026-11-06T09:55:00Z", "from-guard"], log("triage").queue.map(&:key)
+  end
+
+  def test_a_manual_run_of_a_disabled_automation_still_waits_while_paused_or_held
+    automation("triage", "enabled" => false)
+    log("triage").enqueue(key: "by-hand", item: nil, flow: "chat", trigger: "manual", at: NOW - 60)
+    tmux = FakeTmux.new
+
+    config(local_paused: true)
+    tick(tmux: tmux).call(now: NOW)
+    config(local_paused: false)
+    rate_limits(five: 99)
+    tick(tmux: tmux).call(now: NOW + 300)
+
     assert_empty tmux.opened
-    assert_equal ["old"], log("triage").queue.map(&:key)
+    assert_equal ["by-hand"], log("triage").queue.map(&:key)
   end
 
   def test_a_usage_limit_over_its_hold_starts_nothing_but_guards_still_run

@@ -174,7 +174,8 @@ Claude** create or change one through the item's chat. Off until
 Scheduled Claude Code runs on your own Mac, managed by qm: a `runner: local` automation in the
 same ⚙ Automations tab (marked 💻, cloud ones ☁). They need no claude.ai login token, so they
 work with `automations.token_source` unset. Create one with `qm automation new TITLE --project P
---runner local` (or **New** in the tab); it starts disabled, and its chat helps you write the
+--runner local` (or **New** in the tab); it starts disabled (its cron and guard
+don't run, but `qm automation run` and Retry still start a run), and its chat helps you write the
 prompt and the yml.
 
 - **The tick.** Nothing runs until you install the scheduler: `qm automation install-tick`

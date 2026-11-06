@@ -51,8 +51,8 @@ can't swallow the prompt) when set, before the prompt.
   item's own chat with the flags before the kickoff and the automation's prompt appended.
 
 **New and its brief** — `qm automation new TITLE --project P --runner local` (the GUI's `new` with
-`runner: local`) makes the item and a yml with `runner: local`, `enabled: false`: nothing runs until
-the user enables it. Its chat's brief (`AutomationChat.local_brief`) names both files (cron in local
+`runner: local`) makes the item and a yml with `runner: local`, `enabled: false`: no cron or guard
+until the user enables it, but `qm automation run` works. Its chat's brief (`AutomationChat.local_brief`) names both files (cron in local
 time, the local fields) and the loop: edit → `qm automation tick --dry-run SLUG` (the guard's items,
 nothing written) → `qm automation run SLUG` → read the run (`qm automation runs SLUG`, `qm
 show-session`, the transcript) → refine; nothing to push. Its end is the cloud brief's
@@ -113,9 +113,9 @@ with a non-blocking flock (held: answers `{"locked" => true}` and does nothing),
      `TurnNotifier#announce` (a pr-review one's click opens that chat). A blocked run never times out.
 5. Cap: `automations.local_max_running` (default 2) minus the live runs that are busy, counted
    after the lifecycle, so a run timed out frees its slot in the same tick.
-6. Unless paused or held, queued runs of enabled automations start oldest-first across
-   automations while slots are free: `AutomationFlows#start` with a fresh `SecureRandom.uuid`,
-   then `started`. A flow answering `waiting:` leaves the run queued with that reason and uses no
+6. Unless paused or held, queued runs start oldest-first across automations while slots are
+   free (of a disabled automation only its `manual` and `retry` runs): `AutomationFlows#start`
+   with a fresh `SecureRandom.uuid`, then `started`. A flow answering `waiting:` leaves the run queued with that reason and uses no
    slot; one that raises marks the run `failed` with the message.
 7. Writes `automations/tick.json` atomically: `{v: 1, last_tick_at, paused, held, running,
    max_running, problems}` (`AutomationTick.state` reads it, `{}` when missing).
@@ -179,10 +179,10 @@ and a run notification's `qm open-chat` reach the chat pane.
   out: one automation's error is recorded in `problems` and the others go on.
 - qm only ever kills a `--run-` tmux session (closing or timing out), never an item's own chat,
   and never a run the user typed into; a typed-into run is theirs until its session ends.
-- Lifecycle checks run every tick, paused or not: pausing stops new work, not the clean-up.
+- Lifecycle runs every tick, paused or not; `local_paused` holds every start, `enabled: false` only
+  cron and guard runs (its `manual`/`retry` ones start, under hold and cap, to try it by hand).
 - `notify: quiet` keeps an automation's run sessions out of `ChatAttention` and `TurnNotifier`
-  (`RunLog.quiet_session_ids`, see [attention](attention.md)); its runs still list in the tab and
-  a timeout still notifies.
+  (`RunLog.quiet_session_ids`, see [attention](attention.md)); its runs list and a timeout notifies.
 - Guards, `launchctl` and tmux go through the injected runner and `Tmux`; tests pass a
   `FakeRunner`, a `FakeTmux` and a temp LaunchAgents dir, never a real guard, claude, tmux or launchctl.
 - The LaunchAgent changes only on the user's command or button; `installed?` reads only the plist.
