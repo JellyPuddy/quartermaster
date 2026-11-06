@@ -33,7 +33,7 @@ worktrees — derives from these two layers plus a few more append-only hook log
 |---|---|---|
 | `sessions.jsonl` | session start/end events, append-only | [capture](areas/capture.md) |
 | `work-items/<slug>.md` | one work item each; `work-items/.lock` serialises writes | [work items](areas/work-items.md) |
-| `automations/<slug>.yml`, `<slug>.prompt.md` (+ `.bak`); `<slug>.runs.jsonl` | an automation's settings (`v: 1`) and its prompt, the source of truth push sends; a local one's run log, append-only ([local automations](areas/local-automations.md)) | [automations](areas/automations.md) |
+| `automations/<slug>.yml`, `<slug>.prompt.md` (+ `.bak`); `<slug>.runs.jsonl`; `tick.json`, `tick.lock` | an automation's settings (`v: 1`) and its prompt, the source of truth push sends; a local one's run log, append-only; the last local tick (`v: 1`) and its flock ([local automations](areas/local-automations.md)) | [automations](areas/automations.md) |
 | `automations/tick.log` | the launchd tick's output; its LaunchAgent plist lives outside the root, in `~/Library/LaunchAgents/` | [local automations](areas/local-automations.md) |
 | `config.yml` (+ `.bak`) | projects and their settings (below), `prices:` overrides; `.bak` is the file before qm's last write | [settings](areas/settings.md) |
 | `qm.log` | hook and background errors with lib/ backtraces; network blips once per outage | [capture](areas/capture.md) |
@@ -98,7 +98,7 @@ issue number starts; default the first), `loose_starters.<key>.{label, prompt}` 
 default; a prompt ends mid-sentence and `LooseChat.kickoff` appends " answer my question about them: …"
 or " ask me what I want to know about them."), `prices.<model>.{input, cache_write_5m, cache_write_1h,
 cache_read, output}` ([side panel](areas/side-panel.md)), `overview_artifact` ([phone page](areas/phone-page.md)),
-`automations.token_source` (`claude_code` turns on claude.ai routines; unset is off, [automations](areas/automations.md)).
+`automations.token_source` (`claude_code` turns on claude.ai routines; unset is off, [automations](areas/automations.md)), `automations.local_{paused, max_running, hold_five_hour, hold_seven_day}` ([local automations](areas/local-automations.md)).
 
 ## Tech decisions
 

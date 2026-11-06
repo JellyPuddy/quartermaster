@@ -97,7 +97,17 @@ module Quartermaster
       key("automations.token_source", "enum",
           "Where the Automations tab gets a claude.ai login: `claude_code` reads Claude Code's own token from " \
           "the keychain on each call (never stored or refreshed). Unset: automations are off.",
-          "general", options: %w[claude_code])
+          "general", options: %w[claude_code]),
+      key("automations.local_paused", "bool", "Local automations run no guards and start no runs (running ones go on).",
+          "general"),
+      key("automations.local_max_running", "number", "How many local automation runs may work at once.", "general",
+          collapsed: true, default: 2),
+      key("automations.local_hold_five_hour", "number",
+          "Local automations start no run while the 5-hour limit is used this many percent or more.", "general",
+          collapsed: true, default: 80),
+      key("automations.local_hold_seven_day", "number",
+          "Local automations start no run while the weekly limit is used this many percent or more.", "general",
+          collapsed: true, default: 90)
     ].freeze
 
     BY_PATH = KEYS.to_h { |k| [k.path, k] }.freeze

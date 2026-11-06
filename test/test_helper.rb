@@ -119,9 +119,10 @@ class FakeRunner
   end
 
   # streams (out:/err: file paths): the answer's text is appended there, as
-  # CommandRunner streams a long run, and the Result holds neither.
-  def call(argv, chdir: nil, **streams)
-    @calls << { argv: argv, chdir: chdir }.merge(streams)
+  # CommandRunner streams a long run, and the Result holds neither. timeout:
+  # is recorded, never waited on.
+  def call(argv, chdir: nil, timeout: nil, **streams)
+    @calls << { argv: argv, chdir: chdir }.merge(timeout ? { timeout: timeout } : {}).merge(streams)
     answer = @responses.find { |prefix, _| argv.first(prefix.size) == prefix }&.last
     answer = answer.call(argv) if answer.respond_to?(:call)
     out, err, success = answer || ["", "", true]

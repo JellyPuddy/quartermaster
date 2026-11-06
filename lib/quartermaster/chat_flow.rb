@@ -42,8 +42,6 @@ module Quartermaster
       { item_slug: automation.slug, tmux: name }
     end
 
-    private
-
     # The yml's cwd, else the automation's project root, else home.
     def cwd(automation)
       set = automation.record["cwd"].to_s
@@ -53,6 +51,8 @@ module Quartermaster
       root = project && project_map.root_for(project)
       root && File.directory?(root) ? root : Dir.home
     end
+
+    private
 
     def project_map = @project_map || ProjectMap.new
 

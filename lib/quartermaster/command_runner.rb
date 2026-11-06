@@ -16,11 +16,13 @@ module Quartermaster
 
     # out/err: file paths the command's stdout/stderr are appended to as it
     # runs (a long run read live by someone else); the Result then holds
-    # neither.
-    def call(argv, chdir: nil, out: nil, err: nil)
+    # neither. timeout: seconds after which the command's process group is
+    # killed; the Result then fails with "timed out after N s".
+    def call(argv, chdir: nil, out: nil, err: nil, timeout: nil)
       argv = [resolve(argv.first), *argv.drop(1)]
       options = chdir ? { chdir: chdir } : {}
       return stream(argv, options, out, err) if out || err
+      return bounded(argv, options, timeout) if timeout
 
       stdout, stderr, status = Open3.capture3(*argv, **options)
       Result.new(out: stdout, err: stderr, success: status.success?)
@@ -34,6 +36,32 @@ module Quartermaster
       pid = Process.spawn(*argv, in: File::NULL, out: [out || File::NULL, "a"], err: [err || File::NULL, "a"], **options)
       _, status = Process.wait2(pid)
       Result.new(out: "", err: "", success: status.success?)
+    end
+
+    def bounded(argv, options, seconds)
+      Open3.popen3(*argv, pgroup: true, **options) do |stdin, stdout, stderr, wait|
+        stdin.close
+        readers = [stdout, stderr].map { |io| Thread.new { read_all(io) } }
+        unless wait.join(seconds)
+          kill_group(wait.pid)
+          wait.join
+          return Result.new(out: "", err: "timed out after #{seconds} s", success: false)
+        end
+        out, err = readers.map { |r| r.join(1) ? r.value.to_s : "" }
+        Result.new(out: out, err: err, success: wait.value.success?)
+      end
+    end
+
+    def read_all(io)
+      io.read
+    rescue IOError
+      ""
+    end
+
+    def kill_group(pid)
+      Process.kill("KILL", -pid)
+    rescue SystemCallError
+      nil
     end
 
     def resolve(name)

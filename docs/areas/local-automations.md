@@ -1,8 +1,8 @@
 # Local automations
 
-**Code:** `lib/quartermaster/local_cron.rb`, `lib/quartermaster/run_log.rb`, `lib/quartermaster/tick_installer.rb`, `lib/quartermaster/automation_flows.rb`, `lib/quartermaster/chat_flow.rb`, `lib/quartermaster/pr_review_flow.rb`
-**Tests:** `test/local_cron_test.rb`, `test/run_log_test.rb`, `test/automation_store_test.rb`, `test/tick_installer_test.rb`, `test/automation_flows_test.rb`
-**Depends on:** [automations](automations.md) (the store, the item, the GUI tab; `LocalSchedule`'s DST rule), [attention](attention.md) (a run's session state), [gui-shell](gui-shell.md) (`CommandRunner`), [chats](chats.md) (tmux, the chat env), [prs](prs.md) (`PrReviewStart`)
+**Code:** `lib/quartermaster/local_cron.rb`, `lib/quartermaster/run_log.rb`, `lib/quartermaster/automation_flows.rb`, `lib/quartermaster/chat_flow.rb`, `lib/quartermaster/pr_review_flow.rb`, `lib/quartermaster/automation_tick.rb`, `lib/quartermaster/automation_guard.rb`, `lib/quartermaster/tick_installer.rb`
+**Tests:** `test/local_cron_test.rb`, `test/run_log_test.rb`, `test/automation_store_test.rb`, `test/automation_flows_test.rb`, `test/automation_tick_test.rb`, `test/tick_installer_test.rb`
+**Depends on:** [automations](automations.md) (the store, the item, the GUI tab; `LocalSchedule`'s DST rule), [attention](attention.md) (a run's session state), [chats](chats.md) (tmux, the chat env), [prs](prs.md) (`PrReviewStart`), [gui-shell](gui-shell.md) (`CommandRunner`)
 
 ## What it does
 
@@ -99,6 +99,39 @@ Writers: `enqueue` (no dedupe), `enqueue_item` (nil when the key was seen), `enq
 queued or live run), `started`, `waiting`, `finished`, `timed_out`, `closed`, `failed`,
 `guard_error`, `guard_ran`, `mark_seen`, `checked`.
 
+**Tick** — `AutomationTick#call(now:)` is one scheduler pass. It takes `automations/tick.lock`
+with a non-blocking flock (held: answers `{"locked" => true}` and does nothing), then:
+1. Unless `automations.local_paused`, for each local automation not `enabled: false` with a
+   valid `cron`: a scheduled minute in (its last `checked`, or the previous tick, or 300 s ago;
+   now] runs its guard, or without one queues a cron run (`enqueue_cron`, coalesced); then
+   `checked`. An empty `cron` is manual-only. A bad cron or yml goes in tick.json's `problems`.
+2. The guard (`AutomationGuard`): `sh -c <when>` through the runner in the automation's cwd
+   (`ChatFlow#cwd`) with `timeout: 60` (`CommandRunner` kills the process group). Each non-empty
+   stdout line is an item: a JSON object with a string `key` as is, any non-JSON line
+   `{key: line, line: line}`; a JSON object without one is a `guard_error` for that line. A
+   non-zero exit or timeout is one `guard_error` ("guard failed: <stderr tail>"), nothing queued;
+   a clean run writes `guard_ran`. An item the flow can't take (`AutomationFlows#problem`) is a
+   `guard_error`; the rest go through `enqueue_item` (seen keys skipped), trigger `guard`.
+3. Usage hold: `RateLimits#payload` with five-hour used ≥ `automations.local_hold_five_hour`
+   (default 80) or weekly ≥ `automations.local_hold_seven_day` (90) holds every start ("5h at
+   84%"). A snapshot whose five-hour window has reset, or none, holds nothing. Guards still run.
+4. Cap: `automations.local_max_running` (default 2) minus the live runs that are busy. A live
+   run is busy while its session (`SessionLog`, by the `session_id` qm chose) is live and
+   `ChatAttention#turn_for` says working, waiting or none (no prompt reported yet); before the
+   session's SessionStart hook ran, while its tmux session lives.
+5. Unless paused or held, queued runs of enabled automations start oldest-first across
+   automations while slots are free: `AutomationFlows#start` with a fresh `SecureRandom.uuid`,
+   then `started`. A flow answering `waiting:` leaves the run queued with that reason and uses no
+   slot; one that raises marks the run `failed` with the message.
+6. Writes `automations/tick.json` atomically: `{v: 1, last_tick_at, paused, held, running,
+   max_running, problems}` (`AutomationTick.state` reads it, `{}` when missing).
+
+`call` answers `{queued, started, failed, problems, paused, held, running, max_running}`, or nil
+after an error (logged to `qm.log` as `automation-tick`). `dry_run(slug)` runs the guard and
+answers `items` (new, the flow takes them), `seen` and `problems`, writing nothing; it raises for
+an automation without a guard and on a failing guard. `queue_guard(slug, trigger: "manual")` runs
+the guard now and queues its new items, returning their run ids.
+
 **Tick installer** — `TickInstaller` owns the one LaunchAgent that runs `qm automation tick`
 every 300 s. Its label is `com.quartermaster.automation-tick`; its plist lives at
 `~/Library/LaunchAgents/<label>.plist` (directory injectable). The plist (`plist`, written by
@@ -128,6 +161,10 @@ plist exists.
   chat and never opens a second one beside it.
 - Flows hand tmux the argv and env only through the `Tmux` wrapper; tests pass a `FakeTmux`.
 - Deleting an automation (`AutomationStore#delete_local`) removes its run log with its files.
+- One tick at a time (the flock); a tick starts runs and never waits for them, and never raises
+  out: one automation's error is recorded in `problems` and the others go on.
+- Guards and tmux go through the injected runner and `Tmux`; tests pass a `FakeRunner` and a
+  `FakeTmux` and never run a real guard, claude or tmux.
 - The LaunchAgent is installed or removed only on the user's explicit command or button, never
   as a side effect of anything else.
 - Every `launchctl` call goes through `CommandRunner`; tests pass a stub runner and a temp
@@ -137,5 +174,9 @@ plist exists.
 ## Data
 
 - `automations/<slug>.runs.jsonl` — a local automation's run log, `v: 1` per line, append-only.
+- `automations/tick.json` — the last tick (`v: 1`), replaced each tick; `automations/tick.lock` —
+  its flock.
 - `automations/tick.log` — the tick's stdout and stderr, appended by launchd.
 - `~/Library/LaunchAgents/com.quartermaster.automation-tick.plist` — outside the data root.
+- config.yml `automations.local_paused`, `local_max_running`, `local_hold_five_hour`,
+  `local_hold_seven_day` (`ConfigSchema`, read through `ProjectConfig#local_automations`, a struct of `paused`, `max_running`, `hold_five_hour`, `hold_seven_day`).

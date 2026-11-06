@@ -50,8 +50,19 @@ module Quartermaster
       @ide = Ide.parse(config["ide_command"], config["ide_label"])
       @prices = parse_prices(config.section("prices"))
       @overview_artifact = string(config["overview_artifact"])
-      @automations_token_source = string(config.section("automations")["token_source"])
+      automations = config.section("automations")
+      @automations_token_source = string(automations["token_source"])
+      numbers = %w[max_running hold_five_hour hold_seven_day].to_h do |name|
+        value = automations["local_#{name}"]
+        [name.to_sym, value.is_a?(Numeric) ? value : ConfigSchema::BY_PATH.fetch("automations.local_#{name}").default]
+      end
+      @local_automations = LocalAutomations.new(paused: automations["local_paused"] == true, **numbers)
     end
+
+    # The local automations' tick settings, unset ones at their defaults.
+    LocalAutomations = Struct.new(:paused, :max_running, :hold_five_hour, :hold_seven_day, keyword_init: true)
+
+    def local_automations = @local_automations
 
     # The IDE a project's "Open in …" launches: its own ide_command, else the
     # global one; nil (the feature off) when neither is set.
