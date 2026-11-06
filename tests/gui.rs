@@ -630,6 +630,7 @@ fn pr_world(base: &Path) -> (PathBuf, PathBuf, PathBuf) {
     fs::write(repo.join("a.txt"), lines("alpha", 30)).unwrap();
     fs::write(repo.join("b.txt"), lines("beta", 10)).unwrap();
     fs::write(repo.join("gone.txt"), lines("gone", 4)).unwrap();
+    fs::write(repo.join("far.txt"), lines("far", 40)).unwrap();
     commit(&repo, "base");
     sh(&repo, &["remote", "add", "origin", origin.to_str().unwrap()]);
     sh(&repo, &["push", "-q", "origin", "main"]);
@@ -640,6 +641,8 @@ fn pr_world(base: &Path) -> (PathBuf, PathBuf, PathBuf) {
     fs::write(feat.join("b.txt"), lines("beta", 10).replace("beta 3\n", "")).unwrap();
     fs::remove_file(feat.join("gone.txt")).unwrap();
     fs::write(feat.join("new.txt"), lines("new", 3)).unwrap();
+    fs::write(feat.join("dup.txt"), "dup\ndup\ndup\n").unwrap();
+    fs::write(feat.join("far.txt"), lines("far", 40).replace("far 2\n", "far two\n").replace("far 38\n", "far thirty-eight\n")).unwrap();
     commit(&feat, "feat two: removals and a new file");
     fs::write(feat.join("a.txt"), fs::read_to_string(feat.join("a.txt")).unwrap().replace("alpha 6\n", "alpha 6\nalpha 6b\n").replace("alpha five\n", "")).unwrap();
     commit(&feat, "feat three");
@@ -771,9 +774,107 @@ fn the_pr_scope_matches_ruby() {
     for expected in ["\"scope\":\"pr\"", "\"kind\":\"pr\"", "\"reviewRoutes\":{}", "\"anchor\":\"", "\"gh\":false", "\"messages\":[{", "has no open pull request", "is not in this project's repo", "has no usable base branch", "could not fetch", "gh pr view gh-fails failed: HTTP 502", "\"prAvailable\":true", "\"checkout\":false"] {
         assert!(seen.contains(expected), "the payloads should contain {expected}");
     }
-    // GitHub drafts on the PR are re-anchored by code that is Ruby's yet
-    fs::create_dir_all(root.join("drafts")).unwrap();
-    fs::write(root.join("drafts/draft-item.json"), serde_json::json!({"v": 1, "entries": [{"id": "g1", "kind": "github-comment", "comment": "x", "rev": 1, "path": "a.txt", "side": "new", "line": 5, "repo": "acme/widgets", "number": 5, "commit": c3, "base": c1, "subject": "line", "author": "user"}]}).to_string()).unwrap();
-    let a = request(rust.port, "GET", "/api/diff/draft-item?scope=pr&branch=feat", &[], "", true);
-    assert!(a.status.starts_with("501"), "{}", a.status);
+}
+
+fn copy_dir(from: &Path, to: &Path) {
+    fs::create_dir_all(to).unwrap();
+    for e in fs::read_dir(from).unwrap().filter_map(|e| e.ok()) {
+        let (src, dst) = (e.path(), to.join(e.file_name()));
+        if src.is_dir() { copy_dir(&src, &dst) } else { fs::copy(&src, &dst).map(|_| ()).unwrap() }
+    }
+}
+
+#[test]
+fn github_drafts_are_re_anchored_like_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let (root, home, b) = pr_world(base.path());
+    let repo = base.path().join("repo");
+    let shas = sh(&repo, &["log", "--format=%H", "main..feat"]);
+    let shas: Vec<&str> = shas.lines().collect();
+    let (c3, c2, c1) = (shas[0].to_string(), shas[1].to_string(), shas[2].to_string());
+    let base_sha = sh(&repo, &["merge-base", "main", "feat"]);
+    // a commit outside the PR with the patch of its first commit (a rebase that kept the changes)
+    sh(&repo, &["checkout", "-q", "-b", "side", "main"]);
+    sh(&repo, &["cherry-pick", "-x", &c1]);
+    let twin = sh(&repo, &["rev-parse", "HEAD"]);
+    sh(&repo, &["checkout", "-q", "main"]);
+    let entry = |id: &str, extra: serde_json::Value| {
+        let mut e = serde_json::json!({"id": id, "kind": "github-comment", "comment": format!("comment {id}"), "rev": 1, "path": "a.txt", "side": "new", "line": 12, "code": "alpha twelve", "repo": "acme/widgets", "number": 5, "commit": c3, "base": base_sha, "subject": "line", "author": "user", "createdAt": "2026-04-01T00:00:00Z", "updatedAt": "2026-04-01T00:00:00Z"});
+        for (k, v) in extra.as_object().unwrap() {
+            if v.is_null() { e.as_object_mut().unwrap().remove(k); } else { e[k] = v.clone(); }
+        }
+        e
+    };
+    let entries = serde_json::json!([
+        entry("head-same", serde_json::json!({})),
+        entry("moved-by-push", serde_json::json!({"line": 99, "code": "alpha twenty", "commit": c1})),
+        entry("moved-range", serde_json::json!({"line": 99, "start_line": 98, "code": "alpha 11\nalpha twelve", "commit": c1})),
+        entry("moved-range-sides", serde_json::json!({"line": 99, "start_line": 98, "start_side": "old", "code": "alpha 11\nalpha twelve", "commit": c1})),
+        entry("moved-range-bad-start", serde_json::json!({"line": 99, "start_line": 98, "code": "wrong first\nalpha twelve", "commit": c1})),
+        entry("ambiguous", serde_json::json!({"path": "dup.txt", "line": 99, "code": "dup", "commit": c1})),
+        entry("head-old-commit", serde_json::json!({"commit": c1, "base": "fffffff"})),
+        entry("outdated-range-context", serde_json::json!({"start_line": 10, "code": "alpha 10\nalpha 11\nalpha 12 as it was", "commit": c1})),
+        entry("moved-failed", serde_json::json!({"line": 98, "code": "alpha twelve", "commit": c1, "failed": "GitHub said no"})),
+        entry("on-commit", serde_json::json!({"line": 5, "code": "alpha five", "commit": c1, "range": "aaa..bbb"})),
+        entry("on-twin", serde_json::json!({"line": 5, "code": "alpha five", "commit": twin, "range": "aaa..bbb"})),
+        entry("on-unknown", serde_json::json!({"commit": "1234567890abcdef1234567890abcdef12345678", "range": "aaa..bbb"})),
+        entry("pinned", serde_json::json!({"line": 12, "commit": c1, "pin": "commit"})),
+        entry("pinned-gone", serde_json::json!({"line": 77, "commit": c1, "pin": "commit"})),
+        entry("file-in-pr", serde_json::json!({"subject": "file", "line": 1})),
+        entry("file-deleted", serde_json::json!({"subject": "file", "path": "gone.txt"})),
+        entry("file-not-in-pr", serde_json::json!({"subject": "file", "path": "nowhere.txt"})),
+        entry("outdated-text", serde_json::json!({"line": 99, "code": "text that is nowhere", "commit": c2})),
+        entry("outdated-context", serde_json::json!({"line": 12, "code": "alpha 12 as it was", "commit": c1})),
+        entry("outdated-old-commit", serde_json::json!({"line": 5, "code": "alpha five", "commit": c1})),
+        entry("outdated-file-gone", serde_json::json!({"path": "nowhere.txt", "line": 3, "code": "x", "commit": c1})),
+        entry("range-same-hunk", serde_json::json!({"start_line": 10, "code": "alpha 10\nalpha 11\nalpha twelve"})),
+        entry("range-two-hunks", serde_json::json!({"path": "far.txt", "line": 38, "start_line": 2, "code": "far two\nfar thirty-eight"})),
+        entry("old-side", serde_json::json!({"path": "b.txt", "side": "old", "line": 3, "code": "beta 3"})),
+        entry("old-side-moved", serde_json::json!({"path": "b.txt", "side": "old", "line": 8, "code": "beta 3", "commit": c1})),
+        entry("string-line", serde_json::json!({"line": "12"})),
+        entry("other-pr", serde_json::json!({"number": 6})),
+        entry("other-repo", serde_json::json!({"repo": "other/repo"})),
+        {"id": "a-chat-draft", "kind": "diff-comment", "comment": "x", "rev": 1, "path": "a.txt", "side": "new", "line": 1}
+    ]);
+    let write = |dir: &Path, slug: &str, entries: &serde_json::Value| {
+        fs::create_dir_all(dir.join("drafts")).unwrap();
+        fs::write(dir.join(format!("drafts/{slug}.json")), serde_json::to_string_pretty(&serde_json::json!({"v": 1, "entries": entries})).unwrap()).unwrap();
+    };
+    let bad = serde_json::json!([entry("bad-side", serde_json::json!({"side": "sideways", "line": 99, "commit": c1}))]);
+    let root2 = base.path().join("root2");
+    for r in [&root] {
+        write(r, "draft-item", &entries);
+        write(r, "draft-bad", &bad);
+        let item = fs::read_to_string(r.join("work-items/draft-item.md")).unwrap().replace("title: \"Draft item\"", "title: \"Draft bad\"");
+        fs::write(r.join("work-items/draft-bad.md"), item).unwrap();
+    }
+    copy_dir(&root, &root2);
+    let env = |tag: &str| -> Vec<(&'static str, String)> {
+        vec![("PATH", format!("{}:{}", b.join("bin").display(), std::env::var("PATH").unwrap())), ("FAKE_GH_DATA", b.join("ghdata").display().to_string()), ("FAKE_GH_LOG", b.join(format!("gh-{tag}.log")).display().to_string()), ("FAKE_GIT_LOG", b.join(format!("git-{tag}.log")).display().to_string())]
+    };
+    let ruby = start_env(false, &root, &home, &env("ruby"));
+    let rust = start_env(true, &root2, &home, &env("rust"));
+    let mut seen = String::new();
+    for path in ["/api/diff/draft-item?scope=pr&branch=feat", "/api/diff/draft-item?scope=pr&branch=feat", "/api/diff/draft-item?scope=pr&branch=feat&fresh=1", &format!("/api/diff/draft-item?scope=pr&branch=feat&from={c1}&to={c2}"), "/api/diff/draft-bad?scope=pr&branch=feat"] {
+        let (a, c) = (request(ruby.port, "GET", path, &[], "", true), request(rust.port, "GET", path, &[], "", true));
+        assert!(!c.status.starts_with("501"), "{path} should be served: {}", String::from_utf8_lossy(&c.body));
+        let (sa, sc) = (shown(&a, ruby.port), shown(&c, rust.port));
+        if sa != sc {
+            let at = sa.bytes().zip(sc.bytes()).position(|(x, y)| x != y).unwrap_or(sa.len().min(sc.len()));
+            let from = at.saturating_sub(300);
+            let cut = |s: &str| s.get(from..(from + 700).min(s.len())).unwrap_or("").to_string();
+            panic!("{path}: first difference at byte {at}\nRuby: …{}\nRust: …{}", cut(&sa), cut(&sc));
+        }
+        seen.push_str(&sa);
+    }
+    // the drafts each server left behind
+    let left = |r: &Path| {
+        let text = fs::read_to_string(r.join("drafts/draft-item.json")).unwrap();
+        regex::Regex::new(r#""updatedAt": "[^"]+""#).unwrap().replace_all(&text, "\"updatedAt\": \"T\"").into_owned()
+    };
+    assert_eq!(left(&root2), left(&root), "the re-anchored drafts differ");
+    assert_ne!(left(&root), regex::Regex::new(r#""updatedAt": "[^"]+""#).unwrap().replace_all(&serde_json::to_string_pretty(&serde_json::json!({"v": 1, "entries": entries})).unwrap(), "\"updatedAt\": \"T\"").into_owned(), "drafts should have moved");
+    for expected in ["\"route\":\"head\"", "\"route\":\"commit\"", "\"route\":\"outdated\"", "\"moved\":true", "\"fileGone\":true", "\"oldCommit\":\"", "\"position\":", "no longer in the pull request", "its commit's line can't take a comment any more", "since the push its line isn't in the PR's diff once, unchanged", "\"at\":true", "side must be LEFT or RIGHT, not \\\"SIDEWAYS\\\""] {
+        assert!(seen.contains(expected), "the payloads should contain {expected}");
+    }
 }

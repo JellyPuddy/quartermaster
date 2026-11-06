@@ -386,6 +386,25 @@ fn pr_available(item: &WorkItem, repo: Option<&str>, branch: Option<&str>) -> R<
     Ok(cached_prs()?.iter().any(|pr| pr["repo"].as_str().is_some_and(|r| r.eq_ignore_ascii_case(repo)) && pr["head"].as_str() == Some(branch)))
 }
 
+/// Where each of the item's GitHub drafts on this PR would post now (`ReviewPlan`), re-anchoring the
+/// ones a push moved. Local git, but the re-anchoring rewrites the drafts file.
+fn review_routes(item: &WorkItem, path: &str, pr: &Value, revs: &Value) -> R<Map<String, Value>> {
+    let entries = crate::drafts::entries(&item.slug).ok_or(Failure::Unported)?;
+    let number = lenient(&pr["number"]);
+    let mine: Vec<Map<String, Value>> = entries
+        .into_iter()
+        .filter(|e| e.get("kind").and_then(Value::as_str) == Some("github-comment") && to_s(e.get("repo").unwrap_or(&Value::Null)).eq_ignore_ascii_case(pr["repo"].as_str().unwrap_or("")) && e.get("number") == Some(&json!(number)))
+        .collect();
+    if mine.is_empty() {
+        return Ok(Map::new());
+    }
+    let plan = crate::review_plan::ReviewPlan::new(path, revs["baseRef"].as_str().unwrap_or(""), revs["headSha"].as_str().unwrap_or("")).map_err(Failure::Arg)?;
+    crate::review_plan::reanchor(&plan, &mine, &item.slug).map_err(|e| match e {
+        crate::review_anchors::E::Arg(m) => Failure::Arg(m),
+        crate::review_anchors::E::Unsure => Failure::Unported,
+    })
+}
+
 // --- the PR scope: PrRevisions, PrMemo ---
 
 const MEMO_TTL: std::time::Duration = std::time::Duration::from_secs(60);
@@ -508,8 +527,12 @@ fn mark_unanchorable(path: &str, base: &str, commit: &str, view_base: &str, file
         for hunk in file["hunks"].as_array_mut().into_iter().flatten() {
             for line in hunk["lines"].as_array_mut().into_iter().flatten() {
                 let removed = line["t"] == "-";
-                let (side, number) = if removed { ("old", line["o"].as_i64().unwrap_or(0)) } else { ("new", line["n"].as_i64().unwrap_or(0)) };
-                if !anchors.anchorable(&file_path, side, number, line["s"].as_str().unwrap_or(""), view_base) {
+                let (side, number) = if removed { ("old", line["o"].clone()) } else { ("new", line["n"].clone()) };
+                let ok = anchors.anchorable(&file_path, &json!(side), &number, line["s"].as_str().unwrap_or(""), view_base).map_err(|e| match e {
+                    crate::review_anchors::E::Arg(m) => Failure::Arg(m),
+                    crate::review_anchors::E::Unsure => Failure::Unported,
+                })?;
+                if !ok {
                     line.as_object_mut().unwrap().insert("gh".into(), json!(false));
                 }
             }
@@ -540,14 +563,10 @@ fn pr_scope(item: &WorkItem, repo: Option<&str>, path: &str, branch: Option<&str
     if range.is_some() {
         mark_unanchorable(path, &base_sha, &to, from_sha.as_deref().unwrap_or(""), &mut files)?;
     }
-    // GitHub drafts on this PR are re-anchored (and rewritten) by ReviewPlan: not ported yet
-    let drafts = crate::drafts::entries(&item.slug).ok_or(Failure::Unported)?;
-    if drafts.iter().any(|e| e.get("kind").and_then(Value::as_str) == Some("github-comment") && to_s(e.get("repo").unwrap_or(&Value::Null)).eq_ignore_ascii_case(pr["repo"].as_str().unwrap_or("")) && e.get("number") == Some(&json!(lenient(&pr["number"])))) {
-        return Err(Failure::Unported);
-    }
+    let routes = review_routes(item, path, &pr, &revs)?;
     let tail: Vec<Value> = commits.iter().skip(commits.len().saturating_sub(MAX_COMMITS)).cloned().map(Value::Object).collect();
     let mut out = Map::new();
-    out.insert("reviewRoutes".into(), json!({}));
+    out.insert("reviewRoutes".into(), Value::Object(routes));
     out.insert("base".into(), json!({"ref": base_ref, "kind": "pr", "sha": base_sha}));
     out.insert("pr".into(), json!({"repo": pr["repo"], "number": pr["number"], "url": pr["url"], "title": pr["title"], "headSha": head, "baseSha": base_sha}));
     out.insert("commits".into(), Value::Array(tail));

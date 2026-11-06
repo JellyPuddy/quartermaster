@@ -57,7 +57,7 @@ fn list(a: &[String]) -> Outcome {
 }
 
 /// `"#{value}"` for the values a drafts file holds; `None` for what Ruby would print in its own way.
-fn s(v: Option<&Value>) -> Option<String> {
+pub(crate) fn s(v: Option<&Value>) -> Option<String> {
     match v {
         None | Some(Value::Null) => Some(String::new()),
         Some(Value::String(s)) => Some(s.clone()),
@@ -95,7 +95,7 @@ fn integer(v: Option<&Value>) -> Result<Option<i64>, ()> {
 }
 
 /// `DiffComments.lines_label`: ":12", ":12-15", or ":old 12-new 15" across sides.
-fn lines_label(entry: &Map<String, Value>) -> Option<String> {
+pub(crate) fn lines_label(entry: &Map<String, Value>) -> Option<String> {
     let Some(line) = integer(entry.get("line")).ok()? else { return Some(String::new()) };
     let Some(start) = integer(entry.get("start_line")).ok()? else { return Some(format!(":{line}")) };
     let side = s(entry.get("side"))?;

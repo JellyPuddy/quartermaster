@@ -163,3 +163,55 @@ pub fn signature() -> String {
         .collect();
     crate::sha1::hex(stats.join("|").as_bytes())[..12].to_string()
 }
+
+const RELOCATED: [&str; 11] = ["path", "side", "line", "code", "range", "start_line", "start_side", "base", "commit", "subject", "pin"];
+
+/// `Drafts#relocate`: moves a GitHub draft to where it posts now, its comment unchanged and its rev
+/// kept. A null value drops the field and `failed` always goes. Only while the entry is still at
+/// `rev`. Like every `Drafts#update` it rewrites the file under the item's lock whatever it found.
+pub fn relocate(slug: &str, id: &str, fields: &Map<String, Value>, rev: Option<&Value>) -> std::io::Result<()> {
+    use std::os::unix::io::AsRawFd;
+    let dir = data_root::root().join("drafts");
+    let path = dir.join(format!("{slug}.json"));
+    std::fs::create_dir_all(&dir)?;
+    let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(dir.join(format!(".{slug}.lock")))?;
+    unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) };
+    let mut data = match std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
+        Some(Value::Object(d)) if d.get("entries").is_some_and(Value::is_array) => d,
+        _ => Map::from_iter([("v".to_string(), Value::from(1)), ("entries".to_string(), Value::Array(vec![]))]),
+    };
+    if let Some(Value::Array(list)) = data.get_mut("entries") {
+        let found = list.iter_mut().find(|e| e.get("id").and_then(Value::as_str) == Some(id) && e.get("kind").and_then(Value::as_str) == Some("github-comment"));
+        if let Some(Value::Object(entry)) = found {
+            if rev.is_none_or(|r| entry.get("rev") == Some(r)) {
+                for k in RELOCATED {
+                    if let Some(v) = fields.get(k) {
+                        if v.is_null() {
+                            entry.shift_remove(k);
+                        } else {
+                            entry.insert(k.into(), v.clone());
+                        }
+                    }
+                }
+                entry.shift_remove("failed");
+                entry.insert("updatedAt".into(), Value::String(crate::clock::now_utc_iso()));
+            }
+        }
+    }
+    let no_entries = matches!(data.get("entries"), Some(Value::Array(l)) if l.is_empty());
+    let no_loaded = match data.get("loaded") {
+        None | Some(Value::Null) => true,
+        Some(Value::Array(l)) => l.is_empty(),
+        Some(Value::Object(o)) => o.is_empty(),
+        Some(_) => false,
+    };
+    if no_entries && no_loaded {
+        let _ = std::fs::remove_file(&path);
+    } else {
+        data.insert("v".into(), Value::from(1));
+        let temp = format!("{}.{}.{:?}.tmp", path.display(), std::process::id(), std::thread::current().id());
+        std::fs::write(&temp, pretty(&Value::Object(data)))?;
+        std::fs::rename(&temp, &path)?;
+    }
+    Ok(())
+}
