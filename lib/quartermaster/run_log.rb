@@ -17,6 +17,17 @@ module Quartermaster
 
     attr_reader :slug
 
+    # The session ids of every run of a `notify: quiet` local automation,
+    # which attention and turn notifications leave out.
+    def self.quiet_session_ids(dir = AUTOMATIONS_DIR)
+      AutomationStore.new(dir).list
+                     .select { |entry| entry.record["runner"] == "local" && entry.record["notify"] == "quiet" }
+                     .flat_map { |entry| new(entry.slug, dir: dir).runs.filter_map(&:session_id) }.to_set
+    rescue StandardError => e
+      Quartermaster.log_error("quiet-runs", e)
+      Set.new
+    end
+
     def initialize(slug, dir: AUTOMATIONS_DIR)
       raise ArgumentError, "not an automation slug: #{slug.inspect}" unless slug.is_a?(String) && slug.match?(AutomationStore::SLUG)
 

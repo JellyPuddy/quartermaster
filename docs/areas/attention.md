@@ -1,7 +1,7 @@
 # Chat attention
 
 **Code:** `lib/quartermaster/event_log.rb`, `lib/quartermaster/chat_attention.rb`, `lib/quartermaster/turn_notifier.rb`, `lib/quartermaster/transcript_vitals.rb`, `lib/quartermaster/background_jobs.rb`, `lib/quartermaster/chat_opener.rb`, `lib/quartermaster/gui/js/notify.js`
-**Tests:** `test/chat_attention_test.rb`, `test/turn_notifier_test.rb`
+**Tests:** `test/chat_attention_test.rb`, `test/turn_notifier_test.rb`, `test/quiet_runs_test.rb`
 **Depends on:** [capture](capture.md), [chats](chats.md)
 
 ## What it does
@@ -11,10 +11,11 @@ Says whose move it is in every chat, and tells the user when one needs them.
 - `hooks/record-event.sh` (see [capture](capture.md)) appends one slim line per
   `UserPromptSubmit`, `PostToolUse`/`PostToolUseFailure`, `PermissionRequest`, `Stop`/`StopFailure`
   to `events.jsonl`. `EventLog` folds it per session into a turn: state, `since`, tool,
-  `prompt_ts`, `stop_ts`.
+  `prompt_ts`, `stop_ts`, `prompts` (how many prompts the session has had).
 - `ChatAttention` turns the fold into one entry per item, for in-progress items plus any item
   with a live chat (SessionLog liveness), never an automation, even with a live chat (so no
-  rotate offer either). The item speaks through its most urgent live session.
+  rotate offer either). The item speaks through its most urgent live session. A `notify: quiet`
+  local automation's run sessions (`RunLog.quiet_session_ids`) never speak for an item.
   Order: 🔴 `blocked` → 🟠 `your_turn` → 🔵 `working` → ◐ `waiting` → ⚪ `none`, longest-waiting
   (`since`) first; a snoozed your_turn ranks between waiting and none.
 - `TranscriptVitals` reads a transcript's tail (256 KB, grown ×4 until an assistant usage shows):
@@ -101,7 +102,7 @@ Says whose move it is in every chat, and tells the user when one needs them.
 - Triggers: entering `blocked` always notifies, with sound; a Stop notifies, silently, only when
   that turn ran ≥ 30 s (`prompt_ts` → `stop_ts`, `LONG_TURN`).
 - Never: Esc interrupts, a turn that delegated to background work (`waiting`), a snoozed turn,
-  asides. Every other session counts, GUI chat or not, loose chats included; an unlinked one is titled
+  asides, a `notify: quiet` local automation's runs. Every other session counts, GUI chat or not, loose chats included; an unlinked one is titled
   by its first prompt.
 - The chat a notification names (`TurnNotifier.chat_of`) is the item's `slug`, else `loose`: the loose
   chat's tmux name (`loose--<id>`) for an unlinked session with a loose id. A plain unlinked session has neither.
@@ -132,7 +133,8 @@ Says whose move it is in every chat, and tells the user when one needs them.
 
 - `events.jsonl`: `{v, ts, session_id, event, tool, agent}` per line (`agent` = sub-agent id, empty
   on the main thread). Append-only, never rewritten.
-- `events-fold.json`: `{v, inode, offset, sessions: {id: {state, since, tool, prompt_ts, stop_ts, last_ts, before_block}}}`.
+- `events-fold.json`: `{v, inode, offset, sessions: {id: {state, since, tool, prompt_ts, stop_ts, prompts, last_ts, before_block}}}`;
+  a fold of another `v` is refolded from 0.
 - Item frontmatter: `turn_snoozed_at` (turn snooze), `snooze_until` (date snooze).
 
 ## Known limits

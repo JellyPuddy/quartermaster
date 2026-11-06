@@ -7,12 +7,11 @@ module Quartermaster
   # queues its coalesced cron run, then starts queued runs oldest-first
   # through their flows while the cap has free slots and no usage limit
   # holds; it writes `automations/tick.json` and never waits for a run.
+  # Before starting any, even while paused, RunLifecycle finishes, closes
+  # and times out the runs already going.
   class AutomationTick
     INTERVAL = 300
     VERSION = 1
-    # A live run's session in these states holds a slot; "none" is a run
-    # whose first prompt the hooks haven't reported yet.
-    BUSY = %w[working waiting none].freeze
 
     DryRun = Data.define(:items, :seen, :problems)
 
@@ -27,7 +26,7 @@ module Quartermaster
     end
 
     def initialize(runner: CommandRunner.new, tmux: Tmux.new, config: nil, dir: AUTOMATIONS_DIR, flows: nil,
-                   rate_limits: RateLimits.new)
+                   rate_limits: RateLimits.new, notifier: TurnNotifier.new(runner: runner))
       @tmux = tmux
       @config = config
       @dir = dir
@@ -35,6 +34,7 @@ module Quartermaster
       @flows = flows || AutomationFlows.new(tmux: tmux, runner: runner)
       @guard = AutomationGuard.new(runner: runner)
       @rate_limits = rate_limits
+      @notifier = notifier
     end
 
     # Runs one tick; answers what it did ({"queued", "started", "held",
@@ -79,7 +79,8 @@ module Quartermaster
     private
 
     def tick(now)
-      @summary = { "queued" => [], "started" => [], "failed" => [], "problems" => {} }
+      @summary = { "queued" => [], "started" => [], "failed" => [], "finished" => [], "closed" => [], "timed_out" => [],
+                   "problems" => {} }
       previous = self.class.state(@dir)
       settings = config.local_automations
       locals = @store.list.select { |entry| entry.record["runner"] == "local" }
@@ -88,9 +89,9 @@ module Quartermaster
       since_tick = time(previous["last_tick_at"])
       enabled.each { |entry| guarded(entry) { check(entry, since_tick, now) } } unless paused
       held = hold(now, settings)
-      @sessions = SessionLog.new
-      @attention = ChatAttention.new(session_log: @sessions)
-      running = locals.sum { |entry| RunLog.new(entry.slug, dir: @dir).live.count { |run| busy?(run) } }
+      @lifecycle = RunLifecycle.new(tmux: @tmux, notifier: @notifier, dir: @dir)
+      locals.each { |entry| guarded(entry) { lifecycle(entry, now) } }
+      running = locals.sum { |entry| RunLog.new(entry.slug, dir: @dir).live.count { |run| @lifecycle.busy?(run) } }
       start_queued(enabled, settings.max_running.to_i - running, now) unless paused || held
       @summary.merge!("paused" => paused, "held" => held, "running" => running + @summary["started"].size,
                       "max_running" => settings.max_running)
@@ -192,14 +193,8 @@ module Quartermaster
       nil
     end
 
-    # A live run holds a slot while its session works, waits on background
-    # work or hasn't reported its first prompt; before the session's
-    # SessionStart hook ran, while its tmux session lives.
-    def busy?(run)
-      session = run.session_id && @sessions.session_for(run.session_id)
-      return @tmux.live?(run.tmux.to_s) unless session
-
-      session.live? && BUSY.include?(@attention.turn_for(session)[:state])
+    def lifecycle(entry, now)
+      @lifecycle.call(entry, now).each { |outcome, ids| @summary[outcome].concat(ids.map { |id| [entry.slug, id] }) }
     end
 
     def start_queued(enabled, slots, now)

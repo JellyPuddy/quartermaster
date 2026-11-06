@@ -3,7 +3,8 @@
 module Quartermaster
   # Tells the user when a chat needs them: a permission prompt or question
   # (always, with sound), or a turn that ran long enough that he has likely
-  # looked away (LONG_TURN). Every non-aside session counts, GUI chat or not.
+  # looked away (LONG_TURN). Every non-aside session counts, GUI chat or not,
+  # except the runs of a `notify: quiet` local automation.
   # Never for an Esc interrupt (no hook fires), a turn that delegated to
   # background work (waiting) or a snoozed turn.
   #
@@ -71,6 +72,7 @@ module Quartermaster
       changed = turns.select { |id, turn| previous[id] != @seen[id] && trigger(turn) }
       return [] if changed.empty?
 
+      changed = changed.except(*RunLog.quiet_session_ids)
       log = SessionLog.new
       items = WorkItem.all
       changed.filter_map { |id, turn| raise_for(id, turn, log, items) }

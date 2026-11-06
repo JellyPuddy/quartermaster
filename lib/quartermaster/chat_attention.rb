@@ -96,8 +96,10 @@ module Quartermaster
       @vitals[session.id] = TranscriptVitals.read(session.transcript)
     end
 
+    # A quiet automation's runs (a pr-review run lives in its Review item's chat) count for nothing.
     def live_sessions(item)
-      item.sessions.filter_map { |s| @session_log.session_for(s["id"]) }.select(&:live?)
+      @quiet ||= RunLog.quiet_session_ids
+      item.sessions.filter_map { |s| @session_log.session_for(s["id"]) unless @quiet.include?(s["id"]) }.select(&:live?)
     end
 
     def time(ts)

@@ -8,9 +8,10 @@ module Quartermaster
   # the bytes appended since.
   #
   # A turn is {"state", "since", "tool", "stop_ts", "prompt_ts", "last_ts"}:
-  # state is working | blocked | your_turn, since is when it entered that state.
+  # state is working | blocked | your_turn, since is when it entered that state;
+  # prompts counts the session's UserPromptSubmit events.
   class EventLog
-    FOLD_VERSION = 1
+    FOLD_VERSION = 2
     # The fold is rewritten on every read that finds new bytes, so sessions
     # quiet this long drop out of it (they read as no turn, like a fresh chat).
     FORGET_AFTER = 30 * 24 * 3600
@@ -70,6 +71,7 @@ module Quartermaster
       when "UserPromptSubmit"
         enter(turn, "working", ts, force: true)
         turn["prompt_ts"] = ts
+        turn["prompts"] = turn["prompts"].to_i + 1
       when "PostToolUse", "PostToolUseFailure"
         if agent
           return unless turn["state"] == "blocked"

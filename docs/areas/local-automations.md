@@ -1,14 +1,14 @@
 # Local automations
 
-**Code:** `lib/quartermaster/local_cron.rb`, `lib/quartermaster/run_log.rb`, `lib/quartermaster/automation_flows.rb`, `lib/quartermaster/chat_flow.rb`, `lib/quartermaster/pr_review_flow.rb`, `lib/quartermaster/automation_tick.rb`, `lib/quartermaster/automation_guard.rb`, `lib/quartermaster/tick_installer.rb`
-**Tests:** `test/local_cron_test.rb`, `test/run_log_test.rb`, `test/automation_store_test.rb`, `test/automation_flows_test.rb`, `test/automation_tick_test.rb`, `test/tick_installer_test.rb`
+**Code:** `lib/quartermaster/local_cron.rb`, `lib/quartermaster/run_log.rb`, `lib/quartermaster/automation_flows.rb`, `lib/quartermaster/chat_flow.rb`, `lib/quartermaster/pr_review_flow.rb`, `lib/quartermaster/automation_tick.rb`, `lib/quartermaster/automation_guard.rb`, `lib/quartermaster/run_lifecycle.rb`, `lib/quartermaster/tick_installer.rb`
+**Tests:** `test/local_cron_test.rb`, `test/run_log_test.rb`, `test/automation_store_test.rb`, `test/automation_flows_test.rb`, `test/automation_tick_test.rb`, `test/automation_run_lifecycle_test.rb`, `test/tick_installer_test.rb`
 **Depends on:** [automations](automations.md) (the store, the item, the GUI tab; `LocalSchedule`'s DST rule), [attention](attention.md) (a run's session state), [chats](chats.md) (tmux, the chat env), [prs](prs.md) (`PrReviewStart`), [gui-shell](gui-shell.md) (`CommandRunner`)
 
 ## What it does
 
 A local automation is a scheduled Claude Code run on this machine, managed by qm. It shares the
 cloud automations' store (`AutomationStore`), its `kind: automation` work item and its GUI tab;
-its yml says `runner: local` instead of `cloud`.
+its yml says `runner: local` instead of `cloud`. This page owns what only local ones have.
 
 **Fields** — a `runner: local` yml holds `v`, `runner`, `name`, `cron` (5-field, Europe/Amsterdam
 local time), `enabled`, `when` (the guard: a shell command), `flow` (default `chat`), `cwd`
@@ -39,16 +39,6 @@ otherwise both must match (so `*/2` counts as a star).
   else the cron itself plus "Amsterdam time". `error(cron)` — nil, or what is wrong with a cron
   (field count, a value outside the field, a backwards range, a zero step, anything else).
 
-**New and its brief** — `qm automation new TITLE --project P --runner local` (the GUI's `new` with
-`runner: local`) makes the item with `runner: local` and a yml with `enabled: false`, so nothing
-runs until the user enables it. Its chat's brief (`AutomationChat.local_brief`) names both files
-(cron in local time, the local fields), and the loop: edit the files → `qm automation tick
---dry-run SLUG` (the guard's items, nothing written) → `qm automation run SLUG` → read the run
-(`qm automation runs SLUG` for its session id, `qm show-session`, the transcript under
-`~/.claude/projects/`) → refine. Nothing to push; no RemoteTrigger wording. Its end — decisions as
-notes, the house rules verbatim (with their "Local automations" section on drafting, unattended
-runs and the guard's output), description and notes — is the cloud brief's (`brief_tail`).
-
 **Flows** — every run goes through the flow its yml's `flow:` names, from `AutomationFlows`
 (`chat` when unset). A flow has a `name`, the item fields it `needs` and `start(automation, item,
 prompt, run_id:, session_id:)`, answering `{item_slug:, tmux:}` once a chat runs or `{waiting:
@@ -68,6 +58,16 @@ is variadic and would swallow the prompt) when the yml sets them, before the pro
   live (`PrReviewStart#live?`) it answers `waiting: "Review chat for <repo>#<n> is open"` and
   starts nothing; else `PrReviewStart#start` opens the Review item's own chat (tmux named by its
   slug) with the flags before the kickoff and the automation's prompt appended to it.
+
+**New and its brief** — `qm automation new TITLE --project P --runner local` (the GUI's `new` with
+`runner: local`) makes the item with `runner: local` and a yml with `enabled: false`, so nothing
+runs until the user enables it. Its chat's brief (`AutomationChat.local_brief`) names both files
+(cron in local time, the local fields), and the loop: edit the files → `qm automation tick
+--dry-run SLUG` (the guard's items, nothing written) → `qm automation run SLUG` → read the run
+(`qm automation runs SLUG` for its session id, `qm show-session`, the transcript under
+`~/.claude/projects/`) → refine. Nothing to push; no RemoteTrigger wording. Its end — decisions as
+notes, the house rules verbatim (with their "Local automations" section on drafting, unattended
+runs and the guard's output), description and notes — is the cloud brief's (`brief_tail`).
 
 **Run log** — `RunLog.new(slug)` is `automations/<slug>.runs.jsonl`, one `{v: 1, at, event, …}`
 line per event, appended under a flock; a writer that decides from the fold (`enqueue_item`,
@@ -115,18 +115,31 @@ with a non-blocking flock (held: answers `{"locked" => true}` and does nothing),
 3. Usage hold: `RateLimits#payload` with five-hour used ≥ `automations.local_hold_five_hour`
    (default 80) or weekly ≥ `automations.local_hold_seven_day` (90) holds every start ("5h at
    84%"). A snapshot whose five-hour window has reset, or none, holds nothing. Guards still run.
-4. Cap: `automations.local_max_running` (default 2) minus the live runs that are busy. A live
-   run is busy while its session (`SessionLog`, by the `session_id` qm chose) is live and
+4. Lifecycle (`RunLifecycle`), paused, held or disabled alike, for every started run. A run is
+   busy while its session (`SessionLog`, by the `session_id` qm chose) is live and
    `ChatAttention#turn_for` says working, waiting or none (no prompt reported yet); before the
-   session's SessionStart hook ran, while its tmux session lives.
-5. Unless paused or held, queued runs of enabled automations start oldest-first across
+   session's SessionStart hook ran, while its tmux session lives. A run is typed into once its
+   session has had a second prompt (`EventLog`'s `prompts`; the first is the run's own).
+   - A live run whose turn says `your_turn` (Stop, no background work) gets `finished`.
+   - A finished run whose session has sat in `your_turn` for an hour (`CLOSE_AFTER`, from the
+     turn's `since`) has its tmux killed and gets `closed` — only a `--run-` chat, never one typed
+     into; a pr-review run (in its Review item's chat) stays `finished`.
+   - A live, busy run not typed into, `timeout_minutes` (default 30) after `started`: its `--run-`
+     tmux killed (a pr-review run's Review chat is left open), `timed_out`, a history note on the
+     automation's item ("run <id> timed out after 30 min", plus "(its Review chat stays open)"),
+     and `TurnNotifier#announce` through the runner (a pr-review one's click opens that chat). A
+     blocked run is not busy, so never times out.
+5. Cap: `automations.local_max_running` (default 2) minus the live runs that are busy, counted
+   after the lifecycle, so a run timed out frees its slot in the same tick.
+6. Unless paused or held, queued runs of enabled automations start oldest-first across
    automations while slots are free: `AutomationFlows#start` with a fresh `SecureRandom.uuid`,
    then `started`. A flow answering `waiting:` leaves the run queued with that reason and uses no
    slot; one that raises marks the run `failed` with the message.
-6. Writes `automations/tick.json` atomically: `{v: 1, last_tick_at, paused, held, running,
+7. Writes `automations/tick.json` atomically: `{v: 1, last_tick_at, paused, held, running,
    max_running, problems}` (`AutomationTick.state` reads it, `{}` when missing).
 
-`call` answers `{queued, started, failed, problems, paused, held, running, max_running}`, or nil
+`call` answers `{queued, started, failed, finished, closed, timed_out, problems, paused, held,
+running, max_running}` (run lists as `[slug, run id]` pairs), or nil
 after an error (logged to `qm.log` as `automation-tick`). `dry_run(slug)` runs the guard and
 answers `items` (new, the flow takes them), `seen` (also a key repeated in the output) and `problems`, writing nothing; it raises for
 an automation without a guard and on a failing guard. `queue_guard(slug, trigger: "manual")` runs
@@ -163,13 +176,16 @@ plist exists.
 - Deleting an automation (`AutomationStore#delete_local`) removes its run log with its files.
 - One tick at a time (the flock); a tick starts runs and never waits for them, and never raises
   out: one automation's error is recorded in `problems` and the others go on.
-- Guards and tmux go through the injected runner and `Tmux`; tests pass a `FakeRunner` and a
-  `FakeTmux` and never run a real guard, claude or tmux.
+- qm only ever kills a `--run-` tmux session (closing or timing out), never an item's own chat,
+  and never a run the user typed into; a typed-into run is theirs for good.
+- Lifecycle checks run every tick, paused or not: pausing stops new work, not the clean-up.
+- `notify: quiet` keeps an automation's run sessions out of `ChatAttention` and `TurnNotifier`
+  (`RunLog.quiet_session_ids`, see [attention](attention.md)); its runs still list in the tab and
+  a timeout still notifies.
+- Guards, `launchctl` and tmux go through the injected runner and `Tmux`; tests pass a
+  `FakeRunner`, a `FakeTmux` and a temp LaunchAgents dir, never a real guard, claude, tmux or launchctl.
 - The LaunchAgent is installed or removed only on the user's explicit command or button, never
-  as a side effect of anything else.
-- Every `launchctl` call goes through `CommandRunner`; tests pass a stub runner and a temp
-  LaunchAgents directory and never reach real launchctl.
-- `installed?` reads only the plist file; it never asks launchctl.
+  as a side effect; `installed?` reads only the plist file, never launchctl.
 
 ## Data
 
