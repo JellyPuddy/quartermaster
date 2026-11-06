@@ -29,6 +29,7 @@ module Quartermaster
 
     STATE_BADGES = {
       "in_progress" => ["●", 32],
+      "active" => ["▶", 34],
       "fridge" => ["❄", 36],
       "resolved" => ["✓", 90]
     }.freeze
@@ -44,7 +45,7 @@ module Quartermaster
       OptionParser.new { |o| o.on("--state STATE") { |v| state = v } }.parse(argv)
       state ||= viewer_filter(cycle: false)
 
-      items = WorkItem.all
+      items = WorkItem.all.reject(&:automation?)
       items = case state
               when "all" then items
               when "open" then items.reject { |i| i.state == "resolved" }
@@ -89,7 +90,8 @@ module Quartermaster
         state = pr_status.state_for(item, branch)
         state ? "#{branch} (PR #{state})" : branch
       end
-      meta = [item.state, item.project, *branch_bits,
+      meta = [item.state, item.project, item.kind && "#{item.kind} #{item.routine || "(no routine yet)"} (#{item.runner || "?"})",
+              *branch_bits,
               item.issue_number && "issue ##{item.issue_number}",
               item.front["snooze_until"] && "snoozed until #{item.front["snooze_until"]}",
               (server = item.dev_server) && "#{server.command} #{item.pf_mode}",
@@ -182,7 +184,7 @@ module Quartermaster
       session_id = argv.first
       abort("usage: qm attach-session SESSION_ID") unless session_id
 
-      items = WorkItem.all.reject { |i| i.state == "resolved" }
+      items = WorkItem.all.reject { |i| i.state == "resolved" || i.automation? }
       choice = Viewer.pick(items.map { |i| "#{i.slug}\t#{i.title}" },
                            prompt: "attach #{session_id[0, 8]} to >")
       return unless choice && !choice.empty?

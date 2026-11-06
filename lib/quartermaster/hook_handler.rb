@@ -243,7 +243,7 @@ module Quartermaster
     end
 
     def unlinked_context(session_id, project)
-      open_items = WorkItem.all.reject { |i| i.state == "resolved" }
+      open_items = WorkItem.all.reject { |i| i.state == "resolved" || i.automation? }
       listing = open_items.map do |i|
         details = [i.project, *i.branches, i.state].compact.join(", ")
         "- #{i.slug} — #{i.title} (#{details})"

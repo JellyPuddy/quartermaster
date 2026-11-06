@@ -7,7 +7,8 @@ module Quartermaster
   # renders. No Claude involved in building it, and no Claude reads it —
   # the skill hands the file to ArtifactData by path.
   #
-  # In progress first, then the fridge; resolved items are only counted.
+  # In progress first, then the fridge; resolved items are only counted, and
+  # automations (the GUI's Automations tab) not even that.
   # Within a state: whose move it is (ChatAttention's order), then the most
   # recent activity. Bounded so it always fits one artifact db document.
   class Overview
@@ -38,7 +39,7 @@ module Quartermaster
     end
 
     def snapshot
-      all = WorkItem.all
+      all = WorkItem.all.reject(&:automation?)
       shown = all.select { |item| STATE_ORDER.include?(item.state) }
       chats = @chat_attention.entries.to_h { |entry| [entry.slug, entry] }
       panes = @tmux.sessions

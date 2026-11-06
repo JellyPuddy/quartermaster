@@ -33,9 +33,12 @@ module Quartermaster
       @vitals = {}
     end
 
-    # In-progress items plus anything with a live chat, by attention.
+    # In-progress items plus anything with a live chat, by attention. Automations
+    # never: their chat opens from the Automations tab, and rotate offers hang off these rows.
     def entries
       WorkItem.all.filter_map do |item|
+        next if item.automation?
+
         live = live_sessions(item)
         next unless item.state == "in_progress" || live.any?
 

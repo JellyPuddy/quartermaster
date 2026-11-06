@@ -62,7 +62,7 @@ class OverviewTest < Minitest::Test
     doc = overview.snapshot
 
     assert_equal %w[your-turn-chat working-chat quiet-in-progress fresh-fridge old-fridge], doc["items"].map { |r| r["slug"] }
-    assert_equal({ "in_progress" => 3, "fridge" => 2, "resolved" => 1 }, doc["counts"]["states"])
+    assert_equal({ "in_progress" => 3, "active" => 0, "fridge" => 2, "resolved" => 1 }, doc["counts"]["states"])
     assert_equal 5, doc["counts"]["shown"]
     assert_equal 0, doc["counts"]["omitted"]
     assert_equal 1, doc["counts"]["chats"]["your_turn"]

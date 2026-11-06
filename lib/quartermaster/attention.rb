@@ -25,7 +25,7 @@ module Quartermaster
     end
 
     def entries
-      WorkItem.all.reject { |i| i.state == "resolved" }.flat_map { |item| entries_for(item) }
+      WorkItem.all.reject { |i| i.state == "resolved" || i.automation? }.flat_map { |item| entries_for(item) }
     end
 
     def entries_for(item)

@@ -427,10 +427,13 @@ module Quartermaster
     def dev_server = ProjectConfig.current.settings(project).dev_server
 
     # nil unless the item's project has a dev server.
-    def pf_mode
-      (server = dev_server) && (front["pf_mode"] || server.default_mode)
-    end
+    def pf_mode = (server = dev_server) && (front["pf_mode"] || server.default_mode)
     def board_answers_dir = front["board_answers_dir"]
+
+    # An automation (kind "automation") tracks a scheduled routine: its routine id
+    # and runner live in the front matter, and it stays off the lists of work.
+    %w[kind routine runner].each { |key| define_method(key) { front[key] } }
+    def automation? = kind == "automation"
 
     def issue_number
       branches.filter_map { |b| b[%r{issue/(\d+)}, 1] }.first
@@ -503,8 +506,8 @@ module Quartermaster
       {
         "slug" => slug, "title" => title, "state" => state, "project" => project,
         "branches" => branches, "temp_branches" => temp_branches, "issue_number" => issue_number, "board" => board,
-        "pf_mode" => pf_mode,
-        "board_answers_dir" => board_answers_dir,
+        "pf_mode" => pf_mode, "board_answers_dir" => board_answers_dir,
+        "kind" => kind, "routine" => routine, "runner" => runner,
         "session_ids" => sessions.map { |s| s["id"] }, "sessions" => sessions.size,
         "description" => description, "notes" => notes.map(&:to_h), "snapshots" => snapshots
       }

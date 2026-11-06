@@ -194,8 +194,10 @@ module Quartermaster
       Quartermaster.log_error("cleanup-offer", e)
     end
 
-    def cmd_list(_argv)
-      items = WorkItem.all
+    def cmd_list(argv)
+      kind = nil
+      OptionParser.new { |o| o.on("--kind KIND") { |v| kind = v } }.parse(argv)
+      items = WorkItem.all.select { |item| kind ? item.kind == kind : !item.automation? }
       if items.empty?
         puts "No work items yet. Create one with: qm new TITLE"
         return

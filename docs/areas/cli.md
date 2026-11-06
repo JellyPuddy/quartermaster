@@ -31,12 +31,12 @@ else (see [capture](capture.md)), then requires `lib/quartermaster` through its 
 - `qm new TITLE` — create an item, print its slug (`--project`, `--branch`, `--session`, `--description`, `--pf-mode`).
 - `qm attach SLUG --session ID` / `qm detach SLUG --session ID` — link or unlink a session; attach moves it off any other item.
 - `qm note SLUG [--kind open|decision|history] TEXT` / `qm retag SLUG POSITION KIND` — add a note, change a note's kind.
-- `qm state SLUG STATE` — in_progress | fridge | resolved.
+- `qm state SLUG STATE` — in_progress | active | fridge | resolved.
 - `qm link-branch SLUG [BRANCH] [--temp]` / `qm unlink-branch SLUG BRANCH` — branch links (default: current branch; `--temp` marks a scratch branch cleanup may delete).
 - `qm board SLUG [URL|clear] [--answers-dir DIR]` / `qm board-rows SLUG [--json]` / `qm board-answer SLUG ROW TEXT` — status board URL, mirrored rows, answering a blocked row.
 - `qm move SLUG PROJECT` / `qm retitle SLUG TITLE` / `qm describe SLUG [TEXT|-]` — project, title (slug never changes), description (stdin-capable).
-- `qm show SLUG` — the item with sessions, warnings, stack lines and usage.
-- `qm list` — table of all items.
+- `qm show SLUG` — the item with sessions, warnings, stack lines and usage (and kind, routine, runner for an automation).
+- `qm list [--kind automation]` — table of all items but automations; `--kind automation` lists only those.
 - `qm draft add SLUG …` / `qm draft list SLUG [--json]` — Claude's review drafts ([review](review.md)).
 - `qm issues-dir SLUG` — the item's issue-drafts directory ([drafts](drafts.md)).
 - `qm cleanup SLUG [--yes] [--force P]` / `qm sweep [--yes] [--force P]` — plan or run worktree cleanup ([worktrees](worktrees.md)).

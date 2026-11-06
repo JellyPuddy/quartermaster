@@ -35,7 +35,7 @@ module Quartermaster
   LOG_FILE = File.join(ROOT, "qm.log")
   EVENT_VERSION = 1
   WORK_ITEM_VERSION = 1
-  STATES = %w[in_progress fridge resolved].freeze
+  STATES = %w[in_progress active fridge resolved].freeze
   # What a note is for, which decides whether the SessionStart hook injects it.
   # 'open' is unresolved and user-facing, so it outranks recency; 'decision' is a
   # choice or finding a later session would get wrong without; 'history' is how the
@@ -56,7 +56,7 @@ module Quartermaster
   # the GUI page as a JSON bootstrap (Gui#page), so the JS renders the model
   # instead of restating it — fetch raises when a new value ships without copy.
   STATE_LABELS = {
-    "in_progress" => "In progress", "fridge" => "Fridge", "resolved" => "Resolved"
+    "in_progress" => "In progress", "active" => "Active", "fridge" => "Fridge", "resolved" => "Resolved"
   }.freeze
   NOTE_KIND_HINTS = {
     "open" => "unresolved, always re-injected",

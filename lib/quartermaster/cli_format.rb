@@ -64,7 +64,7 @@ module Quartermaster
         ["qm cleanup SLUG [--yes] [--force P]", "plan removing the item's worktrees, test DBs, merged and temp branches, issue drafts; --yes runs the [x] ones, --force adds a ⚠ one"],
         ["qm sweep [--yes] [--force P]", "the same over every .claude/worktrees worktree and worktree-* branch of every known repo, and the issue drafts of resolved or deleted items"],
         ["qm delete SLUG [--force]", "remove an item made by accident and kill its chat; refuses one with notes, branches, 2+ sessions, a board or a description unless --force (sessions just unlink; run qm cleanup first for worktrees)"],
-        ["qm list", "table of all work items (also the default without a terminal)"],
+        ["qm list [--kind automation]", "table of all work items (also the default without a terminal); automations only with --kind automation"],
         ["qm ask QUERY", "find items by meaning: describe what you half-remember (headless claude -p)"],
         ["qm feature-use [--days N]", "which commands, GUI actions and GUI reads were used in the last N days (default 30), and which known ones weren't"],
         ["qm grep PHRASE", "find sessions whose prompts or replies contain PHRASE (rg over transcripts, asides left out), by work item"]
