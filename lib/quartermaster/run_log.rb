@@ -100,7 +100,8 @@ module Quartermaster
     # The tick handled a due cron minute up to `at`.
     def checked(at: Time.now) = append("checked", at, {})
 
-    def queue = runs.select(&:queued?).sort_by(&:queued_at)
+    # Oldest first; runs queued at the same second keep their log order.
+    def queue = runs.select(&:queued?).each_with_index.sort_by { |run, i| [run.queued_at, i] }.map(&:first)
 
     def live = runs.select(&:live?)
 

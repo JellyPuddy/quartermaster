@@ -60,8 +60,8 @@ module Quartermaster
       raise ArgumentError, "#{slug} has no guard (when:) — a due cron queues one run without an item" if command.strip.empty?
 
       items, problems = @guard.run(command, cwd: cwd(entry))
-      seen = RunLog.new(slug, dir: @dir).seen_keys
-      old, fresh = items.partition { |item| seen.include?(item["key"]) }
+      seen = RunLog.new(slug, dir: @dir).seen_keys.dup
+      old, fresh = items.partition { |item| !seen.add?(item["key"]) }
       flow = AutomationStore.local_settings(entry.record)["flow"]
       refused, ok = fresh.partition { |item| @flows.problem(flow, item) }
       DryRun.new(items: ok, seen: old,
@@ -207,7 +207,7 @@ module Quartermaster
         log = RunLog.new(entry.slug, dir: @dir)
         log.queue.map { |run| [entry, log, run] }
       end
-      queue.sort_by { |_, _, run| run.queued_at }.each do |entry, log, run|
+      queue.each_with_index.sort_by { |(_, _, run), i| [run.queued_at, i] }.map(&:first).each do |entry, log, run|
         break if slots <= 0
 
         slots -= 1 if start(entry, log, run, now)

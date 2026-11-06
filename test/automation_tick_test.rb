@@ -238,6 +238,18 @@ class AutomationTickTest < Minitest::Test
     assert_equal 1, gone.opened.size
   end
 
+  def test_guard_items_queued_in_one_tick_start_in_the_order_the_guard_printed_them
+    config(local_max_running: 1)
+    keys = ("a".."t").to_a
+    automation("triage", "when" => GUARD)
+    tmux = FakeTmux.new
+
+    tick(runner: guard_says(keys.join("\n")), tmux: tmux).call(now: NOW)
+
+    assert_equal keys.drop(1), log("triage").queue.map(&:key)
+    assert_equal ["Do the thing.\n\n## Item\n\na"], tmux.opened.map { _1[:argv].last }
+  end
+
   def test_queued_runs_start_oldest_first_across_automations
     config(local_max_running: 1)
     automation("alpha", "cron" => "")
@@ -319,10 +331,10 @@ class AutomationTickTest < Minitest::Test
     log("triage").mark_seen(["a"])
     seen_before = events("triage")
 
-    dry = tick(runner: guard_says("a\nb\n{\"x\":1}\n")).dry_run("triage")
+    dry = tick(runner: guard_says("a\nb\n{\"x\":1}\nb\n")).dry_run("triage")
 
     assert_equal [{ "key" => "b", "line" => "b" }], dry.items
-    assert_equal [{ "key" => "a", "line" => "a" }], dry.seen
+    assert_equal [{ "key" => "a", "line" => "a" }, { "key" => "b", "line" => "b" }], dry.seen
     assert_equal ["a guard's JSON item needs a string key"], dry.problems.map { _1["error"] }
     assert_equal seen_before, events("triage")
   end

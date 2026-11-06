@@ -85,7 +85,7 @@ CLI or GUI write never both queue a key. Events:
   that finds nothing due appends nothing, and the next tick's window starts at this `at`
 
 A run id is 8 lowercase alphanumerics (safe in a tmux name). The fold, re-read after each write:
-- `queue` — runs queued and not yet started, failed or otherwise ended, oldest first.
+- `queue` — runs queued and not yet started, failed or otherwise ended, oldest first (the same second: log order).
 - `live` — started runs not yet `finished`, `timed_out`, `closed` or `failed`.
 - `recent(limit: 20)` — every run that left the queue, newest start first, each with `status`
   (`live`, `finished`, `timed_out`, `closed`, `failed`); a finished run closed later reads `closed`.
@@ -128,7 +128,7 @@ with a non-blocking flock (held: answers `{"locked" => true}` and does nothing),
 
 `call` answers `{queued, started, failed, problems, paused, held, running, max_running}`, or nil
 after an error (logged to `qm.log` as `automation-tick`). `dry_run(slug)` runs the guard and
-answers `items` (new, the flow takes them), `seen` and `problems`, writing nothing; it raises for
+answers `items` (new, the flow takes them), `seen` (also a key repeated in the output) and `problems`, writing nothing; it raises for
 an automation without a guard and on a failing guard. `queue_guard(slug, trigger: "manual")` runs
 the guard now and queues its new items, returning their run ids.
 
