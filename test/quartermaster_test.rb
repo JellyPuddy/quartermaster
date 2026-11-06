@@ -4,6 +4,7 @@
 require_relative "test_helper"
 
 require_relative "work_item_test"
+require_relative "item_deletion_test"
 require_relative "hook_test"
 require_relative "viewer_test"
 require_relative "attention_test"

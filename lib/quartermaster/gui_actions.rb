@@ -38,6 +38,7 @@ module Quartermaster
       when "retag" then gui_retag(slug, args["position"], args["kind"])
       when "describe" then WorkItem.find(slug).describe(args["text"].to_s) && ok
       when "retitle" then gui_retitle(slug, args["title"])
+      when "delete" then ItemDeletion.new(runner: @runner, tmux: @tmux).gui_reply(slug.to_s, force: args["force"] == true)
       when "pr" then gui_pr(slug, args["branch"])
       when "distill" then gui_distill(slug, args["session"], args["force"] == true)
       when "snooze" then gui_snooze(slug, args["duration"])

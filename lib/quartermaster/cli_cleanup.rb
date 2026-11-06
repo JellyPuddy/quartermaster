@@ -1,14 +1,25 @@
 # frozen_string_literal: true
 
 module Quartermaster
-  # `qm cleanup` and `qm sweep`: the plan, and running it with a progress bar.
+  # `qm cleanup` and `qm sweep`: the plan, and running it with a progress bar;
+  # `qm delete`, which removes the item itself.
   module CliCleanup
     COMMANDS = {
       "cleanup" => :cmd_cleanup,
-      "sweep" => :cmd_sweep
+      "sweep" => :cmd_sweep,
+      "delete" => :cmd_delete
     }.freeze
 
     private
+
+    def cmd_delete(argv)
+      force = argv.delete("--force") ? true : false
+      slug = argv.first
+      abort("usage: qm delete SLUG [--force]") unless slug && argv.size == 1
+
+      ItemDeletion.new(runner: @runner || CommandRunner.new).call(slug, force: force)
+      puts "deleted #{slug}"
+    end
 
     def cmd_cleanup(argv)
       options = cleanup_options(argv)
