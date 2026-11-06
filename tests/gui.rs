@@ -1813,3 +1813,147 @@ fn the_item_and_session_actions_match_ruby() {
     }
     assert_eq!(before, session_traces(&root2, &w.root));
 }
+
+#[test]
+fn the_aside_actions_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let me = std::process::id();
+    let stamp = |secs: i64| (chrono::Utc::now() - chrono::Duration::seconds(secs)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let work = base.path().join("work-a");
+    fs::create_dir_all(&work).unwrap();
+    let assistant = |id: &str, model: &str, blocks: &[&str]| -> String {
+        let content: Vec<serde_json::Value> = blocks.iter().map(|t| serde_json::json!({"type": "text", "text": t})).collect();
+        format!("{}\n", serde_json::json!({"type": "assistant", "message": {"id": id, "model": model, "content": content}}))
+    };
+    let mut log = String::new();
+    let mut aside = |id: &str, slug: &str, transcript: Option<String>, pid: u32, age: i64| {
+        let path = w.transcripts.join(format!("p/{id}.jsonl"));
+        match transcript {
+            Some(text) => {
+                fs::create_dir_all(path.parent().unwrap()).unwrap();
+                fs::write(&path, text).unwrap();
+            }
+            None => {}
+        }
+        log += &format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"{id}\",\"cwd\":\"{}\",\"pid\":{pid},\"aside\":\"{slug}\",\"transcript_path\":\"{}\",\"ts\":\"{}\"}}\n", work.display(), path.display(), stamp(age));
+    };
+    aside("a-opus", "as-one", Some(format!("junk line\n{}{}{}", assistant("m1", "claude-opus-5-5", &["first answer", "  with\n a   second block "]), assistant("m2", "<synthetic>", &["ignored model"]), "{\"type\":\"user\",\"message\":{\"content\":\"hi\"}}\n")), 999999, 900);
+    aside("a-multi", "as-one", Some(format!("{}{}{}", assistant("m1", "claude-haiku-5-5", &["part one"]), assistant("m1", "claude-haiku-5-5", &["part two"]), assistant("m2", "claude-haiku-5-5", &["final", "answer"]))), 999999, 800);
+    aside("a-join", "as-one", Some(format!("{}{}{}", assistant("m0", "claude-opus-5-5", &["earlier"]), assistant("m1", "claude-opus-5-5", &["part one"]), assistant("m1", "claude-opus-5-5", &["part two"]))), 999999, 650);
+    aside("a-switch", "as-one", Some(format!("{}{}", assistant("m1", "claude-opus-5-5", &["on opus"]), assistant("m2", "claude-sonnet-5-5", &["on sonnet"]))), 999999, 640);
+    aside("a-blankmsg", "as-one", Some(format!("{}{}", assistant("m1", "claude-opus-5-5", &["the real answer"]), "{\"type\":\"assistant\",\"message\":{\"id\":\"m2\",\"content\":\"   \"}}\n")), 999999, 630);
+    aside("a-synth", "as-one", Some(assistant("m1", "<synthetic>", &["only synthetic"])), 999999, 700);
+    aside("a-empty", "as-one", Some("{\"type\":\"user\"}\n".to_string()), 999999, 600);
+    aside("a-gone", "as-one", None, 999999, 500);
+    aside("a-other", "as-two", Some(assistant("m1", "claude-opus-5-5", &["not yours"])), 999999, 400);
+    aside("a-live-old", "as-live", Some(assistant("m1", "claude-opus-5-5", &["old live answer"])), me as u32, 300);
+    aside("a-live-new", "as-live", Some(assistant("m1", "claude-opus-5-5", &["new live answer"])), me as u32, 100);
+    aside("a-live-none", "as-nolive", Some(assistant("m1", "claude-opus-5-5", &["ended answer"])), 999999, 100);
+    fs::write(w.root.join("sessions.jsonl"), fs::read_to_string(w.root.join("sessions.jsonl")).unwrap() + &log).unwrap();
+    let item = |slug: &str| {
+        fs::write(w.root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: {slug}\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\n---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n")).unwrap();
+    };
+    for slug in ["as-one", "as-two", "as-live", "as-nolive", "as-fresh", "as-dotted.x"] {
+        item(slug);
+    }
+    let chat = base.path().join("fake-chat");
+    fs::write(&chat, "#!/bin/sh\n{ echo \"cwd: $(pwd)\"; echo \"args: $*\"; echo \"QM_ASIDE=${QM_ASIDE-unset}\"; echo \"QM_ITEM=[${QM_ITEM-unset}]\"; } > \"$FAKE_REC/.tmp-$$\"\nmv \"$FAKE_REC/.tmp-$$\" \"$FAKE_REC/rec-$$\"\nexec sleep 300\n").unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&chat, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let (rec_ruby, rec_rust) = (base.path().join("rec-ruby"), base.path().join("rec-rust"));
+    for d in [&rec_ruby, &rec_rust] {
+        fs::create_dir_all(d).unwrap();
+    }
+    let (sock_ruby, sock_rust) = ("qm-test-aside-ruby", "qm-test-aside-rust");
+    for s in [sock_ruby, sock_rust] {
+        tmux_on(s, &["kill-server"]);
+    }
+    let env_for = |sock: &str, rec: &Path| -> Vec<(&'static str, String)> {
+        vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("QM_TMUX_SOCKET", sock.to_string()), ("QM_CHAT_COMMAND", format!("{} --flag", chat.display())), ("FAKE_REC", rec.display().to_string())]
+    };
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let ruby = start_env(false, &w.root, &w.home, &env_for(sock_ruby, &rec_ruby));
+    let rust = start_env(true, &root2, &w.home, &env_for(sock_rust, &rec_rust));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let mut opened = 0usize;
+    let mut step = |label: &str, body: &str| -> String {
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, body, true), request(rust.port, "POST", "/api/action", &origin, body, true));
+        assert_eq!(shown(&a, ruby.port), shown(&b, rust.port), "{label}: reply to {body}");
+        let text = String::from_utf8_lossy(&a.body).into_owned();
+        if text.contains("\"session\"") && !text.contains("\"attached\":true") {
+            opened += 1;
+        }
+        for _ in 0..100 {
+            if records(&rec_ruby).len() >= opened && records(&rec_rust).len() >= opened {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert_eq!(records(&rec_ruby), records(&rec_rust), "{label}: what the asides were started with, after {body}");
+        assert_eq!(tmux_picture(sock_ruby), tmux_picture(sock_rust), "{label}: tmux after {body}");
+        assert_eq!(action_traces(&w.root, &root2), action_traces(&root2, &w.root), "{label}: files after {body}");
+        text
+    };
+    let act = |cmd: &str, slug: &str, args: &str| format!("{{\"cmd\":\"{cmd}\",\"slug\":\"{slug}\",\"args\":{args}}}");
+    step("open", &act("aside-open", "as-fresh", "{}"));
+    step("open again", &act("aside-open", "as-fresh", r#"{"model":"opus"}"#));
+    step("close", &act("aside-close", "as-fresh", "{}"));
+    step("close again", &act("aside-close", "as-fresh", "{}"));
+    step("open a model", &act("aside-open", "as-fresh", r#"{"model":"haiku"}"#));
+    step("close it", &act("aside-close", "as-fresh", "{}"));
+    step("open an unknown model", &act("aside-open", "as-fresh", r#"{"model":"gpt"}"#));
+    step("open a quoted model", &act("aside-open", "as-fresh", r#"{"model":"a \"b\" \\c #{d}"}"#));
+    step("open a numeric model", &act("aside-open", "as-fresh", r#"{"model":5}"#));
+    step("open an unusable name", &act("aside-open", "as-dotted.x", "{}"));
+    step("open for a missing item", &act("aside-open", "nowhere", "{}"));
+    step("close a missing item", &act("aside-close", "nowhere", "{}"));
+    step("reopen the model it ran", &act("aside-reopen", "as-one", r#"{"session":"a-opus"}"#));
+    step("reopen while one is open", &act("aside-reopen", "as-one", r#"{"session":"a-multi"}"#));
+    step("close for the next", &act("aside-close", "as-one", "{}"));
+    step("close before the model switch", &act("aside-close", "as-one", "{}"));
+    step("reopen a switched model", &act("aside-reopen", "as-one", r#"{"session":"a-switch"}"#));
+    step("close after the switch", &act("aside-close", "as-one", "{}"));
+    step("reopen under a synthetic model", &act("aside-reopen", "as-one", r#"{"session":"a-synth"}"#));
+    step("close again", &act("aside-close", "as-one", "{}"));
+    step("reopen another", &act("aside-reopen", "as-one", r#"{"session":"a-multi"}"#));
+    step("close once more", &act("aside-close", "as-one", "{}"));
+    step("reopen without a transcript", &act("aside-reopen", "as-one", r#"{"session":"a-gone"}"#));
+    step("reopen another item's aside", &act("aside-reopen", "as-one", r#"{"session":"a-other"}"#));
+    step("reopen an unknown session", &act("aside-reopen", "as-one", r#"{"session":"a-very-long-unknown-id"}"#));
+    step("reopen nothing", &act("aside-reopen", "as-one", "{}"));
+    step("reopen a number", &act("aside-reopen", "as-one", r#"{"session":123456789012}"#));
+    step("reopen a missing item", &act("aside-reopen", "nowhere", r#"{"session":"a-opus"}"#));
+    let seen = records(&rust_dir(&rec_rust)).join("\n");
+    assert!(seen.contains("--model haiku") && seen.contains("--model claude-opus-5-5 --resume a-opus") && seen.contains("QM_ASIDE=as-one") && seen.contains("QM_ITEM=[]"), "{seen}");
+    let mut note = |label: &str, slug: &str, args: &str| step(label, &act("aside-promote", slug, args));
+    let promoted = note("promote a session", "as-one", r#"{"session":"a-opus"}"#);
+    assert!(promoted.contains("aside: ignored model"), "the last assistant message with text is the answer: {promoted}");
+    let joined = note("promote joined blocks", "as-one", r#"{"session":"a-multi"}"#);
+    assert!(joined.contains("aside: final answer"), "{joined}");
+    let spliced = note("promote blocks of one message", "as-one", r#"{"session":"a-join"}"#);
+    assert!(spliced.contains("aside: part one part two"), "{spliced}");
+    let blank = note("promote past a blank message", "as-one", r#"{"session":"a-blankmsg"}"#);
+    assert!(blank.contains("aside: the real answer"), "{blank}");
+    note("promote the same again", "as-one", r#"{"session":"a-multi"}"#);
+    note("promote without an answer", "as-one", r#"{"session":"a-empty"}"#);
+    note("promote without a transcript", "as-one", r#"{"session":"a-gone"}"#);
+    note("promote another item's", "as-one", r#"{"session":"a-other"}"#);
+    note("promote an unknown", "as-one", r#"{"session":"zzz"}"#);
+    note("promote a blank session", "as-one", r#"{"session":"  "}"#);
+    note("promote the running one", "as-live", "{}");
+    note("promote with none running", "as-nolive", "{}");
+    note("promote for a missing item", "nowhere", "{}");
+    let live = note("promote the running one once more", "as-live", r#"{"session":null}"#);
+    assert!(live.contains("aside: new live answer"), "{live}");
+    for s in [sock_ruby, sock_rust] {
+        tmux_on(s, &["kill-server"]);
+    }
+}
+
+fn rust_dir(p: &Path) -> PathBuf {
+    p.to_path_buf()
+}

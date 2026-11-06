@@ -217,6 +217,7 @@ fn run(payload: &Value) -> R<Value> {
             crate::session_log::SessionLog::dismiss(&session).map_err(error)?;
             Ok(ok())
         }
+        "aside-open" | "aside-reopen" | "aside-close" | "aside-promote" => aside(&cmd, &slug, &args),
         "pane-start" | "pane-resume" => pane(&slug, cmd == "pane-start", &args),
         "pf-mode" => {
             let mut item = find(&slug)?;
@@ -299,6 +300,39 @@ fn followed(mut reply: Value, session: &str, vacated: &[String], to: &str) -> Va
         reply.as_object_mut().unwrap().insert("warning".into(), json!(warning));
     }
     reply
+}
+
+fn aside_halt(h: crate::aside::Halt) -> Stop {
+    match h {
+        crate::aside::Halt::Refuse(m) => fail(m),
+        crate::aside::Halt::Unported => Stop::Unported,
+    }
+}
+
+/// The aside drawer's actions (`Aside`): its own tmux session beside the item's chat.
+fn aside(cmd: &str, slug: &str, args: &Args) -> R<Value> {
+    let mut item = find(slug)?;
+    let session = crate::chats_commands::aside_name(slug);
+    match cmd {
+        "aside-open" => {
+            let started = crate::aside::open(&item, &args.text("model")?).map_err(aside_halt)?;
+            Ok(json!({"ok": true, "session": session, "attached": !started}))
+        }
+        "aside-reopen" => {
+            crate::aside::reopen(&item, &args.text("session")?).map_err(aside_halt)?;
+            Ok(json!({"ok": true, "session": session}))
+        }
+        "aside-close" => {
+            crate::aside::close(&item);
+            Ok(ok())
+        }
+        _ => {
+            let given = args.text("session")?;
+            let wanted = (!strip(&given).is_empty()).then_some(given);
+            let note = crate::aside::promote(&mut item, wanted.as_deref()).map_err(aside_halt)?;
+            Ok(json!({"ok": true, "note": note}))
+        }
+    }
 }
 
 /// `gui_pane`: the item's chat in a tmux session of its own — already running is `attached`, a live

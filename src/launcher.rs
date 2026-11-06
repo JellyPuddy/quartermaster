@@ -33,7 +33,7 @@ pub struct Plan {
 
 /// `Shellwords.split(ENV.fetch("QM_CHAT_COMMAND", "claude"))`, for the plain words Ruby and this port
 /// read alike; `None` for quoting or escapes.
-fn chat_command() -> Option<Vec<String>> {
+pub(crate) fn chat_command() -> Option<Vec<String>> {
     let value = std::env::var("QM_CHAT_COMMAND").unwrap_or_else(|_| "claude".into());
     if value.chars().any(|c| !(c.is_ascii_alphanumeric() || "_./=:@%+,-".contains(c) || c == ' ')) {
         return None;
@@ -49,7 +49,7 @@ fn project_dir(path: &str) -> std::path::PathBuf {
 
 /// Where `claude --resume ID` can find the session: the nearest existing ancestor of the recorded cwd
 /// that maps to the directory its transcript is filed under, else the cwd itself when it exists.
-fn resume_cwd(session: &Session) -> Option<String> {
+pub(crate) fn resume_cwd(session: &Session) -> Option<String> {
     let cwd = session.cwd().unwrap_or_default();
     if let Some(dir) = session.transcript().and_then(|t| t.parent().map(Path::to_path_buf)) {
         let mut at = Some(Path::new(&cwd));

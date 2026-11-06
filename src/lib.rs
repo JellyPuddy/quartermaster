@@ -68,6 +68,7 @@ pub mod transcripts;
 pub mod usage_ledger;
 pub mod viewed_marks;
 pub mod item_usage;
+pub mod aside;
 pub mod launcher;
 pub mod work_item;
 pub mod work_item_commands;

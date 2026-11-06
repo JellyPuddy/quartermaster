@@ -75,6 +75,11 @@ impl Tmux {
         Err(format!("tmux could not start {name}: {}", crate::ruby_text::strip(&mixed)))
     }
 
+    /// Ends the session (`Tmux#kill`); false when it was not running.
+    pub fn kill(&self, name: &str) -> bool {
+        valid_name(name) && self.run(&["kill-session", "-t", &format!("={name}")]).0
+    }
+
     /// The process the session's pane runs (the chat, once its launcher exec'd), or None.
     pub fn pane_pid(&self, name: &str) -> Option<i64> {
         if !valid_name(name) {
