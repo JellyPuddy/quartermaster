@@ -30,7 +30,7 @@ fn gui_dir() -> PathBuf {
 }
 
 /// `URI.decode_www_form_component`.
-fn decode(s: &str) -> String {
+pub(crate) fn decode(s: &str) -> String {
     let b = s.as_bytes();
     let mut out = vec![];
     let mut i = 0;
@@ -49,7 +49,7 @@ fn decode(s: &str) -> String {
 }
 
 /// `URI.decode_www_form(query).to_h`: the last value of a repeated key wins.
-fn params(query: Option<&str>) -> Map<String, Value> {
+pub(crate) fn params(query: Option<&str>) -> Map<String, Value> {
     let mut map = Map::new();
     for pair in query.unwrap_or("").split('&').filter(|p| !p.is_empty()) {
         let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
@@ -463,8 +463,27 @@ fn handle(mut stream: TcpStream, guard: &Guard, token: &str) {
             headers.insert(k.trim().to_ascii_lowercase(), Value::String(crate::ruby_text::strip(v).to_string()));
         }
     }
-    let reply = if headers.get("upgrade").and_then(Value::as_str).is_some_and(|u| u.eq_ignore_ascii_case("websocket")) {
-        text_reply("501 Not Implemented", "not ported yet: the terminal bridge")
+    if headers.get("upgrade").and_then(Value::as_str).is_some_and(|u| u.eq_ignore_ascii_case("websocket")) {
+        let (route, query) = match path.split_once('?') {
+            Some((r, q)) => (r, Some(q)),
+            None => (path.as_str(), None),
+        };
+        let given = params(query);
+        let host = headers.get("host").and_then(Value::as_str).map(String::from);
+        let origin = headers.get("origin").and_then(Value::as_str).map(String::from);
+        let why = crate::terminal_bridge::refusal(route, &headers, guard.allowed_host(host.as_ref()), guard.foreign_origin(origin.as_ref()), token, &given);
+        if let Some(why) = why {
+            crate::terminal_bridge::refuse(&mut stream, why);
+            return;
+        }
+        let key = headers.get("sec-websocket-key").and_then(Value::as_str).unwrap_or("").to_string();
+        let to_i = |k: &str| given.get(k).and_then(Value::as_str).map(|v| ruby_to_i(v) as i64).unwrap_or(0);
+        let session = given.get("session").and_then(Value::as_str).unwrap_or("").to_string();
+        crate::terminal_bridge::serve(stream, reader, &key, &session, to_i("cols"), to_i("rows"));
+        return;
+    }
+    let reply = if false {
+        text_reply("501 Not Implemented", "unreachable")
     } else {
         let length = headers.get("content-length").and_then(Value::as_str).map(ruby_to_i).unwrap_or(0);
         if length > crate::drops::MAX_BYTES {

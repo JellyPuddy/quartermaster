@@ -3416,3 +3416,205 @@ fn dropped_files_are_saved_as_ruby_saves_them() {
         assert!(reply.starts_with("HTTP/1.1 413 Content Too Large") && reply.contains("dropped file is over 32 MB"), "{reply}");
     }
 }
+
+fn ws_handshake(port: u16, route_query: &str, host: Option<String>, origin: Option<String>, key: Option<&str>) -> (std::net::TcpStream, String) {
+    use std::io::{Read, Write};
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+    let mut req = format!("GET {route_query} HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n");
+    if let Some(h) = host {
+        req += &format!("Host: {h}\r\n");
+    }
+    if let Some(o) = origin {
+        req += &format!("Origin: {o}\r\n");
+    }
+    if let Some(k) = key {
+        req += &format!("Sec-WebSocket-Key: {k}\r\nSec-WebSocket-Version: 13\r\n");
+    }
+    req += "\r\n";
+    stream.write_all(req.as_bytes()).unwrap();
+    let mut head = Vec::new();
+    let mut byte = [0u8; 1];
+    while !head.ends_with(b"\r\n\r\n") {
+        if stream.read(&mut byte).unwrap_or(0) == 0 {
+            break;
+        }
+        head.push(byte[0]);
+    }
+    let mut text = String::from_utf8_lossy(&head).into_owned();
+    if text.starts_with("HTTP/1.1 403") {
+        let mut rest = String::new();
+        let _ = stream.read_to_string(&mut rest);
+        text += &rest;
+    }
+    (stream, text)
+}
+
+fn ws_send(stream: &mut std::net::TcpStream, opcode: u8, payload: &[u8], masked: bool) {
+    use std::io::Write;
+    let mut frame = vec![0x80 | opcode];
+    let mask = [0x12u8, 0x34, 0x56, 0x78];
+    let flag = if masked { 0x80 } else { 0 };
+    if payload.len() < 126 {
+        frame.push(flag | payload.len() as u8);
+    } else {
+        frame.push(flag | 126);
+        frame.extend((payload.len() as u16).to_be_bytes());
+    }
+    if masked {
+        frame.extend(mask);
+        frame.extend(payload.iter().enumerate().map(|(i, b)| b ^ mask[i % 4]));
+    } else {
+        frame.extend(payload);
+    }
+    stream.write_all(&frame).unwrap();
+}
+
+/// What the server sent within `wait` milliseconds: (opcode, payload) frames.
+fn ws_read(stream: &mut std::net::TcpStream, wait: u64) -> Vec<(u8, Vec<u8>)> {
+    use std::io::Read;
+    stream.set_read_timeout(Some(std::time::Duration::from_millis(wait))).unwrap();
+    let mut frames = vec![];
+    loop {
+        let mut head = [0u8; 2];
+        if stream.read_exact(&mut head).is_err() {
+            return frames;
+        }
+        let mut len = (head[1] & 0x7f) as usize;
+        if len == 126 {
+            let mut b = [0u8; 2];
+            stream.read_exact(&mut b).unwrap();
+            len = u16::from_be_bytes(b) as usize;
+        } else if len == 127 {
+            let mut b = [0u8; 8];
+            stream.read_exact(&mut b).unwrap();
+            len = u64::from_be_bytes(b) as usize;
+        }
+        let mut data = vec![0u8; len];
+        stream.read_exact(&mut data).unwrap();
+        frames.push((head[0] & 0x0f, data));
+    }
+}
+
+fn plain_text(bytes: &[u8]) -> String {
+    let text = String::from_utf8_lossy(bytes).into_owned();
+    regex::Regex::new(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b[()][0-9A-Za-z]|\x1b[=>]|\x1b\][^\x07]*\x07|\r").unwrap().replace_all(&text, "").into_owned()
+}
+
+#[test]
+fn the_terminal_websocket_matches_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let socks = ["qm-test-ws-term-0", "qm-test-ws-term-1"];
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let env_for = |sock: &str| -> Vec<(&'static str, String)> { vec![("HOME", w.home.display().to_string()), ("QM_TMUX_SOCKET", sock.to_string())] };
+    for s in socks {
+        tmux_on(s, &["kill-server"]);
+        for _ in 0..50 {
+            tmux_on(s, &["new-session", "-d", "-s", "chat", "-x", "80", "-y", "24", "sh -c 'printf \"ready to type\\n\"; exec cat'"]);
+            if tmux_on(s, &["list-sessions", "-F", "#{session_name}"]).contains("chat") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        tmux_on(s, &["set-option", "-g", "status", "off"]);
+    }
+    let ruby = start_env(false, &w.root, &w.home, &env_for(socks[0]));
+    let rust = start_env(true, &root2, &w.home, &env_for(socks[1]));
+    let token = |s: &Server| -> String { serde_json::from_slice::<serde_json::Value>(&request(s.port, "GET", "/api/state", &[], "", true).body).unwrap()["terminalToken"].as_str().unwrap().to_string() };
+    let (ta, tb) = (token(&ruby), token(&rust));
+    let servers = [(&ruby, ta), (&rust, tb)];
+    let own = |s: &Server| (Some(format!("127.0.0.1:{}", s.port)), Some(format!("http://127.0.0.1:{}", s.port)));
+    // what is refused, and how
+    let key = "dGhlIHNhbXBsZSBub25jZQ==";
+    let refused = |s: &Server, tok: &str, route: &str, host: Option<String>, origin: Option<String>, k: Option<&str>, session: &str| -> String {
+        let (mut stream, text) = ws_handshake(s.port, &format!("{route}?token={tok}&session={session}&cols=80&rows=24"), host, origin, k);
+        let _ = stream.shutdown(std::net::Shutdown::Both);
+        text.replace(&s.port.to_string(), "PORT")
+    };
+    let mut seen = String::new();
+    for (label, route, tokmod, host_ok, origin, k, session) in [
+        ("another route", "/ws/other", "", true, "own", Some(key), "chat"),
+        ("a wrong host", "/ws/terminal", "", false, "own", Some(key), "chat"),
+        ("no origin", "/ws/terminal", "", true, "none", Some(key), "chat"),
+        ("a foreign origin", "/ws/terminal", "", true, "foreign", Some(key), "chat"),
+        ("a bad token", "/ws/terminal", "bad", true, "own", Some(key), "chat"),
+        ("a prefix of the token", "/ws/terminal", "prefix", true, "own", Some(key), "chat"),
+        ("a wrong host and no origin", "/ws/terminal", "", false, "none", Some(key), "chat"),
+        ("a token of the right length", "/ws/terminal", "same-length", true, "own", Some(key), "chat"),
+        ("no such chat", "/ws/terminal", "", true, "own", Some(key), "nowhere"),
+        ("no key", "/ws/terminal", "", true, "own", None, "chat"),
+    ] {
+        let mut answers = vec![];
+        for (s, tok) in &servers {
+            let tok = match tokmod {
+                "bad" => "x".to_string(),
+                "same-length" => "y".repeat(tok.len()),
+                "prefix" => tok[..10].to_string(),
+                _ => tok.clone(),
+            };
+            let (host, origin_value) = own(s);
+            let host = if host_ok { host } else { Some("evil.test".to_string()) };
+            let origin_value = match origin {
+                "none" => None,
+                "foreign" => Some("http://evil.test".to_string()),
+                _ => origin_value,
+            };
+            answers.push(refused(s, &tok, route, host, origin_value, k, session));
+        }
+        assert_eq!(answers[0], answers[1], "{label}");
+        seen += &answers[0];
+    }
+    assert!(["not found", "bad host", "bad origin", "bad token", "no such chat", "missing websocket key"].iter().all(|n| seen.contains(n)), "{seen}");
+    // a served connection: the handshake, what tmux draws, what is typed, a resize, a ping
+    let connect = |s: &Server, tok: &str| ws_handshake(s.port, &format!("/ws/terminal?token={tok}&session=chat&cols=100&rows=30"), own(s).0, own(s).1, Some(key));
+    let mut conns = vec![];
+    for (s, tok) in &servers {
+        let (stream, head) = connect(s, tok);
+        assert!(head.starts_with("HTTP/1.1 101 Switching Protocols") && head.contains("Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo="), "{head}");
+        conns.push(stream);
+    }
+    let drawn: Vec<String> = conns.iter_mut().map(|c| ws_read(c, 1500).iter().filter(|(op, _)| *op == 2).map(|(_, d)| plain_text(d)).collect::<String>()).collect();
+    assert!(drawn[0].contains("ready to type") && drawn[1].contains("ready to type"), "{drawn:?}");
+    for c in conns.iter_mut() {
+        ws_send(c, 2, b"hello there\r", true);
+    }
+    let typed: Vec<String> = conns.iter_mut().map(|c| ws_read(c, 1500).iter().map(|(_, d)| plain_text(d)).collect::<String>()).collect();
+    assert!(typed[0].contains("hello there") && typed[1].contains("hello there"), "{typed:?}");
+    for c in conns.iter_mut() {
+        ws_send(c, 1, b"{\"cols\":120,\"rows\":40}", true);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    let clients = |sock: &str| tmux_on(sock, &["list-clients", "-F", "#{client_width}x#{client_height}"]).trim().to_string();
+    assert_eq!(clients(socks[0]), clients(socks[1]), "the resize reaches tmux");
+    assert!(clients(socks[1]).contains("120x40"), "{}", clients(socks[1]));
+    for c in conns.iter_mut() {
+        ws_send(c, 9, b"ping!", true);
+    }
+    let pongs: Vec<Vec<(u8, Vec<u8>)>> = conns.iter_mut().map(|c| ws_read(c, 1000).into_iter().filter(|(op, _)| *op == 10).collect()).collect();
+    assert_eq!(pongs[0], pongs[1]);
+    assert_eq!(pongs[0], vec![(10u8, b"ping!".to_vec())]);
+    // an unmasked frame is a protocol error: the connection ends, and it is logged
+    for c in conns.iter_mut() {
+        ws_send(c, 2, b"x", false);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let log = |root: &Path| fs::read_to_string(root.join("qm.log")).unwrap_or_default().lines().map(|l| l.splitn(2, ' ').nth(1).unwrap_or("").to_string()).collect::<Vec<_>>();
+    assert_eq!(log(&w.root), log(&root2));
+    assert!(log(&root2).iter().any(|l| l.contains("[gui-terminal]") && l.contains("unmasked client frame")), "{:?}", log(&root2));
+    // a close frame is answered and ends the connection; the chat lives on
+    let mut closers = vec![];
+    for (s, tok) in &servers {
+        let (mut stream, _) = connect(s, tok);
+        ws_read(&mut stream, 800);
+        ws_send(&mut stream, 8, &1000u16.to_be_bytes(), true);
+        closers.push(ws_read(&mut stream, 1000).into_iter().filter(|(op, _)| *op == 8).collect::<Vec<_>>());
+    }
+    assert_eq!(closers[0], closers[1]);
+    assert_eq!(closers[0].len(), 1);
+    for s in socks {
+        assert!(tmux_on(s, &["list-sessions", "-F", "#{session_name}"]).contains("chat"), "the chat outlives its client");
+        tmux_on(s, &["kill-server"]);
+    }
+}

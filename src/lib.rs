@@ -63,6 +63,7 @@ pub mod session_commands;
 pub mod session_detail;
 pub mod show_command;
 pub mod session_rows;
+pub mod terminal_bridge;
 pub mod tmux;
 pub mod viewer_commands;
 pub mod transcript_search;
