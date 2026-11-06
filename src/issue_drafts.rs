@@ -331,3 +331,30 @@ pub fn delete(slug: &str, name: &str) -> std::io::Result<bool> {
     }
     Ok(existed)
 }
+
+/// `IssueDrafts.signature`: every `issues/*/*.md`'s path, size and mtime, so qm's own `.prev`
+/// snapshot writes never move it; "0" while there are none.
+pub fn signature() -> String {
+    let base = data_root::root().join("issues");
+    let mut files: Vec<PathBuf> = vec![];
+    if let Ok(dirs) = std::fs::read_dir(&base) {
+        for d in dirs.filter_map(|e| e.ok()).filter(|e| !e.file_name().to_string_lossy().starts_with('.') && e.path().is_dir()) {
+            if let Ok(inner) = std::fs::read_dir(d.path()) {
+                files.extend(inner.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "md") && !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')) && p.is_file()));
+            }
+        }
+    }
+    files.sort_by_key(|p| p.to_string_lossy().into_owned());
+    if files.is_empty() {
+        return "0".into();
+    }
+    let prefix = base.to_string_lossy().into_owned();
+    let stats: Vec<String> = files
+        .iter()
+        .map(|p| match (std::fs::metadata(p), crate::drafts::mtime_rational(p)) {
+            (Ok(m), Some(t)) => format!("{}:{}:{t}", p.to_string_lossy().strip_prefix(&prefix).unwrap_or_default(), m.len()),
+            _ => String::new(),
+        })
+        .collect();
+    crate::sha1::hex(stats.join("|").as_bytes())[..12].to_string()
+}

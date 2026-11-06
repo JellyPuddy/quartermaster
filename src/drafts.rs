@@ -130,3 +130,36 @@ pub fn forget_issue(slug: &str, file: &str) -> std::io::Result<()> {
     }
     Ok(())
 }
+
+/// `Rational#to_s` of a file's mtime (`Time#to_r`): the nanoseconds over 1e9, reduced.
+pub fn mtime_rational(path: &std::path::Path) -> Option<String> {
+    use std::os::unix::fs::MetadataExt;
+    let m = std::fs::metadata(path).ok()?;
+    let ns = m.mtime() as i128 * 1_000_000_000 + m.mtime_nsec() as i128;
+    let (mut a, mut b) = (ns.abs(), 1_000_000_000i128);
+    while b != 0 {
+        (a, b) = (b, a % b);
+    }
+    let g = a.max(1);
+    Some(format!("{}/{}", ns / g, 1_000_000_000 / g))
+}
+
+/// `Drafts.signature`: moves whenever any item's drafts change; "0" while no item has a drafts file.
+pub fn signature() -> String {
+    let dir = data_root::root().join("drafts");
+    let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
+        .map(|r| r.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json") && !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')) && p.is_file()).collect())
+        .unwrap_or_default();
+    files.sort_by_key(|p| p.to_string_lossy().into_owned());
+    if files.is_empty() {
+        return "0".into();
+    }
+    let stats: Vec<String> = files
+        .iter()
+        .map(|p| match (std::fs::metadata(p), mtime_rational(p)) {
+            (Ok(m), Some(t)) => format!("{}:{}:{t}", p.file_name().unwrap().to_string_lossy(), m.len()),
+            _ => String::new(),
+        })
+        .collect();
+    crate::sha1::hex(stats.join("|").as_bytes())[..12].to_string()
+}
