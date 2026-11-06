@@ -37,12 +37,11 @@ module Quartermaster
       end
     end
 
-    def self.create(title, project:, branch: nil, session_id: nil, description: nil, pf_mode: nil)
-      with_lock { create_locked(title, project:, branch:, session_id:, description:, pf_mode:) }
+    def self.create(title, project:, branch: nil, session_id: nil, description: nil, pf_mode: nil, slug: nil, front: {})
+      with_lock { create_locked(title, project:, branch:, session_id:, description:, pf_mode:, slug: slug || slugify(title), extra: front) }
     end
 
-    def self.create_locked(title, project:, branch:, session_id:, description:, pf_mode:)
-      slug = slugify(title)
+    def self.create_locked(title, project:, branch:, session_id:, description:, pf_mode:, slug:, extra:)
       raise ArgumentError, "work item '#{slug}' already exists" if File.exist?(path_for(slug))
 
       validate_pf_mode(project, pf_mode) if pf_mode
@@ -53,7 +52,7 @@ module Quartermaster
         "state" => "in_progress",
         "project" => project,
         "created" => Date.today.to_s
-      }
+      }.merge(extra)
       front["branches"] = [branch] if branch
       front["sessions"] = [{ "id" => session_id }] if session_id
       front["pf_mode"] = pf_mode if pf_mode

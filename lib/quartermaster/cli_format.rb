@@ -114,9 +114,16 @@ module Quartermaster
         ["qm config unset PATH", "remove a key or a whole project (warns how many work items still name it)"],
         ["qm config path", "print config.yml's location"]
       ],
-      "Automations" => [
+      "Automations (claude.ai routines; on with automations.token_source)" => [
         ["qm automation new TITLE --project P", "create a claude.ai routine as a kind: automation item with empty local files, then open its chat with qm's brief (--description TEXT)"],
-        ["qm automation edit SLUG", "open or resume the automation's chat with the brief; a running chat gets nothing typed, the brief is printed"]
+        ["qm automation edit SLUG", "open or resume the automation's chat with the brief; a running chat gets nothing typed, the brief is printed"],
+        ["qm automation list", "local automations, then each routine's last and next run, drift, and routines not managed by qm"],
+        ["qm automation show SLUG", "one automation: schedule, repos, connectors, links and its last 10 runs"],
+        ["qm automation adopt ID --project P [--slug S]", "take a routine under qm: local files + a kind: automation work item"],
+        ["qm automation push SLUG [--force]", "send the local files (creates the routine the first time); refuses a routine changed outside qm unless --force"],
+        ["qm automation pull SLUG", "the routine overwrites the local files (kept as .bak)"],
+        ["qm automation pause|resume|run SLUG", "pause or resume (a local edit, then push), or run it now"],
+        ["qm automation delete SLUG [--yes]", "delete the routine (or pause it when the API can't) and resolve the item; asks first"]
       ]
     }.freeze
 

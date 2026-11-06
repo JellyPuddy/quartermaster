@@ -94,7 +94,7 @@ one file each: `CliViewer` (viewer rows and pickers, `show`, sessions), `CliAtte
 attention, overview, ack, snooze, distill), `CliChats` (commands acting on the running GUI),
 `CliPrs` (pr, pr-requires, draft), `CliCleanup` (cleanup, sweep), `CliWorkspace` (resume, start,
 pf, IDE, terminal), `CliSetup` (how qm itself runs: pin-ruby, doctor), `CliConfig` (`qm config`, owned by
-[settings](settings.md)), and `CliFormat` (shared output helpers and the help text). Each group's frozen
+[settings](settings.md)), `CliAutomation` (`qm automation`, owned by [automations](automations.md)), and `CliFormat` (shared output helpers and the help text). Each group's frozen
 `COMMANDS` maps a word to the method `CLI#run` calls with argv; `CLI.commands` merges them and
 refuses a word claimed twice. A new command touches only its group's file (and `qm help`). Hooks
 and commands called otherwise (no argv, extra arguments, another class) stay explicit `when`

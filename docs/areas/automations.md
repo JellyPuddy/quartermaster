@@ -1,7 +1,7 @@
 # Automations
 
-**Code:** `lib/quartermaster/routines_client.rb`, `lib/quartermaster/automation_store.rb`, `lib/quartermaster/local_schedule.rb`, `lib/quartermaster/automation_chat.rb`, `lib/quartermaster/cli_automation.rb`
-**Tests:** `test/routines_client_test.rb`, `test/automation_store_test.rb`, `test/local_schedule_test.rb`, `test/automation_chat_test.rb`
+**Code:** `lib/quartermaster/automations.rb`, `lib/quartermaster/cli_automation.rb`, `lib/quartermaster/routines_client.rb`, `lib/quartermaster/automation_store.rb`, `lib/quartermaster/local_schedule.rb`, `lib/quartermaster/automation_chat.rb`
+**Tests:** `test/automation_cli_test.rb`, `test/routines_client_test.rb`, `test/automation_store_test.rb`, `test/local_schedule_test.rb`, `test/automation_chat_test.rb`
 **Depends on:** [work-items](work-items.md) (an automation is a work item), [settings](settings.md) (`automations.token_source`; writes the way `ConfigFile` does), [gui-shell](gui-shell.md) (`CommandRunner`), [chats](chats.md) (its chat is the item's pane)
 
 ## What it does
@@ -9,6 +9,36 @@
 Automations are the user's claude.ai cloud routines: scheduled Claude Code agents that run on
 claude.ai, not on this machine. qm reaches them through the same API the claude binary uses.
 Every automation records `runner: cloud`; the field leaves room for other runners.
+
+**Service** — `Automations` (the CLI's and the GUI's one entry point) pairs each store entry with
+the `kind: automation` work item of the same slug (`routine:`, `runner: cloud` in its frontmatter).
+- `local` — the store's entries and their items, no network. `overview(rows)` adds one `list`
+  call: each row's routine (`remote`, nil when it isn't on claude.ai) and `drift` (its
+  `updated_at` differs from the stored `remote_updated_at`), plus `unmanaged` routines (no local
+  files). `detail(slug)` — one entry, its routine and its last 10 runs.
+- `push(slug, force:)` — the one path that changes a routine. No `routine` yet: create, then
+  write the id to the store and the item. Else `get` the routine, refuse with `Stale` when it
+  drifted (unless forced), and `update` only what differs from it: changed name / cron /
+  enabled / connectors as they are, and all job fields when any of prompt / model / repos /
+  tools / environment differs. Stores the answer's `updated_at`; nothing differing writes nothing.
+- Each push with changes appends one `history` note (`pushed: schedule → Mon 07:00 (0 6 * * 1
+  UTC); prompt changed`, `paused`, `resumed`, `created routine trig_…`), and the item's state
+  follows `enabled`: `active`, or `fridge` while paused (`in_progress` until the first push).
+- `pull` — the routine overwrites both local files (each kept as `.bak`), notes what changed.
+- `pause` / `resume` — a local edit of `enabled`, then push. `run` — run it now.
+- `adopt(id, project:, slug:)` — a routine no store entry holds becomes an entry plus an item
+  (title the routine's name, slug by default its slug, description the name and the prompt's
+  first paragraph), state from `enabled`. `create_item` makes such an item under any slug.
+- `delete` — the API's delete removes the routine and the local files; without one
+  (`:unsupported`) the routine is paused and its files stay, so it isn't "unmanaged"; never
+  pushed, only the files go. The item is resolved either way, its notes kept.
+
+**CLI** — `qm automation list | show | adopt | push | pull | pause | resume | run | delete`
+(`CliAutomation`). `list` prints the local rows (slug, project, state, local schedule,
+enabled) before its one list call, then a status line per row (last run, next run, drift) and
+the routines "Not managed by qm"; `show` adds repos, connectors, links and runs. `delete` asks
+y/N on stdin unless `--yes`; without an API delete it prints "paused; delete it on claude.ai:
+<routine url>". A client error is an `ArgumentError`: its message, exit 1.
 
 **Turning it on** — `automations.token_source` in `config.yml` (enum, one value: `claude_code`).
 Unset, automations are off: nothing reads the keychain, and every call fails with `NotEnabled`,
@@ -104,7 +134,11 @@ itself, decisions recorded with `qm note SLUG --kind decision`, the house rules 
 - Request bodies are built only in `RoutinesClient.request_body` and
   `AutomationStore.routine_body`, so a changed API shape is fixed there.
 - Tests stub the keychain (`FakeRunner`) and the transport; no test reaches the network.
-- The local files are the source of truth; a remote routine only changes through push.
+- The local files are the source of truth; a remote routine only changes through
+  `Automations#push` (pause and resume included), which refuses a drifted routine unless forced.
+- Drift is never resolved automatically: the user picks pull or a forced push.
+- History notes are one line each (notes are append-only).
+- Fetching is on demand: one list call per listing, runs only for one automation; no polling.
 - A write is atomic per file (`AtomicFile`) and keeps each replaced file as `<file>.bak`.
 - Keys qm doesn't know survive every write; the yml carries `v:`, bumped only on a breaking change.
 - Schedule: stdlib only, and no `ENV["TZ"]` switching (process-wide, races GUI threads): the EU rule
