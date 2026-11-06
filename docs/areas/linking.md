@@ -1,7 +1,7 @@
 # Linking
 
 **Code:** `lib/quartermaster/launcher.rb`, `lib/quartermaster/warp_tab.rb`
-**Tests:** `test/hook_test.rb`, `test/launcher_test.rb`, `test/chat_pane_test.rb`, `test/aside_test.rb`
+**Tests:** `test/hook_test.rb`, `test/launcher_test.rb`, `test/chat_pane_test.rb`, `test/aside_test.rb`, `test/run_session_resume_test.rb`
 **Depends on:** [capture](capture.md), [work-items](work-items.md)
 
 ## What it does
@@ -52,9 +52,8 @@ continues another item → `qm attach <other>`; new work → `qm new --session`;
   after a transcript expires. `--session ID` narrows it to one session. The GUI's
   `resume-session` action resumes an inbox session in its own cwd (`session_resume_plan`).
 - `--here` execs in the current terminal; otherwise a new Warp tab (`WarpTab`).
-- The GUI's chat pane uses `chat_plan` (refuses while any of the item's sessions is live —
-  one live chat per item; `exclude_session_ids` (a local automation's runs) are neither
-  live-checked nor resumed), `fresh_chat_plan` (optionally with a first prompt as claude's
+- The GUI's chat pane uses `chat_plan` (refuses while any of the item's chat sessions is
+  live — one live chat per item), `fresh_chat_plan` (optionally with a first prompt as claude's
   argument), `aside_plan` / `aside_resume_plan` (`QM_ASIDE` set, `QM_ITEM` blanked), `loose_plan`
   (`QM_LOOSE` set, `QM_ITEM` blanked, the project's main checkout) and
   `attach_in_warp` ([chats](chats.md)). `QM_CHAT_COMMAND` swaps the program a pane runs.
@@ -75,6 +74,11 @@ is manual.
 - **`QM_ASIDE` beats every linking rule, `QM_ITEM` included**: an aside is never attached,
   not even by branch. `QM_LOOSE` likewise skips `QM_ITEM` and the branch match, unless the
   loose chat was promoted (its session, or an earlier one of the same id, is on an item).
+- **A local automation's runs are never its chat** (`chat_session_ids`, through
+  `RunLog.session_ids_for`): they attach to the item through `QM_ITEM`, but `resume_plan` and
+  `chat_plan` neither live-check nor pick them, so every caller — `qm resume` and the viewer,
+  the GUI pane, Edit with Claude, adopt/restack/issue/PR-review starts — skips them. Only a
+  session picked by id (`--session`, a session row) is resumed even when it is a run.
 - **Never resume a live session** — it would fork. Resume refuses and says to switch to its
   tab; the chat pane reports `:live` and waits for it to end.
 - **Resume from where the transcript is filed** (`resume_cwd`): `claude --resume` looks the

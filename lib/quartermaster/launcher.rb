@@ -2,9 +2,10 @@
 
 module Quartermaster
   class Launcher
-    def initialize(project_map: ProjectMap.new, session_log: SessionLog.new)
+    def initialize(project_map: ProjectMap.new, session_log: SessionLog.new, automations_dir: AUTOMATIONS_DIR)
       @project_map = project_map
       @session_log = session_log
+      @automations_dir = automations_dir
     end
 
     def resume(item, session_id: nil, here: false)
@@ -27,9 +28,9 @@ module Quartermaster
     # still exist. Live sessions are never resumed (that would fork them). With
     # nothing resumable, fall back to rehydration: a fresh session at the item's
     # best-known location, seeded through QM_ITEM with the work item file.
-    def resume_plan(item, session_id: nil, exclude_session_ids: [])
-      ids = item.sessions.map { |s| s["id"] } - exclude_session_ids.to_a
-      ids &= [session_id] if session_id
+    # A session picked by id is resumed even when it is a run.
+    def resume_plan(item, session_id: nil)
+      ids = session_id ? item.sessions.map { |s| s["id"] } & [session_id] : chat_session_ids(item)
       sessions = @session_log.sessions
                              .select { |s| ids.include?(s.id) }
                              .sort_by(&:last_ts)
@@ -96,15 +97,13 @@ module Quartermaster
     # would happily resume an older transcript beside it.
     # prompt: a fresh chat's first prompt, passed as claude's argument (the
     # issue kickoff) rather than typed into the pane.
-    # exclude_session_ids: attached sessions that are not the item's chat (a
-    # local automation's runs), never live-checked or resumed.
-    def chat_plan(item, fresh: false, session_id: nil, prompt: nil, exclude_session_ids: [])
-      ids = item.sessions.map { |s| s["id"] } - exclude_session_ids.to_a
+    def chat_plan(item, fresh: false, session_id: nil, prompt: nil)
+      ids = chat_session_ids(item)
       live = @session_log.sessions.find { |s| ids.include?(s.id) && s.live? }
       return { mode: :live, session_id: live.id } if live
       return fresh_chat_plan(item, prompt: prompt) if fresh
 
-      plan = resume_plan(item, session_id: session_id, exclude_session_ids: exclude_session_ids)
+      plan = resume_plan(item, session_id: session_id)
       case plan[:mode]
       when :resume then plan.merge(argv: [*chat_command, "--resume", plan[:session_id]], env: {})
       when :rehydrate then fresh_chat_plan(item)
@@ -155,6 +154,12 @@ module Quartermaster
     # for an end-to-end check, a stand-in in tests); the user's chats run claude.
     def chat_command
       Shellwords.split(ENV.fetch("QM_CHAT_COMMAND", "claude"))
+    end
+
+    # The item's attached sessions that can be its chat: all of them, less a
+    # local automation's runs, which are never live-checked or resumed.
+    def chat_session_ids(item)
+      item.sessions.map { |s| s["id"] } - RunLog.session_ids_for(item, @automations_dir)
     end
 
     private

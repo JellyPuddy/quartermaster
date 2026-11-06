@@ -189,7 +189,7 @@ class AutomationChatTest < Minitest::Test
   def test_open_resumes_an_earlier_chat_with_the_brief
     item = new_automation
     launcher = Object.new
-    launcher.define_singleton_method(:chat_plan) do |_item, fresh:, prompt:, exclude_session_ids:|
+    launcher.define_singleton_method(:chat_plan) do |_item, fresh:, prompt:|
       raise "a resume, not a fresh chat" if fresh
 
       { mode: :resume, cwd: "/w", argv: ["claude", "--resume", "s-1"], env: {}, prompt: prompt }

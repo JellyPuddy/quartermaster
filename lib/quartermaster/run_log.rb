@@ -28,6 +28,14 @@ module Quartermaster
       Set.new
     end
 
+    # The sessions of a local automation item's runs: attached to the item
+    # through QM_ITEM, but never its chat, so no resume path picks one.
+    def self.session_ids_for(item, dir = AUTOMATIONS_DIR)
+      return [] unless item.automation? && item.runner == "local"
+
+      new(item.slug, dir: dir).runs.filter_map(&:session_id)
+    end
+
     def initialize(slug, dir: AUTOMATIONS_DIR)
       raise ArgumentError, "not an automation slug: #{slug.inspect}" unless slug.is_a?(String) && slug.match?(AutomationStore::SLUG)
 

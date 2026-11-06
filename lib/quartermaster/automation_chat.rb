@@ -121,12 +121,13 @@ module Quartermaster
 
     # The chat's launch plan with the brief as claude's last argument: a
     # fresh chat when the item has none, else its newest one resumed. A
-    # local automation's runs attach to its item too, but are never its chat.
+    # local automation's runs attach to its item too, but are never its chat
+    # (Launcher skips them as well).
     def plan(item)
       brief = brief_for(item)
-      runs = run_session_ids(item)
+      runs = RunLog.session_ids_for(item, @store.dir)
       fresh = item.sessions.all? { |s| runs.include?(s["id"]) }
-      plan = @launcher.chat_plan(item, fresh: fresh, prompt: brief, exclude_session_ids: runs)
+      plan = @launcher.chat_plan(item, fresh: fresh, prompt: brief)
       return plan if plan[:mode] == :live || plan[:argv].last == brief
 
       plan.merge(argv: plan[:argv] + [brief])
@@ -142,11 +143,5 @@ module Quartermaster
     private
 
     def brief_for(item) = self.class.brief(item, store: @store)
-
-    def run_session_ids(item)
-      return [] unless item.runner == "local"
-
-      RunLog.new(item.slug, dir: @store.dir).runs.filter_map(&:session_id)
-    end
   end
 end
