@@ -53,7 +53,8 @@ continues another item → `qm attach <other>`; new work → `qm new --session`;
   `resume-session` action resumes an inbox session in its own cwd (`session_resume_plan`).
 - `--here` execs in the current terminal; otherwise a new Warp tab (`WarpTab`).
 - The GUI's chat pane uses `chat_plan` (refuses while any of the item's sessions is live —
-  one live chat per item), `fresh_chat_plan` (optionally with a first prompt as claude's
+  one live chat per item; `exclude_session_ids` (a local automation's runs) are neither
+  live-checked nor resumed), `fresh_chat_plan` (optionally with a first prompt as claude's
   argument), `aside_plan` / `aside_resume_plan` (`QM_ASIDE` set, `QM_ITEM` blanked), `loose_plan`
   (`QM_LOOSE` set, `QM_ITEM` blanked, the project's main checkout) and
   `attach_in_warp` ([chats](chats.md)). `QM_CHAT_COMMAND` swaps the program a pane runs.

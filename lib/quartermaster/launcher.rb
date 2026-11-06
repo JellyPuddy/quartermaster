@@ -27,8 +27,8 @@ module Quartermaster
     # still exist. Live sessions are never resumed (that would fork them). With
     # nothing resumable, fall back to rehydration: a fresh session at the item's
     # best-known location, seeded through QM_ITEM with the work item file.
-    def resume_plan(item, session_id: nil)
-      ids = item.sessions.map { |s| s["id"] }
+    def resume_plan(item, session_id: nil, exclude_session_ids: [])
+      ids = item.sessions.map { |s| s["id"] } - exclude_session_ids.to_a
       ids &= [session_id] if session_id
       sessions = @session_log.sessions
                              .select { |s| ids.include?(s.id) }
@@ -96,13 +96,15 @@ module Quartermaster
     # would happily resume an older transcript beside it.
     # prompt: a fresh chat's first prompt, passed as claude's argument (the
     # issue kickoff) rather than typed into the pane.
-    def chat_plan(item, fresh: false, session_id: nil, prompt: nil)
-      ids = item.sessions.map { |s| s["id"] }
+    # exclude_session_ids: attached sessions that are not the item's chat (a
+    # local automation's runs), never live-checked or resumed.
+    def chat_plan(item, fresh: false, session_id: nil, prompt: nil, exclude_session_ids: [])
+      ids = item.sessions.map { |s| s["id"] } - exclude_session_ids.to_a
       live = @session_log.sessions.find { |s| ids.include?(s.id) && s.live? }
       return { mode: :live, session_id: live.id } if live
       return fresh_chat_plan(item, prompt: prompt) if fresh
 
-      plan = resume_plan(item, session_id: session_id)
+      plan = resume_plan(item, session_id: session_id, exclude_session_ids: exclude_session_ids)
       case plan[:mode]
       when :resume then plan.merge(argv: [*chat_command, "--resume", plan[:session_id]], env: {})
       when :rehydrate then fresh_chat_plan(item)

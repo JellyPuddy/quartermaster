@@ -189,7 +189,7 @@ class AutomationChatTest < Minitest::Test
   def test_open_resumes_an_earlier_chat_with_the_brief
     item = new_automation
     launcher = Object.new
-    launcher.define_singleton_method(:chat_plan) do |_item, fresh:, prompt:|
+    launcher.define_singleton_method(:chat_plan) do |_item, fresh:, prompt:, exclude_session_ids:|
       raise "a resume, not a fresh chat" if fresh
 
       { mode: :resume, cwd: "/w", argv: ["claude", "--resume", "s-1"], env: {}, prompt: prompt }
@@ -202,6 +202,40 @@ class AutomationChatTest < Minitest::Test
     assert_equal "resume", reply["mode"]
     assert_equal ["claude", "--resume", "s-1", Quartermaster::AutomationChat.brief(Quartermaster::WorkItem.find(item.slug))],
                  tmux.opened.first[:argv]
+  end
+
+  # A local automation's runs attach to its item (QM_ITEM); its edit chat
+  # neither refuses for a live run nor resumes one.
+  def test_a_local_automations_chat_resumes_its_authoring_session_past_a_live_run
+    Dir.mktmpdir do |cwd|
+      transcript = File.join(cwd, "t.jsonl")
+      File.write(transcript, "")
+      item = Quartermaster::AutomationChat.create("Shipped digest", project: "MyApp", runner: "local")
+      log_session("s-author", cwd: cwd, transcript: transcript, ended: true)
+      item.attach_session("s-author")
+      start_run(item, "s-run", cwd: cwd, transcript: transcript)
+
+      plan = Quartermaster::AutomationChat.new(tmux: FakeTmux.new).plan(Quartermaster::WorkItem.find(item.slug))
+
+      assert_equal :resume, plan[:mode]
+      assert_equal ["claude", "--resume", "s-author"], plan[:argv].first(3)
+    end
+  end
+
+  def test_a_local_automations_chat_starts_fresh_when_its_only_sessions_are_runs
+    Dir.mktmpdir do |cwd|
+      transcript = File.join(cwd, "t.jsonl")
+      File.write(transcript, "")
+      item = Quartermaster::AutomationChat.create("Shipped digest", project: "MyApp", runner: "local")
+      start_run(item, "s-run", cwd: cwd, transcript: transcript)
+      start_run(item, "s-old-run", cwd: cwd, transcript: transcript, ended: true)
+
+      item = Quartermaster::WorkItem.find(item.slug)
+      plan = Quartermaster::AutomationChat.new(tmux: FakeTmux.new).plan(item)
+
+      assert_equal :start, plan[:mode]
+      assert_equal ["claude", Quartermaster::AutomationChat.brief(item)], plan[:argv]
+    end
   end
 
   def test_open_refuses_an_item_that_is_not_an_automation
@@ -266,6 +300,22 @@ class AutomationChatTest < Minitest::Test
   end
 
   private
+
+  def log_session(id, cwd:, transcript:, ended: false, pid: 999_999_999)
+    log = Quartermaster::SessionLog.new
+    log.append("event" => "start", "session_id" => id, "cwd" => cwd, "transcript_path" => transcript, "pid" => pid, "ts" => Time.now.iso8601)
+    log.append("event" => "end", "session_id" => id, "ts" => Time.now.iso8601) if ended
+  end
+
+  # A run of the automation, started and attached to its item as QM_ITEM does;
+  # live (this process's pid) unless ended.
+  def start_run(item, session_id, cwd:, transcript:, ended: false)
+    log_session(session_id, cwd: cwd, transcript: transcript, ended: ended, pid: Process.pid)
+    Quartermaster::WorkItem.find(item.slug).attach_session(session_id)
+    runs = Quartermaster::RunLog.new(item.slug)
+    run_id = runs.enqueue(key: "cron:#{session_id}", item: nil, flow: "chat", trigger: "manual")
+    runs.started(run_id, session_id: session_id, tmux: "#{item.slug}--run-#{run_id}", item_slug: item.slug)
+  end
 
   # Swaps the CLI's POST to the running GUI; yields the [cmd, slug] pairs posted.
   def with_gui_replying(reply)

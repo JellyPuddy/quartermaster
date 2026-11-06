@@ -131,8 +131,8 @@ cloud by default, any other runner refused) makes a `kind: automation` item (its
 `name`, `runner` and `enabled` (`true`; `false` for local); a slug whose files already exist is
 refused. It then opens the item's chat, as `qm automation edit SLUG` does: through the running
 GUI's `automation-chat` action (a local action, so the CLI may post it without an Origin), then `ChatOpener` brings the GUI up on it; without a GUI it prints the
-`cd … && QM_ITEM=… claude …` line to run. The chat starts fresh when the item has no session, else
-resumes its newest one, either way with the brief as claude's last argument
+`cd … && QM_ITEM=… claude …` line to run. The chat starts fresh when the item has no session, else resumes its newest one —
+a local one's run sessions (`RunLog`) never count, live or ended — either way with the brief as claude's last argument
 (`AutomationChat#plan`). **The brief** (`AutomationChat.brief`; a local one → its page) holds the item's title, slug,
 project and routine (or that the first push creates it), the absolute paths of both files, the
 loop (edit the files → `qm automation push` → `qm automation run` → read the run via its claude.ai
