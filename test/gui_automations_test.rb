@@ -182,7 +182,55 @@ class GuiAutomationsTest < Minitest::Test
     job = settle.first
     assert_equal false, job["ok"]
     assert_equal "digest: routine #{ID} isn't on claude.ai any more — delete the automation in qm " \
-                 "(`qm automation delete digest`)", job["error"]
+                 "(`qm automation delete digest`) or re-create it (`qm automation push digest --recreate`)", job["error"]
+  end
+
+  def test_recreate_makes_a_new_routine_for_a_missing_one_and_the_detail_stops_showing_missing
+    adopt
+    @client.routines.clear
+    post("/api/automations/refresh")
+    settle
+    assert_equal true, get("/api/automations/digest")["missing"]
+
+    status, = post("/api/automations/recreate", "slug" => "digest")
+    assert_equal "200 OK", status
+    job = settle.first
+    assert job["ok"], job["error"]
+    assert_equal "digest: re-created routine trig_NEW (was #{ID})", job["message"]
+    assert_equal ["trig_NEW", "trig_NEW"], [store.read("digest").record["routine"], Quartermaster::WorkItem.find("digest").routine]
+    detail = get("/api/automations/digest")
+    assert_equal [false, "trig_NEW"], detail.values_at("missing", "routine")
+  end
+
+  def test_recreate_refuses_a_routine_that_is_still_there
+    adopt
+    post("/api/automations/refresh")
+    settle
+    assert_equal false, row(get("/api/automations"))["missing"]
+
+    post("/api/automations/recreate", "slug" => "digest")
+    job = settle.first
+    assert_equal false, job["ok"]
+    assert_equal "digest: routine #{ID} is still on claude.ai — `qm automation push digest` updates it", job["error"]
+    assert_equal ID, store.read("digest").record["routine"]
+    refute(@client.calls.any? { |c| c.first == :create })
+  end
+
+  def test_recreate_from_another_origin_or_without_one_is_refused
+    adopt
+    @client.routines.clear
+    status, = post("/api/automations/recreate", { "slug" => "digest" }, { "host" => "127.0.0.1:4567", "origin" => "http://evil.example" })
+    assert_equal "403 Forbidden", status
+    status, = post("/api/automations/recreate", { "slug" => "digest" }, { "host" => "127.0.0.1:4567" })
+    assert_equal "403 Forbidden", status
+    assert_empty gui.jobs.running
+    assert_empty @client.calls
+  end
+
+  def test_the_recreate_button_is_rendered_only_for_a_missing_routine
+    page = served_page(gui, ok_host)
+    assert page.match?(/d\.missing \? [^:]{0,300}data-au="recreate">Re-create on claude\.ai</m), "the button sits in the missing branch"
+    assert_includes page, %(case "recreate": run("recreate"))
   end
 
   def test_force_push_overwrites_a_drifted_routine

@@ -16,7 +16,7 @@ the `kind: automation` work item of the same slug (`routine:`, `runner: cloud` i
   call: each row's routine (`remote`, nil when it isn't on claude.ai) and `drift` (its
   `updated_at` differs from the stored `remote_updated_at`), plus `unmanaged` routines (no local
   files). `detail(slug)` — one entry, its routine and its last 10 runs.
-- `push(slug, force:)` — the one path that changes a routine. No `routine` yet: create, then
+- `push(slug, force:, recreate:)` — the one path that changes a routine. No `routine` yet: create, then
   merge the created routine (through `from_routine`, so the API's defaults such as `enabled` and
   `model` land locally; the local prompt stays) into the store and write the id to the item, so a
   second push has nothing to send. Else `get` the routine, refuse with `Stale` when it
@@ -24,9 +24,13 @@ the `kind: automation` work item of the same slug (`routine:`, `runner: cloud` i
   enabled as they are, the stored connectors always, and all job fields when any of prompt /
   model / repos / tools / environment differs. A field unset locally is no change. Stores the answer's `updated_at`; nothing differing writes nothing.
   A routine gone from claude.ai (`RoutineMissing`) fails the push with "<slug>: routine … isn't on
-  claude.ai any more — delete the automation in qm (`qm automation delete <slug>`)", writing nothing.
+  claude.ai any more — delete the automation in qm (`qm automation delete <slug>`) or re-create it
+  (`qm automation push <slug> --recreate`)", writing nothing. `recreate:` acts only when that `get`
+  answers `RoutineMissing`: it drops the stored id and takes the create path above (connectors
+  explicit, the new routine merged into the yml, its id on the item, `remote_updated_at` stored,
+  state synced); on a routine still there, or one never pushed, it refuses and writes nothing.
 - Each push with changes appends one `history` note (`pushed: schedule → Mon 07:00 (0 6 * * 1
-  UTC); prompt changed`, `paused`, `resumed`, `created routine trig_…`), and the item's state
+  UTC); prompt changed`, `paused`, `resumed`, `created routine trig_…`, `re-created routine trig_new (was trig_old)`), and the item's state
   follows `enabled`: `active`, or `fridge` while paused (`in_progress` until the first push).
 - `pull` — the routine overwrites both local files (each kept as `.bak`), notes what changed.
 - `pause` / `resume` — a local edit of `enabled`, then push. `run` — run it now.
@@ -41,7 +45,7 @@ the `kind: automation` work item of the same slug (`routine:`, `runner: cloud` i
 **CLI** — `qm automation list | show | adopt | push | pull | pause | resume | run | delete`
 (`CliAutomation`). `list` prints the local rows (slug, project, state, local schedule,
 enabled) before its one list call, then a status line per row (last run, next run, drift) and
-the routines "Not managed by qm"; `show` adds repos, connectors, links and runs. `delete` asks
+the routines "Not managed by qm"; `push --recreate` re-creates a routine deleted on claude.ai; `show` adds repos, connectors, links and runs. `delete` asks
 y/N on stdin unless `--yes`; without an API delete it prints "paused; delete it on claude.ai:
 <routine url>". A client error is an `ArgumentError`: its message, exit 1.
 
@@ -146,7 +150,8 @@ prompt, file paths, model, repos, connectors, the item's description and notes a
 last loaded, and `runsState` (`idle`, `ok`, `error`). POSTs under `/api/automations/`: `refresh`
 (the one list call), `runs` (the client's `runs(id, limit: 10)`, no GET of the routine), `apply` (a schedule as `days` + local `time` or a raw `cron`, and/or the `prompt`: saved
 locally at once, then pushed), `pause`, `resume`, `run`, `pull`, `push` (`force` overwrites a
-drifted routine), `delete`, `adopt` (`id`, `project`) and `new` (`title`, `project`: the item
+drifted routine), `recreate` (the detail's **Re-create on claude.ai**, shown only while the
+row is `missing`), `delete`, `adopt` (`id`, `project`) and `new` (`title`, `project`: the item
 and empty files; the page then opens its chat with the `automation-chat` action, as Edit with
 Claude does). Every network call is a `GuiJobs` job (`automations`, `automation-<slug>`,
 `automation-runs-<slug>`, `automation-adopt-<id>`); each action ends with one list call, and the
@@ -174,6 +179,7 @@ GUI's `describe` action (`/api/action`, as `qm describe` does): the item's text,
 - The local files are the source of truth; a remote routine only changes through
   `Automations#push` (pause and resume included), which refuses a drifted routine unless forced.
 - Drift is never resolved automatically: the user picks pull or a forced push.
+- Re-create only on the user's `--recreate` or button, and only when `get` answers `RoutineMissing`.
 - History notes are one line each (notes are append-only).
 - Fetching is on demand: one list call per listing, runs only for one automation; no polling.
 - A write is atomic per file (`AtomicFile`) and keeps each replaced file as `<file>.bak`.

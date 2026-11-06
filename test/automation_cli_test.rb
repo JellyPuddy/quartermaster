@@ -385,10 +385,58 @@ class AutomationCliTest < Minitest::Test
     _, err = qm_fails("push", "digest")
 
     assert_includes err, "digest: routine #{ID} isn't on claude.ai any more — delete the automation in qm " \
-                         "(`qm automation delete digest`)"
+                         "(`qm automation delete digest`) or re-create it (`qm automation push digest --recreate`)"
     refute_includes err, "API changed"
     assert_equal [[:get, ID]], @client.calls
     assert_equal ID, store.read("digest").record["routine"]
+  end
+
+  def test_recreate_makes_a_new_routine_for_one_deleted_on_claude_ai
+    adopt
+    @client.routines.delete(ID)
+    edit({ "name" => "Digest again" })
+    out, = qm("push", "digest", "--recreate")
+
+    assert_equal "digest: re-created routine trig_NEW (was #{ID})\n", out
+    _, fields = @client.calls.find { |c| c.first == :create }
+    assert_equal ["Digest again", SLACK.map { |c| c["name"] }], [fields["name"], fields["connectors"].map { |c| c["name"] }]
+    assert_equal ["trig_NEW", "2026-11-06T09:00:01Z"], store.read("digest").record.values_at("routine", "remote_updated_at")
+    assert_equal "trig_NEW", item.routine
+    assert_equal "active", item.state
+    assert_equal "pushed: re-created routine trig_NEW (was #{ID})", history.last
+    assert_equal "digest: nothing to push\n", qm("push", "digest").first
+  end
+
+  def test_recreate_without_connectors_clears_the_api_default_set
+    adopt
+    @client.routines.delete(ID)
+    edit({ "connectors" => [], "enabled" => false })
+    qm("push", "digest", "--recreate")
+
+    _, fields = @client.calls.find { |c| c.first == :create }
+    assert_equal true, Quartermaster::RoutinesClient.request_body(fields)["clear_mcp_connections"]
+    assert_equal "fridge", item.state
+  end
+
+  def test_recreate_refuses_a_routine_that_still_exists
+    adopt
+    before = File.read(store.yml_path("digest"))
+    _, err = qm_fails("push", "digest", "--recreate")
+
+    assert_includes err, "digest: routine #{ID} is still on claude.ai — `qm automation push digest` updates it"
+    assert_equal [[:get, ID]], @client.calls
+    assert_equal before, File.read(store.yml_path("digest"))
+    assert_equal ID, item.routine
+  end
+
+  def test_recreate_of_an_automation_never_pushed_says_push_creates_it
+    service = Quartermaster::Automations.new(client: @client)
+    service.create_item("fresh", "Fresh", project: "MyApp")
+    store.write("fresh", { "runner" => "cloud", "name" => "Fresh", "cron" => "0 8 * * *" }, "Do it.")
+    _, err = qm_fails("push", "fresh", "--recreate")
+
+    assert_includes err, "fresh has no routine yet: `qm automation push fresh` creates it"
+    assert_empty @client.calls
   end
 
   def test_delete_of_a_routine_already_gone_from_claude_ai_removes_it_from_qm

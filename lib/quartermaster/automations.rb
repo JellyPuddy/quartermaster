@@ -84,17 +84,24 @@ module Quartermaster
     end
 
     # Sends the local files: creates the routine on the first push, else
-    # updates what differs. Answers {"created" => bool, "changes" => [...]}.
-    def push(slug, force: false)
+    # updates what differs. `recreate` makes a new routine for one deleted on
+    # claude.ai, and only then. Answers {"created" => bool, "changes" => [...]}.
+    def push(slug, force: false, recreate: false)
       entry = entry!(slug)
       id = entry.record["routine"]
+      raise ArgumentError, "#{slug} has no routine yet: `qm automation push #{slug}` creates it" if recreate && !id
       return create(entry) unless id
 
       remote = begin
         @client.get(id)
       rescue RoutinesClient::RoutineMissing => e
-        raise ArgumentError, "#{slug}: #{e.message} (`qm automation delete #{slug}`)"
+        return create(entry, was: id) if recreate
+
+        raise ArgumentError, "#{slug}: #{e.message} (`qm automation delete #{slug}`) or re-create it " \
+                             "(`qm automation push #{slug} --recreate`)"
       end
+      raise ArgumentError, "#{slug}: routine #{id} is still on claude.ai — `qm automation push #{slug}` updates it" if recreate
+
       check_fresh!(entry, remote) unless force
       changes = pushable_changes(fields_of(entry), RoutinesClient.fields(remote))
       updated = changes.empty? ? remote : @client.update(id, update_fields(entry, changes))
@@ -163,7 +170,9 @@ module Quartermaster
       File.exist?(WorkItem.path_for(slug)) ? WorkItem.find(slug) : nil
     end
 
-    def create(entry)
+    # The first push, or a re-create (`was` the deleted routine's id): the
+    # new routine's id and updated_at replace the stored ones.
+    def create(entry, was: nil)
       routine = @client.create(fields_of(entry).compact.merge(connectors_of(entry)))
       @store.write(entry.slug, AutomationStore.from_routine(routine).first, entry.prompt)
       item = WorkItem.with_lock do
@@ -172,7 +181,8 @@ module Quartermaster
           fresh.save
         end
       end
-      finish_push(entry.slug, entry.record["enabled"], ["created routine #{routine["id"]}"], created: true, item: item)
+      change = was ? "re-created routine #{routine["id"]} (was #{was})" : "created routine #{routine["id"]}"
+      finish_push(entry.slug, entry.record["enabled"], [change], created: true, item: item)
     end
 
     def finish_push(slug, enabled, changes, created:, item: WorkItem.find(slug))

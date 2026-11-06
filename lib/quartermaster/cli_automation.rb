@@ -9,7 +9,7 @@ module Quartermaster
 
     AUTOMATION_USAGE = "usage: qm automation list | show SLUG | new TITLE --project P [--description TEXT] | " \
                        "edit SLUG | adopt TRIGGER_ID --project P [--slug S] | " \
-                       "push SLUG [--force] | pull SLUG | pause SLUG | resume SLUG | run SLUG | delete SLUG [--yes]"
+                       "push SLUG [--force | --recreate] | pull SLUG | pause SLUG | resume SLUG | run SLUG | delete SLUG [--yes]"
     AUTOMATION_SUBCOMMANDS = { "list" => :automation_list, "show" => :automation_show, "new" => :automation_new,
                                "edit" => :automation_edit, "adopt" => :automation_adopt, "push" => :automation_push, "pull" => :automation_pull, "pause" => :automation_pause,
                                "resume" => :automation_resume, "run" => :automation_run,
@@ -98,8 +98,9 @@ module Quartermaster
 
     def automation_push(argv)
       force = argv.delete("--force")
+      recreate = argv.delete("--recreate")
       slug = automation_slug(argv)
-      result = automations.push(slug, force: !force.nil?)
+      result = automations.push(slug, force: !force.nil?, recreate: !recreate.nil?)
       puts result["changes"].empty? ? "#{slug}: nothing to push" : "#{slug}: #{result["changes"].join("; ")}"
     end
 

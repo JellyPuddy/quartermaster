@@ -4,13 +4,13 @@ module Quartermaster
   # The ⚙ area's Automations tab, server side (/api/automations…), over the
   # Automations service. GET answers the local files at once, merged with the
   # routines the last list call saw; every network call (the list, a detail's
-  # runs, push, pull, pause, resume, run, delete, adopt) runs as a GuiJobs job,
+  # runs, push, recreate, pull, pause, resume, run, delete, adopt) runs as a GuiJobs job,
   # never under the action mutex, and each action ends with one list call so
   # the tab shows where it landed. Automations being off or Claude Code's
   # token having expired is a state of the tab (`remote.state`), not an error.
   class GuiAutomations
     JSON_TYPE = "application/json; charset=utf-8"
-    ACTIONS = %w[apply pause resume run pull push delete].freeze
+    ACTIONS = %w[apply pause resume run pull push recreate delete].freeze
     UNREACHABLE = [RoutinesClient::NotEnabled, RoutinesClient::TokenExpired].freeze
 
     def initialize(jobs:, client:, store: AutomationStore.new)
@@ -188,6 +188,7 @@ module Quartermaster
       when "apply", "push"
         changes = @service.push(slug, force: verb == "push" && request["force"] == true)["changes"]
         changes.empty? ? "#{slug}: nothing to push" : "#{slug}: #{changes.join("; ")}"
+      when "recreate" then "#{slug}: #{@service.push(slug, recreate: true)["changes"].join("; ")}"
       when "pull"
         changes = @service.pull(slug)
         changes.empty? ? "#{slug}: already in sync" : "#{slug}: pulled #{changes.join(", ")}"
