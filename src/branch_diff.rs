@@ -84,7 +84,7 @@ pub fn branch_worktrees(root: &str) -> Vec<(String, String)> {
 
 /// `Launcher#start_cwd`: the worktree on the item's branch, else the project root, else where its
 /// last session ran, else home.
-fn start_cwd(item: &WorkItem) -> String {
+pub(crate) fn start_cwd(item: &WorkItem) -> String {
     let root = crate::project_map::root_for(item.project().as_deref());
     if let Some(root) = &root {
         let worktrees = branch_worktrees(root);

@@ -2,12 +2,19 @@
 //! tests) keeping it apart from any tmux the user runs. Each chat is its own tmux session holding
 //! one window, both named after the item's slug.
 //!
-//! Only what looking at a chat and renaming it needs is ported. Starting a chat, typing into one,
+//! Looking at a chat, renaming it and starting one (`open`, on a click) are ported. Typing into one,
 //! respawning and killing stay in Ruby: nothing types into the user's chat without their click.
 
 use std::process::{Command, Stdio};
 
 const DEFAULT_SOCKET: &str = "qm";
+
+/// Strips Claude Code's own variables before exec: a child that inherits the nested-session marker
+/// stops saving its transcript.
+const SCRUB: &str = "for v in $(env | sed -n \"s/^\\(CLAUDE[A-Za-z0-9_]*\\)=.*/\\1/p\"); do unset \"$v\"; done; exec \"$@\"";
+
+/// Re-applied on every open: no status bar, wheel scrolls, no escape delay, no prefix key.
+const OPTIONS: [[&str; 2]; 7] = [["status", "off"], ["mouse", "on"], ["escape-time", "10"], ["prefix", "None"], ["history-limit", "50000"], ["window-size", "latest"], ["terminal-features[90]", "xterm*:hyperlinks"]];
 
 pub struct Tmux {
     socket: String,
@@ -41,6 +48,31 @@ impl Tmux {
 
     pub fn live(&self, name: &str) -> bool {
         valid_name(name) && self.run(&["has-session", "-t", &format!("={name}")]).0
+    }
+
+    /// Starts `argv` in a new detached session `name` at `cwd` (`Tmux#open`): false when it already
+    /// runs, an error text when tmux could not start it.
+    pub fn open(&self, name: &str, cwd: &str, argv: &[String], env: &[(String, String)]) -> Result<bool, String> {
+        if !valid_name(name) {
+            return Err(format!("not a usable tmux name: {}", crate::ruby_text::inspect_ascii(name).ok_or_else(String::new)?));
+        }
+        if self.live(name) {
+            return Ok(false);
+        }
+        let cwd = if std::path::Path::new(cwd).is_dir() { cwd.to_string() } else { crate::data_root::home() };
+        let mut args: Vec<String> = ["new-session", "-d", "-s", name, "-n", name, "-c", &cwd, "-x", "160", "-y", "48", "sh", "-c", SCRUB, "qm-chat", "env"].iter().map(|s| s.to_string()).collect();
+        args.extend(env.iter().map(|(k, v)| format!("{k}={v}")));
+        args.extend(argv.iter().cloned());
+        for pair in OPTIONS {
+            args.extend([";", "set-option", "-g", pair[0], pair[1]].map(String::from));
+        }
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let out = Command::new("tmux").args(["-L", &self.socket]).args(&refs).env_remove("TMUX").stdin(Stdio::null()).stderr(Stdio::piped()).stdout(Stdio::piped()).output().map_err(|e| e.to_string())?;
+        if out.status.success() {
+            return Ok(true);
+        }
+        let mixed = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        Err(format!("tmux could not start {name}: {}", crate::ruby_text::strip(&mixed)))
     }
 
     /// The process the session's pane runs (the chat, once its launcher exec'd), or None.

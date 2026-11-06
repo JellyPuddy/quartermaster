@@ -204,6 +204,7 @@ fn run(payload: &Value) -> R<Value> {
             }
             issues(&cmd, &slug, &args)
         }
+        "pane-start" | "pane-resume" => pane(&slug, cmd == "pane-start", &args),
         "pf-mode" => {
             let mut item = find(&slug)?;
             item.update_pf_mode(&args.text("mode")?).map_err(error)?;
@@ -240,6 +241,30 @@ fn issues(cmd: &str, slug: &str, args: &Args) -> R<Value> {
         i::delete(slug, name).map_err(|_| Stop::Unported)?;
     }
     Ok(json!({"ok": true, "cleared": created}))
+}
+
+/// `gui_pane`: the item's chat in a tmux session of its own — already running is `attached`, a live
+/// session outside the GUI refuses, else Start or Resume opens it.
+fn pane(slug: &str, fresh: bool, args: &Args) -> R<Value> {
+    let item = find(slug)?;
+    let tmux = crate::tmux::Tmux::new();
+    if tmux.live(slug) {
+        return Ok(json!({"ok": true, "attached": true}));
+    }
+    let session = if fresh {
+        None
+    } else {
+        let given = args.text("session")?;
+        (!strip(&given).is_empty()).then_some(given)
+    };
+    let plan = crate::launcher::chat_plan(&item, fresh, session.as_deref()).ok_or(Stop::Unported)?;
+    if matches!(plan.mode, crate::launcher::Mode::Live) {
+        return Err(fail(format!("{slug} has a chat running outside the GUI — take it over here once it ends")));
+    }
+    match tmux.open(slug, &plan.cwd, &plan.argv, &plan.env) {
+        Ok(_) => Ok(json!({"ok": true, "mode": plan.mode.name()})),
+        Err(message) => Err(fail(message)),
+    }
 }
 
 fn slug_shaped(slug: &str) -> bool {

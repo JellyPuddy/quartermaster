@@ -1555,3 +1555,141 @@ fn resolving_offers_the_cleanup_plan_as_ruby_does() {
         assert!(plans.contains(needle), "the world should reach {needle}: {plans}");
     }
 }
+
+fn tmux_on(socket: &str, args: &[&str]) -> String {
+    let out = Command::new("tmux").args(["-L", socket]).args(args).env_remove("TMUX").output().unwrap();
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+/// What a pane opened by an action left in tmux: sessions, what each runs and how big, the server options.
+fn tmux_picture(socket: &str) -> String {
+    let mut sessions: Vec<String> = tmux_on(socket, &["list-sessions", "-F", "#{session_name}"]).lines().map(String::from).collect();
+    sessions.sort();
+    let mut panes: Vec<String> = tmux_on(socket, &["list-panes", "-a", "-F", "#{session_name}|#{window_name}|#{pane_start_command}|#{window_width}x#{window_height}"]).lines().map(String::from).collect();
+    panes.sort();
+    let options: String = ["status", "mouse", "escape-time", "prefix", "history-limit", "window-size"].iter().map(|o| tmux_on(socket, &["show-options", "-g", o])).collect();
+    format!("{sessions:?}\n{}\n{options}{}", panes.join("\n"), tmux_on(socket, &["show-options", "-g", "terminal-features"]))
+}
+
+fn records(dir: &Path) -> Vec<String> {
+    let mut all: Vec<String> = fs::read_dir(dir).map(|r| r.map(|e| e.unwrap().path()).filter(|p| !p.file_name().unwrap().to_string_lossy().starts_with('.')).map(|p| fs::read_to_string(p).unwrap_or_default()).collect()).unwrap_or_default();
+    all.sort();
+    all
+}
+
+#[test]
+fn the_pane_actions_open_the_same_chats_as_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let me = std::process::id();
+    let stamp = |secs: i64| (chrono::Utc::now() - chrono::Duration::seconds(secs)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let work = base.path().join("work-a");
+    fs::create_dir_all(&work).unwrap();
+    git(&w.repo, &["worktree", "add", "-b", "wt-b", base.path().join("wt-b").to_str().unwrap()]);
+    let dashed = |p: &Path| -> String { p.to_string_lossy().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect() };
+    let mut log = String::new();
+    let mut session = |id: &str, cwd: &Path, transcript: Option<PathBuf>, pid: u32, age: i64| {
+        let path = transcript.unwrap_or_else(|| w.transcripts.join(format!("p/{id}.jsonl")));
+        if !path.to_string_lossy().contains("MISSING") {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, "{}\n").unwrap();
+        }
+        log += &format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"{id}\",\"cwd\":\"{}\",\"pid\":{pid},\"transcript_path\":\"{}\",\"ts\":\"{}\"}}\n", cwd.display(), path.display(), stamp(age));
+    };
+    session("r-one", &work, None, 999999, 500);
+    let gone = w.repo.join(".claude/worktrees/gone");
+    session("r-anc", &gone, Some(w.transcripts.join(dashed(&w.repo)).join("r-anc.jsonl")), 999999, 400);
+    session("r-exp", &work, Some(w.transcripts.join("p/MISSING.jsonl")), 999999, 300);
+    session("r-live", &work, None, me as u32, 200);
+    session("r-old", &work, None, 999999, 900);
+    session("r-new", &gone, Some(w.transcripts.join(dashed(&w.repo)).join("r-new.jsonl")), 999999, 100);
+    session("r-np", &work, None, 999999, 150);
+    fs::write(w.root.join("sessions.jsonl"), log).unwrap();
+    let item = |slug: &str, project: &str, extra: &str| {
+        fs::write(w.root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: {slug}\nstate: in_progress\nproject: {project}\ncreated: '2026-01-01'\n{extra}---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n")).unwrap();
+    };
+    item("p-fresh", "demo", "");
+    item("p-wt", "demo", "branches:\n- wt-b\n");
+    item("p-resume", "demo", "sessions:\n- id: r-one\n");
+    item("p-anc", "demo", "sessions:\n- id: r-anc\n");
+    item("p-exp", "demo", "sessions:\n- id: r-exp\n");
+    item("p-live", "demo", "sessions:\n- id: r-live\n- id: r-one\n");
+    item("p-two-a", "demo", "sessions:\n- id: r-old\n- id: r-new\n");
+    item("p-two-b", "demo", "sessions:\n- id: r-old\n- id: r-new\n");
+    item("p-two-c", "demo", "sessions:\n- id: r-old\n- id: r-new\n");
+    item("p-two-d", "demo", "sessions:\n- id: r-old\n- id: r-new\n");
+    item("p-two-e", "demo", "sessions:\n- id: r-old\n- id: r-new\n");
+    item("p-noproject", "No project", "sessions:\n- id: r-np\n");
+    item("p-nothing", "No project", "");
+    item("p-restart", "demo", "");
+    let chat = base.path().join("fake-chat");
+    fs::write(&chat, "#!/bin/sh\n{ echo \"cwd: $(pwd)\"; echo \"args: $*\"; echo \"QM_ITEM=${QM_ITEM-unset}\"; echo \"claude vars: $(env | grep -c '^CLAUDE')\"; } > \"$FAKE_REC/.tmp-$$\"\nmv \"$FAKE_REC/.tmp-$$\" \"$FAKE_REC/rec-$$\"\nexec sleep 300\n").unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&chat, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let (rec_ruby, rec_rust) = (base.path().join("rec-ruby"), base.path().join("rec-rust"));
+    for d in [&rec_ruby, &rec_rust] {
+        fs::create_dir_all(d).unwrap();
+    }
+    let (sock_ruby, sock_rust) = ("qm-test-pane-ruby", "qm-test-pane-rust");
+    for s in [sock_ruby, sock_rust] {
+        tmux_on(s, &["kill-server"]);
+    }
+    let env_for = |sock: &str, rec: &Path| -> Vec<(&'static str, String)> {
+        vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("QM_TMUX_SOCKET", sock.to_string()), ("QM_CHAT_COMMAND", format!("{} --flag value", chat.display())), ("FAKE_REC", rec.display().to_string()), ("CLAUDECODE", "1".to_string()), ("CLAUDE_CODE_ENTRYPOINT", "cli".to_string())]
+    };
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let ruby = start_env(false, &w.root, &w.home, &env_for(sock_ruby, &rec_ruby));
+    let rust = start_env(true, &root2, &w.home, &env_for(sock_rust, &rec_rust));
+    let origin = [("Content-Type", "application/json".to_string())];
+    let mut opened = 0usize;
+    let mut step = |label: &str, body: &str| {
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, body, true), request(rust.port, "POST", "/api/action", &origin, body, true));
+        assert_eq!(shown(&a, ruby.port), shown(&b, rust.port), "{label}: reply to {body}");
+        if String::from_utf8_lossy(&a.body).contains("\"mode\"") {
+            opened += 1;
+        }
+        for _ in 0..100 {
+            if records(&rec_ruby).len() >= opened && records(&rec_rust).len() >= opened {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert_eq!(records(&rec_ruby), records(&rec_rust), "{label}: what the chats were started with, after {body}");
+        assert_eq!(tmux_picture(sock_ruby), tmux_picture(sock_rust), "{label}: tmux after {body}");
+    };
+    let act = |cmd: &str, slug: &str, args: &str| format!("{{\"cmd\":\"{cmd}\",\"slug\":\"{slug}\",\"args\":{args}}}");
+    let cases: Vec<(&str, String)> = vec![
+        ("start", act("pane-start", "p-fresh", "{}")),
+        ("start again", act("pane-start", "p-fresh", "{}")),
+        ("start in the worktree", act("pane-start", "p-wt", "{}")),
+        ("resume", act("pane-resume", "p-resume", "{}")),
+        ("resume where the worktree is gone", act("pane-resume", "p-anc", "{}")),
+        ("resume an expired transcript", act("pane-resume", "p-exp", "{}")),
+        ("start refuses a live session", act("pane-start", "p-live", "{}")),
+        ("resume refuses a live session", act("pane-resume", "p-live", r#"{"session":"r-one"}"#)),
+        ("resume the newest", act("pane-resume", "p-two-a", "{}")),
+        ("resume the chosen older one", act("pane-resume", "p-two-b", r#"{"session":"r-old"}"#)),
+        ("resume an unknown session", act("pane-resume", "p-two-c", r#"{"session":"nope"}"#)),
+        ("resume a blank session", act("pane-resume", "p-two-d", r#"{"session":"  "}"#)),
+        ("resume a numeric session", act("pane-resume", "p-two-e", r#"{"session":5}"#)),
+        ("start ignores the session", act("pane-start", "p-restart", r#"{"session":"r-old"}"#)),
+        ("no project, a session's cwd", act("pane-start", "p-noproject", "{}")),
+        ("no project, no session", act("pane-start", "p-nothing", "{}")),
+        ("missing item", act("pane-start", "nowhere", "{}")),
+        ("resume missing item", act("pane-resume", "nowhere", "{}")),
+        ("start null slug", r#"{"cmd":"pane-start","slug":null}"#.to_string()),
+    ];
+    for (label, body) in &cases {
+        step(label, body);
+    }
+    let seen = records(&rec_rust).join("\n");
+    for needle in ["--flag value", "--resume r-one", "QM_ITEM=p-fresh", "claude vars: 0", "wt-b"] {
+        assert!(seen.contains(needle), "the world should reach {needle}: {seen}");
+    }
+    for s in [sock_ruby, sock_rust] {
+        tmux_on(s, &["kill-server"]);
+    }
+}
