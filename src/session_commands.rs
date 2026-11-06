@@ -16,6 +16,7 @@ const USAGE: &str = include_str!("usage.txt");
 pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
     Some(match command {
         "viewer-rows" | "session-rows" | "inbox-rows" | "cycle-filter" => crate::viewer_commands::run(command, args),
+        "rotate" | "caffeinate" | "pane-start" | "pane-resume" => return crate::chats_commands::run(command, args),
         "ask" => crate::ask_command::ask(args),
         "grep" => crate::grep_command::grep(args),
         "attention" => crate::attention_command::attention(),
