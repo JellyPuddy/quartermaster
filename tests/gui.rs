@@ -3036,3 +3036,67 @@ fn the_session_route_matches_ruby() {
         assert!(seen.contains(needle), "the world should reach {needle}");
     }
 }
+
+#[test]
+fn the_issues_routes_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    git(&w.repo, &["remote", "add", "origin", "git@github.com:acme/widgets.git"]);
+    let issue = |slug: &str, name: &str, text: &str| {
+        let p = w.root.join(format!("issues/{slug}/{name}"));
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, text).unwrap();
+    };
+    let item = |slug: &str, state: &str, project: &str| {
+        fs::write(w.root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: Title of {slug}\nstate: {state}\nproject: {project}\ncreated: '2026-01-01'\n---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n")).unwrap();
+    };
+    for (slug, state, project) in [("is-a", "in_progress", "demo"), ("is-b", "fridge", "demo"), ("is-c", "resolved", "demo"), ("is-d", "in_progress", "elsewhere"), ("is-e", "in_progress", "demo"), ("is-f", "fridge", "demo"), ("is-g", "fridge", "demo"), ("is-weird", "weird", "demo"), ("is-empty", "in_progress", "demo")] {
+        item(slug, state, project);
+    }
+    issue("is-a", "01-bug.md", "---\ntitle: A bug\nkind: bug\ngroup: '  auth  '\nparent: epic-1\ndeps: [one, none, 2]\nchange: tweak\n---\n\n\n   \nthe body\n\nwith  paragraphs  \n\n");
+    issue("is-a", "02-made.md", "---\ntitle: Made\nkind: feature\nnumber: '#12'\ndeps: just-one\n---\n\nbody two\n");
+    issue("is-a", "03-broken.md", "---\ntitle: Broken\nkind: epic\n---\n\nbad kind\n");
+    issue("is-a", "04-nofront.md", "no front matter here\n");
+    issue("is-a", "05-acked.md", "---\ntitle: Acked now\nkind: bug\n---\n\nnew words\n");
+    issue("is-a", "06-changed.md", "---\ntitle: Changed title\nkind: bug\n---\n\nnow longer\n");
+    issue("is-a", "07-plain.md", "---\ntitle: Plain\nkind: feature\nnumber: 5\n---\n\n");
+    fs::create_dir_all(w.root.join("issues/is-a/.prev")).unwrap();
+    for (name, seen, extra) in [("05-acked.md", "---\ntitle: Acked now\nkind: bug\n---\n\nnew words\n", ",\"acked\":true,\"previous\":\"---\\ntitle: Old\\nkind: bug\\n---\\n\\nold\\n\""), ("06-changed.md", "---\ntitle: Changed title\nkind: bug\n---\n\nnow longer\n", ",\"previous\":\"---\\ntitle: Before\\nkind: bug\\n---\\n\\nshort\\n\"")] {
+        fs::write(w.root.join(format!("issues/is-a/.prev/{name}.json")), format!("{{\"v\":1,\"seen\":{},\"seen_at\":1.0{extra}}}", serde_json::to_string(seen).unwrap())).unwrap();
+    }
+    issue("is-b", "01-only.md", "---\ntitle: Only\nkind: bug\n---\n\nb\n");
+    issue("is-c", "01-done.md", "---\ntitle: Done\nkind: bug\nnumber: 3\n---\n\nc\n");
+    issue("is-d", "01-x.md", "---\ntitle: X\nkind: bug\n---\n\nd\n");
+    issue("is-e", "01-broken.md", "---\nkind: bug\n---\n\nno title\n");
+    issue("is-f", "01-f.md", "---\ntitle: F\nkind: bug\n---\n\nf\n");
+    issue("is-g", "01-g.md", "---\ntitle: G\nkind: bug\n---\n\ng\n");
+    issue("is-weird", "01-w.md", "---\ntitle: W\nkind: bug\n---\n\nw\n");
+    issue("no-item", "01-orphan.md", "---\ntitle: Orphan\nkind: bug\n---\n\no\n");
+    fs::create_dir_all(w.root.join("issues/is-empty")).unwrap();
+    fs::create_dir_all(w.root.join("issues/.hidden")).unwrap();
+    let now = std::time::SystemTime::now();
+    for (slug, name, age) in [("is-a", "01-bug.md", 1000), ("is-b", "01-only.md", 5000), ("is-c", "01-done.md", 100), ("is-d", "01-x.md", 3000), ("is-e", "01-broken.md", 2000), ("is-f", "01-f.md", 4000), ("is-g", "01-g.md", 4000), ("is-weird", "01-w.md", 6000)] {
+        fs::File::options().write(true).open(w.root.join(format!("issues/{slug}/{name}"))).unwrap().set_modified(now - std::time::Duration::from_secs(age)).unwrap();
+    }
+    let env: Vec<(&str, String)> = vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string())];
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let ruby = start_env(false, &w.root, &w.home, &env);
+    let rust = start_env(true, &root2, &w.home, &env);
+    let mut seen = String::new();
+    let mut paths = vec!["/api/issues".to_string()];
+    for slug in ["is-a", "is-b", "is-c", "is-d", "is-e", "no-item", "is-empty", "nowhere", "bad%20slug", "../x"] {
+        paths.push(format!("/api/issues/{slug}"));
+    }
+    paths.push("/api/issues".to_string());
+    paths.push("/api/issues/is-a".to_string());
+    for path in &paths {
+        let (a, b) = (request(ruby.port, "GET", path, &[], "", true), request(rust.port, "GET", path, &[], "", true));
+        assert_eq!(shown(&a, ruby.port), shown(&b, rust.port), "{path}");
+        assert_eq!(issue_traces(&w.root, &root2), issue_traces(&root2, &w.root), "files after {path}");
+        seen += &String::from_utf8_lossy(&a.body);
+    }
+    for needle in ["\"repo\":\"acme/widgets\"", "\"repo\":null", "\"acknowledged\":true", "\"previous\":{\"title\":\"Before\"", "\"deps\":[\"one\",\"2\"]", "\"group\":\"auth\"", "kind must be feature or bug", "no frontmatter", "title is missing", "\"created\":true", "no work item", "\"state\":\"resolved\""] {
+        assert!(seen.contains(needle), "the world should reach {needle}: {seen}");
+    }
+}

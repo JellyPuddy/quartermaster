@@ -58,7 +58,7 @@ fn present(s: &Option<String>) -> Option<&str> {
 }
 
 /// `Quartermaster.github_repo`: "owner/name" of the checkout's origin, if it looks like one.
-fn github_repo(root: &str) -> Option<String> {
+pub(crate) fn github_repo(root: &str) -> Option<String> {
     let remote = g(root, &["remote", "get-url", "origin"]).unwrap_or_default();
     Regex::new(r"[:/]([^/:]+/[^/]+?)(?:\.git)?/?\z").unwrap().captures(&remote).map(|c| c[1].to_string())
 }

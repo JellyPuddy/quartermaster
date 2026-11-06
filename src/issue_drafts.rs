@@ -29,6 +29,7 @@ pub struct Issue {
     pub number: Option<u64>,
     /// 12 hex of the SHA-1 of the file, as the page tells revisions apart.
     pub version: String,
+    pub data: Data,
 }
 
 pub struct Broken {
@@ -44,8 +45,21 @@ pub struct Loaded {
     seen: Vec<(String, String)>,
 }
 
+/// What `IssueDrafts#parse` makes of a file.
+#[derive(Clone)]
+pub struct Data {
+    pub title: String,
+    pub kind: String,
+    pub group: String,
+    pub parent: String,
+    pub deps: Vec<String>,
+    pub change: String,
+    pub number: Option<u64>,
+    pub body: String,
+}
+
 enum Parsed {
-    Issue { title: String, number: Option<u64> },
+    Issue(Data),
     Error(String),
     Unsure,
 }
@@ -86,10 +100,10 @@ pub fn load(slug: &str) -> Option<Loaded> {
         match parse(&content) {
             Parsed::Unsure => return None,
             Parsed::Error(error) => errors.push(Broken { file: name.clone(), error }),
-            Parsed::Issue { title, number } => {
+            Parsed::Issue(data) => {
                 snapshot_is_readable(&dir, name, &content)?;
                 let version = crate::sha1::hex(content.as_bytes())[..12].to_string();
-                issues.push(Issue { file: name.clone(), title, number, version });
+                issues.push(Issue { file: name.clone(), title: data.title.clone(), number: data.number, version, data });
                 seen.push((name.clone(), content));
             }
         }
@@ -133,7 +147,11 @@ fn parse(content: &str) -> Parsed {
         _ => return Parsed::Error("frontmatter is not a set of fields".into()),
     };
     match fields(&map) {
-        Ok(Ok((title, number))) => Parsed::Issue { title, number },
+        Ok(Ok(mut data)) => {
+            let body = Regex::new(r"\A(?:[ \t]*\r?\n)+").unwrap().replace(&caps[2], "").into_owned();
+            data.body = crate::ruby_text::rstrip(&body).to_string();
+            Parsed::Issue(data)
+        }
         Ok(Err(message)) => Parsed::Error(message),
         Err(()) => Parsed::Unsure,
     }
@@ -141,7 +159,7 @@ fn parse(content: &str) -> Parsed {
 
 /// Everything `parse` checks past the YAML, in Ruby's order: `Ok(Err(message))` is the error entry it
 /// would raise, `Err(())` a value this port can't read the way Psych does.
-fn fields(map: &serde_yaml::Mapping) -> Result<Result<(String, Option<u64>), String>, ()> {
+fn fields(map: &serde_yaml::Mapping) -> Result<Result<Data, String>, ()> {
     macro_rules! refuse {
         ($e:expr) => {
             match $e? {
@@ -159,11 +177,11 @@ fn fields(map: &serde_yaml::Mapping) -> Result<Result<(String, Option<u64>), Str
         return Ok(Err(format!("kind must be {}, not '{kind}'", KINDS.join(" or "))));
     }
     let number = refuse!(number(map.get("number")));
-    refuse!(scalar(map, "group"));
-    refuse!(scalar(map, "parent"));
-    refuse!(deps(map.get("deps")));
-    refuse!(scalar(map, "change"));
-    Ok(Ok((title, number)))
+    let group = strip(&refuse!(scalar(map, "group"))).to_string();
+    let parent = strip(&refuse!(scalar(map, "parent"))).to_string();
+    let deps = refuse!(deps(map.get("deps")));
+    let change = strip(&refuse!(scalar(map, "change"))).to_string();
+    Ok(Ok(Data { title, kind, group, parent, deps, change, number, body: String::new() }))
 }
 
 /// `value.to_s` as Ruby would give it for what Psych would have loaded; `Err(())` when that isn't
@@ -313,7 +331,7 @@ pub fn acknowledge(slug: &str, name: &str) -> Result<bool, ()> {
     match parse(&content) {
         Parsed::Unsure => return Err(()),
         Parsed::Error(_) => return Ok(false),
-        Parsed::Issue { .. } => {}
+        Parsed::Issue(_) => {}
     }
     snapshot_is_readable(&dir, name, &content).ok_or(())?;
     let mut snapshot = remember(&dir, name, &content).map_err(|_| ())?;
@@ -391,4 +409,34 @@ pub fn signature() -> String {
         })
         .collect();
     crate::sha1::hex(stats.join("|").as_bytes())[..12].to_string()
+}
+
+/// `IssueDrafts#read`: `{"issues", "errors"}` — the files that parse (not yet created on GitHub first), the
+/// ones that don't, each issue with the revision snapshot's verdict. Writes the snapshots as every read
+/// does. `None` for what only Ruby reads exactly.
+pub fn read(slug: &str) -> Option<Json> {
+    let loaded = load(slug)?;
+    let mut issues: Vec<(bool, Json)> = vec![];
+    for (issue, (name, content)) in loaded.issues.iter().zip(loaded.seen.iter()) {
+        let snapshot = remember(&loaded.dir, name, content).ok()?;
+        let acknowledged = snapshot.get("acked") == Some(&Json::Bool(true));
+        let previous = if acknowledged {
+            Json::Null
+        } else {
+            match snapshot.get("previous") {
+                Some(Json::String(text)) => match parse(text) {
+                    Parsed::Issue(d) => json!({"title": d.title, "body": d.body}),
+                    Parsed::Error(_) => Json::Null,
+                    Parsed::Unsure => return None,
+                },
+                _ => Json::Null,
+            }
+        };
+        let d = &issue.data;
+        issues.push((d.number.is_some(), json!({"file": issue.file, "title": d.title, "kind": d.kind, "group": d.group, "parent": d.parent, "deps": d.deps, "change": d.change, "number": d.number, "created": d.number.is_some(), "body": d.body, "acknowledged": acknowledged, "previous": previous, "version": issue.version})));
+    }
+    prune(&loaded.dir, &loaded.names);
+    issues.sort_by_key(|(created, _)| *created as u8);
+    let errors: Vec<Json> = loaded.errors.iter().map(|e| json!({"file": e.file, "error": e.error})).collect();
+    Some(json!({"issues": issues.into_iter().map(|(_, v)| v).collect::<Vec<_>>(), "errors": errors}))
 }
