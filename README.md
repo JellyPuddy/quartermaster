@@ -69,7 +69,8 @@ qm install-hooks                                     # prints the hooks snippet
    `ln -s ~/code/quartermaster/statusline/statusline.rb ~/.claude/statusline.rb` and set
    `"statusLine": {"type": "command", "command": "/usr/bin/ruby ~/.claude/statusline.rb"}` in settings.json.
 4. Start a Claude Code session anywhere. qm creates `~/.claude/quartermaster/` (override with
-   `QM_ROOT`) with a commented `config.yml`. Run `qm gui` and open the URL it prints.
+   `QM_ROOT`) with a near-empty `config.yml`. Run `qm gui` and open the URL it prints, then add
+   your projects in the ⚙ Settings view (`,`) or with `qm config set` (see [config.yml](#configyml)).
 
 ## Optional features
 
@@ -157,6 +158,17 @@ in `overview_artifact:`, and link the `work-items` skill. Then "show my work ite
 session refreshes it. To act on items from the phone, talk to a qm chat through Claude's Remote
 Control.
 
+### Automations
+
+Manage your claude.ai cloud routines (scheduled Claude Code agents that run on claude.ai) from
+qm: each one is a work item with its schedule and prompt in local files. The ⚙ Automations tab
+and `qm automation list | show | adopt | push | pull | pause | resume | run | delete` list
+them, adopt the ones you already have, and push your edits; `qm automation new` and **Edit with
+Claude** create or change one through the item's chat. Off until
+`qm config set automations.token_source claude_code`, because it uses your Claude Code login
+(see [What qm does on your machine](#what-qm-does-on-your-machine)). Details:
+[docs/areas/automations.md](docs/areas/automations.md).
+
 ### Other tools
 
 - **ripgrep** (`rg`): transcript search.
@@ -170,12 +182,19 @@ Control.
 - Opening URLs, Warp tabs and the GUI: `open`; focusing the GUI tab in Arc: `osascript`.
 - Keeping the Mac awake while chats work (`qm caffeinate`): `/usr/bin/caffeinate`.
 - The status line runs under macOS's system Ruby, `/usr/bin/ruby`.
+- Automations read Claude Code's login from the keychain: `security`.
 
 ## config.yml
 
 `~/.claude/quartermaster/config.yml` maps project names to repo roots. Sessions in a repo (or
 its worktrees) get that project; everything else is "No project". A project is a plain path,
 or a mapping with `root:` plus optional feature keys. A missing key leaves that feature off.
+
+Edit it in `qm gui`'s ⚙ Settings view (the header's cog, or `,`), with
+`qm config get | set | unset | path` (`qm config set projects.my-app ~/code/my-app`), or by
+hand. Both editors check the whole file and refuse to write one with errors. They rewrite it in
+qm's own layout, so **comments you add by hand are dropped** on their next save; the previous
+file is kept as `config.yml.bak`.
 
 ```yaml
 projects:
@@ -210,6 +229,9 @@ loose_starters:                   # presets in the loose-chat dialog's "Start wi
     # to know about them.", so the prompt ends mid-sentence, ready for that.
     prompt: Load the open issues of the current sprint. Don't change code. Then give a one-line count of them and
 
+automations:
+  token_source: claude_code       # turns on Automations: qm uses Claude Code's login token
+
 # prices:                         # per-model token price overrides (docs/areas/side-panel.md)
 # overview_artifact: <URL>        # the published phone page's artifact URL
 ```
@@ -232,8 +254,16 @@ Know this before you install it:
   test-database and IDE commands you configure.
 - **Some features start `claude -p` in the background** (summaries, asides, benchmarks), which
   counts against your Claude usage or API bill.
-- **Nothing is sent anywhere by qm itself**, except through the tools it calls: `gh` (GitHub),
-  `claude` (Anthropic), and the claude.ai artifacts you choose to publish.
+- **With [Automations](#automations) on, qm reads Claude Code's login token from the macOS
+  keychain** (`security find-generic-password -s "Claude Code-credentials"`) and your
+  organization id from `~/.claude.json`, on every call. The token is never stored, logged or
+  refreshed; an expired one is yours to renew by opening Claude Code. The routines it manages
+  run in the cloud on their schedule, with the connectors listed in each automation's file.
+- **qm sends nothing itself, except to `api.anthropic.com` with Automations on**: the routines
+  API, called directly with that token, only while you use the Automations tab or
+  `qm automation`.
+  Everything else goes through the tools it calls: `gh` (GitHub), `claude` (Anthropic), and the
+  claude.ai artifacts you choose to publish.
 
 ## Development
 

@@ -12,8 +12,10 @@ symlinks and hook registrations point at it, so never rename or move it.
 - **Docs:** `docs/README.md` indexes `docs/overview.md`, `docs/rejected.md` and one page per
   area (`docs/areas/*.md`); each area page's `**Code:**` line names the files it owns and its
   `## Rules` hold that area's constraints. Read the page for the code you touch, and update it
-  in the same commit: rewrite the paragraph, don't append; what is true now, why goes in the
+  in the same commit: rewrite the paragraph, don't append; what is true now, why in the
   commit message. `test/docs_shape_test.rb` checks their shape.
+- **README.md** is for users: a user-visible change updates it too, and anything new qm reads
+  or sends goes in its "What qm does on your machine".
 - **Data:** `~/.claude/quartermaster/`, overridden by `QM_ROOT` (tests always do). Every file
   in it and its owning page → `docs/overview.md`.
 - **GUI page scripts are classic `<script>` tags in load order, not ES modules**: shared
