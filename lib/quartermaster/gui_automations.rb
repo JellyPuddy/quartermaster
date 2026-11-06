@@ -44,10 +44,9 @@ module Quartermaster
 
     def list
       remote = remote_state
-      routines = remote["routines"] || {}
-      rows = @service.local.map { |row| row_payload(row["entry"], row["item"], routines) }
+      rows = @service.local.map { |row| row_payload(row["entry"], row["item"], remote["routines"]) }
       managed = rows.filter_map { |r| r["routine"] }
-      unmanaged = routines.values.reject { |r| managed.include?(r["id"]) }.map do |r|
+      unmanaged = (remote["routines"] || {}).values.reject { |r| managed.include?(r["id"]) }.map do |r|
         { "id" => r["id"], "name" => r["name"], "cron" => r["cron_expression"], "enabled" => r["enabled"] != false,
           "schedule" => schedule(r["cron_expression"]), "routineUrl" => Automations.routine_url(r["id"]) }
       end
@@ -59,7 +58,7 @@ module Quartermaster
       item = @service.local.find { |row| row["slug"] == slug }&.dig("item")
       record = entry.record
       runs = @lock.synchronize { @runs[slug] } || { "state" => "idle" }
-      row_payload(entry, item, remote_state["routines"] || {}).merge(
+      row_payload(entry, item, remote_state["routines"]).merge(
         "prompt" => entry.prompt, "model" => record["model"], "promptPath" => @store.prompt_path(slug),
         "ymlPath" => @store.yml_path(slug),
         "repos" => Array(record["sources"]).filter_map { |s| s.dig("git_repository", "url") || s["url"] if s.is_a?(Hash) },
@@ -82,13 +81,13 @@ module Quartermaster
 
     def row_payload(entry, item, routines)
       record = entry.record
-      remote = routines[record["routine"]]
+      remote = routines&.[](record["routine"])
       run = remote && remote["last_run"].is_a?(Hash) ? remote["last_run"] : nil
       { "slug" => entry.slug, "name" => record["name"] || item&.title || entry.slug, "project" => item&.project,
         "state" => item&.state, "cron" => record["cron"], "schedule" => schedule(record["cron"]),
         "enabled" => record["enabled"] != false, "runner" => record["runner"] || "cloud", "routine" => record["routine"],
         "routineUrl" => record["routine"] && Automations.routine_url(record["routine"]),
-        "drift" => @service.drift?(entry, remote), "missing" => !record["routine"].nil? && !routines.empty? && remote.nil?,
+        "drift" => @service.drift?(entry, remote), "missing" => !record["routine"].nil? && !routines.nil? && remote.nil?,
         "nextRunAt" => remote&.dig("next_run_at"),
         "lastRun" => run && { "status" => run["status"], "at" => run["finished_at"] || run["fired_at"],
                               "url" => run["session_id"] && RoutinesClient.run_url(run["session_id"]) } }
@@ -215,7 +214,8 @@ module Quartermaster
     end
 
     # A network action as a job: its message for the toast, then one list
-    # call; an unreachable API answers quietly (the tab shows why).
+    # call, also after a refusal (a stale push then shows its drift); an
+    # unreachable API answers quietly (the tab shows why).
     def job(key, label)
       @jobs.background(key, label) do
         message, slug = yield
@@ -224,6 +224,9 @@ module Quartermaster
       rescue *UNREACHABLE => e
         unreachable(e)
         { "ok" => false, "quiet" => true, "error" => e.message }
+      rescue ArgumentError => e
+        fetch_routines
+        { "ok" => false, "error" => e.message }
       end
     end
 

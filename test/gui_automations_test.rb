@@ -157,6 +157,24 @@ class GuiAutomationsTest < Minitest::Test
     assert_equal "resolved", Quartermaster::WorkItem.find("digest").state
   end
 
+  def test_a_stale_apply_is_refused_and_the_list_call_after_it_shows_the_drift
+    adopt
+    @client.touch(ID)
+    post("/api/automations/apply", "slug" => "digest", "cron" => "30 6 * * 1")
+    job = settle.first
+    assert_equal false, job["ok"]
+    assert_includes @client.calls, [:list]
+    assert_equal true, row(get("/api/automations"))["drift"]
+  end
+
+  def test_a_routine_gone_from_claude_ai_shows_as_missing_even_when_none_are_left
+    adopt
+    @client.routines.clear
+    post("/api/automations/refresh")
+    settle
+    assert_equal true, row(get("/api/automations"))["missing"]
+  end
+
   def test_force_push_overwrites_a_drifted_routine
     adopt
     @client.touch(ID)
