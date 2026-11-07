@@ -736,3 +736,34 @@ pub fn tip(item: &mut WorkItem, branch: Option<&str>) -> R<Value> {
     let base = base_for(&root, &path, Some(&name), &head)?;
     Ok(json!({"root": root, "path": path, "branch": name, "ref": reference, "head": head, "base": base}))
 }
+
+/// `PrRevisions#review?`.
+pub(crate) fn pr_is_review(item: &WorkItem) -> bool {
+    review_pr(item).is_some()
+}
+
+/// `PrRevisions#find` without a memo.
+pub(crate) fn pr_find(item: &WorkItem, repo: Option<&str>, branch: Option<&str>) -> R<Value> {
+    find_pr(item, repo, branch, false)
+}
+
+/// `PrRevisions#label`.
+pub(crate) fn pr_label(pr: &Value) -> String {
+    label(pr)
+}
+
+/// `PrRevisions#at_url`: the PR a github.com pull URL names, open or not.
+pub(crate) fn pr_at_url(url: &str) -> R<Value> {
+    let re = Regex::new(r"\Ahttps://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/pull/([0-9]+)/?\z").unwrap();
+    let text = crate::ruby_text::strip(url);
+    let Some(m) = re.captures(text) else { return arg(format!("{url} is not a GitHub pull request URL")) };
+    let url = format!("https://github.com/{}/pull/{}", &m[1], &m[2]);
+    if let Some(hit) = cached_prs()?.into_iter().find(|pr| pr["url"].as_str() == Some(url.as_str())) {
+        return Ok(hit);
+    }
+    let found = gh_view(&url, &m[1])?;
+    if found.is_null() {
+        return arg(format!("gh found no pull request {url}"));
+    }
+    Ok(found)
+}

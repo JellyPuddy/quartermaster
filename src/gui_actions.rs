@@ -161,6 +161,19 @@ fn run(payload: &Value) -> R<Value> {
             Ok(ok())
         }
         "state" => state(&slug, &args),
+        "pr" => {
+            let item = find(&slug)?;
+            let branch = match args.get("branch")? {
+                Value::Null => None,
+                Value::String(b) => Some(b.clone()),
+                _ => return Err(Stop::Unported),
+            };
+            match crate::pr_status::PrStatus::new(0).open_web(&item, branch.as_deref()) {
+                Ok(_) => Ok(ok()),
+                Err(Some(m)) => Err(fail(m)),
+                Err(None) => Err(Stop::Unported),
+            }
+        }
         "snooze" => {
             let mut item = find(&slug)?;
             let duration = match args.get("duration")? {

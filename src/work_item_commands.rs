@@ -51,6 +51,7 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
         "attach" => attach(args),
         "ack" => ack(args),
         "cleanup" => crate::cleanup_command::cleanup(args),
+        "pr" => pr(args),
         "pr-requires" => crate::pr_requires_command::run(args),
         "sweep" => crate::cleanup_command::sweep(args),
         "issues-dir" => issues_dir(args),
@@ -262,6 +263,20 @@ fn move_to(a: &[String]) -> Outcome {
     let mut item = tri!(WorkItem::find(slug));
     tri!(item.move_to(project));
     done(format!("{slug} → {project}\n"))
+}
+
+/// `qm pr SLUG`: the branch's PR in the browser; a choice of branches is the fzf picker's (Ruby's).
+fn pr(a: &[String]) -> Outcome {
+    let Some(slug) = a.first() else { return abort("usage: qm pr SLUG") };
+    let item = tri!(WorkItem::find(slug));
+    if item.branches().len() > 1 {
+        return Outcome::Delegate;
+    }
+    match crate::pr_status::PrStatus::new(crate::clock::now_f64() as i64).open_web(&item, None) {
+        Ok(_) => done(String::new()),
+        Err(Some(m)) => abort(&format!("qm: {m}")),
+        Err(None) => Outcome::Delegate,
+    }
 }
 
 fn retitle(a: &[String]) -> Outcome {

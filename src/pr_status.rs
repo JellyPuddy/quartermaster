@@ -79,6 +79,31 @@ impl PrStatus {
         self.config.roots().into_iter().find(|(n, _)| *n == name).map(|(_, r)| r)
     }
 
+    /// `PrStatus#open_web`: the branch's PR in the browser (the newest linked branch by default).
+    /// `Err(Some(message))` is Ruby's `ArgumentError`; `Err(None)` what this port leaves to Ruby.
+    pub fn open_web(&self, item: &WorkItem, branch: Option<&str>) -> Result<String, Option<String>> {
+        let branches = item.branches();
+        if branches.is_empty() {
+            return Err(Some(format!("'{}' has no branch linked", item.slug)));
+        }
+        let project = item.project();
+        let Some(root) = self.root_for(project.as_deref()) else { return Err(Some(format!("no repo root configured for project '{}'", project.unwrap_or_default()))) };
+        let branch = match branch.filter(|b| !b.is_empty()) {
+            Some(b) => b.to_string(),
+            None => branches.last().cloned().unwrap_or_default(),
+        };
+        if !std::path::Path::new(root).is_dir() {
+            return Err(None);
+        }
+        let status = Command::new("gh").args(["pr", "view", &branch, "--web"]).current_dir(root).status();
+        match status {
+            Ok(s) if s.success() => Ok(branch),
+            Ok(_) => Err(Some(format!("no PR found for branch {branch}"))),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(Some(format!("no PR found for branch {branch}"))),
+            Err(_) => Err(None),
+        }
+    }
+
     /// The branch's PR state ("OPEN", "MERGED", "CLOSED") or None; fetches when the cache has expired.
     pub fn state_for(&self, item: &WorkItem, branch: &str) -> Option<String> {
         let key = format!("{}#{branch}", item.project().unwrap_or_default());

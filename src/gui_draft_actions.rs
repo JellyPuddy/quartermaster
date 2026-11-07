@@ -178,8 +178,16 @@ fn blank(v: Option<&Value>) -> bool {
     matches!(v, None | Some(Value::Null)) || v == Some(&Value::String(String::new()))
 }
 
+/// What a writer may veto under the drafts file's lock: the draft a put would replace, if any.
+pub(crate) type Guard<'a> = &'a mut dyn FnMut(Option<&Value>) -> Result<(), Halt>;
+
 /// `draft-put` for a chat diff comment.
 pub(crate) fn put(slug: &str, raw: &Map<String, Value>) -> R<Value> {
+    Ok(merged("draft", put_guarded(slug, raw, &mut |_| Ok(()))?))
+}
+
+/// `Drafts#put_diff_comment` with its guard block.
+pub(crate) fn put_guarded(slug: &str, raw: &Map<String, Value>, guard: Guard) -> R<Value> {
     let kind = match raw.get("kind") {
         None | Some(Value::Null) => String::new(),
         Some(v) => to_s(v).map_err(halt)?,
@@ -226,6 +234,7 @@ pub(crate) fn put(slug: &str, raw: &Map<String, Value>) -> R<Value> {
                 break;
             }
         }
+        guard(found.map(|i| &list[i]))?;
         if strip(&comment).is_empty() {
             if let Some(i) = found {
                 list.remove(i);
@@ -270,7 +279,7 @@ pub(crate) fn put(slug: &str, raw: &Map<String, Value>) -> R<Value> {
         Ok(Value::Object(entry))
     })
     .map_err(halt)?;
-    Ok(merged("draft", stored))
+    Ok(stored)
 }
 
 /// `SecureRandom.hex(n)`.
@@ -369,6 +378,11 @@ fn node_id(s: &str) -> bool {
 
 /// `thread-reply-put`: one reply draft per review thread, authored by the user.
 pub(crate) fn thread_reply_put(slug: &str, raw: &Map<String, Value>) -> R<Value> {
+    Ok(merged("draft", thread_reply_guarded(slug, raw, "user", &mut |_| Ok(()))?))
+}
+
+/// `Drafts#put_thread_reply` with its guard block; `author` is "user" or "claude".
+pub(crate) fn thread_reply_guarded(slug: &str, raw: &Map<String, Value>, author: &str, guard: Guard) -> R<Value> {
     let get = |k: &str| raw.get(k).unwrap_or(&Value::Null);
     let Some(thread) = get("thread").as_str().filter(|t| node_id(t)) else {
         return Err(Stop::refuse(format!("'{}' is not a review thread id", to_s(get("thread")).map_err(halt)?)));
@@ -389,11 +403,12 @@ pub(crate) fn thread_reply_put(slug: &str, raw: &Map<String, Value>) -> R<Value>
         }
     }
     fields.insert("number".into(), json!(number));
-    fields.insert("author".into(), json!("user")); // the action always sets it
+    fields.insert("author".into(), json!(author));
     let comment = to_s(get("comment")).map_err(halt)?;
     let thread = thread.to_string();
     let stored = update(slug, |list| {
         let found = list.iter().position(|e| e.get("kind") == Some(&json!("thread-reply")) && e.get("thread") == Some(&json!(thread)));
+        guard(found.map(|i| &list[i]))?;
         if strip(&comment).is_empty() {
             if let Some(i) = found {
                 list.remove(i);
@@ -413,7 +428,7 @@ pub(crate) fn thread_reply_put(slug: &str, raw: &Map<String, Value>) -> R<Value>
         Ok(Value::Object(added))
     })
     .map_err(halt)?;
-    Ok(merged("draft", stored))
+    Ok(stored)
 }
 
 const ANNOTATION_FIELDS: [&str; 11] = ["page", "selector", "text", "html", "component", "components", "owners", "context", "regions", "url", "title"];

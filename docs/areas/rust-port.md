@@ -17,7 +17,7 @@ context, byte for byte), `sessions`, `inbox`, `dismiss`, feature-use recording f
 session log, config.yml's project side, the project map, and the work-item commands `new` (with `--pf-mode`, checked against the project's dev-server modes under the lock),
 `note`, `retag`, `state`, `link-branch`, `unlink-branch`, `board`, `move`, `retitle`,
 `describe`, `detach` and `list` (bare `qm` without a terminal lists too), and `show-session`,
-`session-item`, `help`, `install-hooks`, `ack`, `snooze`, `show`, `attach`, `new --session`, `cleanup SLUG`, `state … resolved`, `issues-dir`, `draft list`, `sweep` (the plan) and the viewer's read-side commands `viewer-rows`, `session-rows`, `inbox-rows` and `cycle-filter`, `grep`, `ask`, `rotate`, `caffeinate`, `pane-start`, `pane-resume` and `pr-requires` (add, note, remove, list; `pr`, which opens a browser, stays Ruby). `attach` and `new --session` move the session between items under the work-item lock (reentrant per thread, as Ruby's, so a
+`session-item`, `help`, `install-hooks`, `ack`, `snooze`, `show`, `attach`, `new --session`, `cleanup SLUG`, `state … resolved`, `issues-dir`, `draft list`, `sweep` (the plan) and the viewer's read-side commands `viewer-rows`, `session-rows`, `inbox-rows` and `cycle-filter`, `grep`, `ask`, `rotate`, `caffeinate`, `pane-start`, `pane-resume` and `pr-requires` (add, note, remove, list). `attach` and `new --session` move the session between items under the work-item lock (reentrant per thread, as Ruby's, so a
 compound move nests) and then rename the chat's tmux session to follow it, unless it is an aside, its
 pane runs another process, or the new name already has a chat (then a warning). `Tmux` is ported only
 as far as listing, liveness, pane pid and rename; starting a chat, typing into it, respawn and kill
@@ -112,9 +112,9 @@ a file that is not UTF-8 or not a regular file. A command that gets "not mine" g
 anything is written (`state … resolved` checks first, since it changes the item); `Loaded::record`
 is the step that writes snapshots, and repeating it changes nothing. `qm draft list` prints the
 drafts file's entries (`--json` in the json 2.7 gem's layout, where an empty array is `[` blank line
-`]`); `qm draft add` stays Ruby (it resolves a PR through `gh` and writes the drafts file).
+`]`); `qm draft add` is Rust (`chat_review_drafts.rs`: the PR through the PRs cache or `gh`, the anchor check, a guard under the drafts lock that keeps the user's drafts; `tests/cli_draft.rs` pins it against a local origin holding `refs/pull/7/head`), and so is `qm pr` for an item with one branch (`pr_status::open_web`, shared with the GUI's `pr` action); several branches go to the fzf picker, which stays Ruby.
 
-Still Ruby, even for these words: `draft add`, `state … resolved` and `cleanup SLUG`
+Still Ruby, even for these words: `draft add` with an option in a spelling OptionParser reads its own way (abbreviations, `0x10`), `state … resolved` and `cleanup SLUG`
 for an item whose issue drafts `load` declines, and every argument shape the
 port does not parse exactly as Ruby's `OptionParser` does — abbreviated or `=`-joined flags,
 `--`, a dash-leading title or note, `retag` positions Ruby's `Integer()` would read as octal or

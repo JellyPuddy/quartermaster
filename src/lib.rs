@@ -8,6 +8,7 @@ pub mod cli_format;
 pub mod caffeinate;
 pub mod chat_attention;
 pub mod chat_history;
+pub mod chat_review_drafts;
 pub mod chats_commands;
 pub mod branch_diff;
 pub mod cleanup;

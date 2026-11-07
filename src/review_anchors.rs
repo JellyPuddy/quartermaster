@@ -161,6 +161,18 @@ impl ReviewAnchors {
         Ok(self.find_line(path, side, &Value::from(line))?.map(|l| l.text))
     }
 
+    /// The texts of every diff line from one line to another, both included and in diff order; None
+    /// unless both are in the same hunk.
+    pub fn span(&self, path: &str, from_side: &Value, from_line: i64, side: &Value, line: i64) -> R<Option<Vec<String>>> {
+        let (Some(first), Some(last)) = (self.find_line(path, from_side, &Value::from(from_line))?, self.find_line(path, side, &Value::from(line))?) else { return Ok(None) };
+        if first.hunk != last.hunk {
+            return Ok(None);
+        }
+        let (lo, hi) = if first.position > last.position { (last.position, first.position) } else { (first.position, last.position) };
+        let hunk = &self.files[path]["hunks"][first.hunk];
+        Ok(Some(hunk["lines"].as_array().into_iter().flatten().filter(|l| l["p"].as_i64().is_some_and(|p| p >= lo && p <= hi)).map(|l| l["s"].as_str().unwrap_or("").to_string()).collect()))
+    }
+
     pub fn position(&self, path: &str, side: &Value, line: &Value) -> R<Option<i64>> {
         Ok(self.find_line(path, side, line)?.map(|l| l.position))
     }

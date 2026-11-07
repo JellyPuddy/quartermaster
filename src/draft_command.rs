@@ -15,8 +15,100 @@ const USAGE: &str = "usage: qm draft add SLUG --path P --line N [options] (--bod
 pub fn run(a: &[String]) -> Outcome {
     match a.first().map(String::as_str) {
         Some("list") => list(&a[1..]),
-        Some("add") => Outcome::Delegate,
+        Some("add") => add(&a[1..]),
         _ => abort(USAGE),
+    }
+}
+
+/// `qm draft add`: the options OptionParser reads in their exact spellings; any other form (an
+/// abbreviation, a short switch, an odd number) is Ruby's to read.
+fn add(a: &[String]) -> Outcome {
+    use crate::chat_review_drafts::{add as record, Fail, Options};
+    let mut o = Options { side: "new".into(), ..Default::default() };
+    let (mut slug, mut body, mut body_file) = (None::<&String>, None::<String>, None::<String>);
+    let mut i = 0;
+    while i < a.len() {
+        let (name, inline) = match a[i].split_once('=') {
+            Some((n, v)) if n.starts_with("--") => (n, Some(v.to_string())),
+            _ => (a[i].as_str(), None),
+        };
+        if !name.starts_with('-') || name == "-" {
+            if slug.replace(&a[i]).is_some() {
+                return Outcome::Delegate;
+            }
+            i += 1;
+            continue;
+        }
+        if name == "--file" {
+            if inline.is_some() {
+                return Outcome::Delegate;
+            }
+            o.file = true;
+            i += 1;
+            continue;
+        }
+        if !["--path", "--line", "--start-line", "--side", "--commit", "--reply-to", "--pr", "--branch", "--body", "--body-file"].contains(&name) {
+            return Outcome::Delegate;
+        }
+        let value = match inline {
+            Some(v) => v,
+            None => {
+                i += 1;
+                let Some(v) = a.get(i) else { return Outcome::Delegate };
+                v.clone()
+            }
+        };
+        i += 1;
+        let int = |v: &str| if !v.is_empty() && v.len() < 18 && v.bytes().all(|b| b.is_ascii_digit()) && (v == "0" || !v.starts_with('0')) { v.parse::<i64>().ok() } else { None };
+        match name {
+            "--path" => o.path = Some(value),
+            "--line" => match int(&value) { Some(n) => o.line = Some(n), None => return Outcome::Delegate },
+            "--start-line" => match int(&value) { Some(n) => o.start_line = Some(n), None => return Outcome::Delegate },
+            "--side" if value == "old" || value == "new" => o.side = value,
+            "--commit" => o.commit = Some(value),
+            "--reply-to" => o.reply_to = Some(value),
+            "--pr" => o.pr = Some(value),
+            "--branch" => o.branch = Some(value),
+            "--body" => body = Some(value),
+            "--body-file" => body_file = Some(value),
+            _ => return Outcome::Delegate,
+        }
+    }
+    let Some(slug) = slug else { return Outcome::Delegate };
+    if body_file.is_some() && body.is_some() {
+        return abort("qm draft add: give the comment with --body or --body-file, not both");
+    }
+    if let Some(file) = body_file {
+        let text = if file == "-" {
+            let mut t = String::new();
+            std::io::Read::read_to_string(&mut std::io::stdin(), &mut t).map(|_| t)
+        } else {
+            std::fs::read_to_string(&file)
+        };
+        let Ok(text) = text else { return Outcome::Delegate };
+        body = Some(text);
+    }
+    let prefixed = |message: &str| abort(&format!("qm draft add: {message}"));
+    let item = match WorkItem::find(slug) {
+        Ok(i) => i,
+        Err(e) if e.class == UNEMITTABLE => return Outcome::Delegate,
+        Err(e) if e.class == "ArgumentError" => return prefixed(&e.message),
+        Err(e) => return abort(&format!("qm: {}", e.message)),
+    };
+    if !crate::cleanup_command::valid_slug(&item.slug) {
+        return prefixed(&format!("'{}' is not a work item slug", item.slug));
+    }
+    // Ruby passes `body:` as a required keyword
+    let Some(text) = body else { return prefixed("missing keyword: :body") };
+    o.body = text;
+    match record(&item, &o) {
+        Ok((entry, replaced)) => {
+            let Some(place) = draft_where(&entry) else { return Outcome::Delegate };
+            let id = s(entry.get("id")).unwrap_or_default();
+            done(puts(&format!("🤖 {place} drafted ({id}){}", if replaced { " — replaced your earlier draft there" } else { "" })))
+        }
+        Err(Fail::Arg(m)) => prefixed(&m),
+        Err(Fail::Unported) => Outcome::Delegate,
     }
 }
 
@@ -108,7 +200,7 @@ fn last_segment(repo: &str) -> &str {
     repo.split('/').collect::<Vec<_>>().into_iter().rev().skip_while(|p| p.is_empty()).next().unwrap_or("")
 }
 
-fn draft_where(entry: &Map<String, Value>) -> Option<String> {
+pub(crate) fn draft_where(entry: &Map<String, Value>) -> Option<String> {
     let pr = format!("{}#{}", last_segment(&s(entry.get("repo"))?), s(entry.get("number"))?);
     let at = if truthy(entry.get("path")) { Some(format!("{}{}", s(entry.get("path"))?, lines_label(entry)?)) } else { None };
     let at_text = at.clone().unwrap_or_default();

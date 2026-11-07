@@ -1128,6 +1128,10 @@ fn the_data_actions_match_ruby() {
         ("retitle colon", act("retitle", "stale", r#"{"title":"Fix: the thing # not a comment"}"#)),
         ("retitle empty", act("retitle", "stale", r#"{"title":"  "}"#)),
         ("retitle missing", act("retitle", "nowhere", r#"{"title":"x"}"#)),
+        ("pr missing item", act("pr", "nowhere", "{}")),
+        ("pr", act("pr", "stale", "{}")),
+        ("pr named branch", act("pr", "stale", r#"{"branch":"no-such-branch"}"#)),
+        ("pr odd branch", act("pr", "stale", r#"{"branch":""}"#)),
         ("move", act("move", "stale", r#"{"project":"elsewhere"}"#)),
         ("move quoted", act("move", "stale", r#"{"project":"a: b"}"#)),
         ("move back", act("move", "stale", r#"{"project":"demo"}"#)),
@@ -5463,7 +5467,13 @@ fn benchmark_runs_match_ruby() {
         git(&wt, &["commit", "-q", "-m", "moved"]);
     }
     set("plan-mode", "");
-    let moved = get("/api/benchmark/w-exist?branch=feat-w&run={FIRST}".replace("{FIRST}", &ida).as_str());
+    let moved = {
+        let path = |id: &str| format!("/api/benchmark/w-exist?branch=feat-w&run={id}");
+        let (a, b) = (request(ruby.port, "GET", &path(&ida), &[], "", true), request(rust.port, "GET", &path(&idb), &[], "", true));
+        let (sa, sb) = (norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1));
+        assert_eq!(sa, sb, "GET the moved run");
+        sa
+    };
     assert!(moved.contains("\"moved\":true") && moved.contains("\"canRerun\":false"), "{moved}");
     let refused = post_each("a re-run after the branch moved", &|i| act("benchmark-rerun", "w-exist", serde_json::json!({"run": if i == 0 { ida.clone() } else { idb.clone() }})));
     assert!(refused.contains("moved since it ran"), "{refused}");
