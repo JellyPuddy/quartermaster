@@ -274,3 +274,128 @@ fn merged(key: &str, v: Value) -> Value {
     out.as_object_mut().unwrap().insert(key.into(), v);
     out
 }
+
+/// `Drafts#revise`: a new text bumps the rev and clears what the last post said.
+fn revise(entry: &mut Map<String, Value>, comment: &str) -> Result<(), Halt> {
+    if entry.get("comment") == Some(&json!(comment)) {
+        return Ok(());
+    }
+    entry.shift_remove("failed");
+    entry.insert("comment".into(), json!(comment));
+    bumped(entry)
+}
+
+fn new_entry(kind: &str, comment: &str, fields: &Map<String, Value>) -> Map<String, Value> {
+    let at = now_utc_iso();
+    let mut entry = Map::new();
+    entry.insert("id".into(), json!(random_id()));
+    entry.insert("kind".into(), json!(kind));
+    entry.insert("comment".into(), json!(comment));
+    entry.insert("rev".into(), json!(1));
+    entry.insert("createdAt".into(), json!(at));
+    entry.insert("updatedAt".into(), json!(at));
+    for (k, v) in fields {
+        entry.insert(k.clone(), v.clone());
+    }
+    entry
+}
+
+/// `issue-comment-put`: one draft per issue file and block; a blank comment removes it.
+pub(crate) fn issue_comment_put(slug: &str, raw: &Map<String, Value>) -> R<Value> {
+    let file = raw.get("file").unwrap_or(&Value::Null);
+    let Some(name) = file.as_str().filter(|n| crate::issue_drafts::is_issue_file(n)) else {
+        return Err(Stop::refuse(format!("'{}' is not an issue file", to_s(file).map_err(halt)?)));
+    };
+    let text = |k: &str| -> Result<String, Halt> { Ok(strip(&to_s(raw.get(k).unwrap_or(&Value::Null))?).to_string()) };
+    let (block, title) = (text("block").map_err(halt)?, text("title").map_err(halt)?);
+    let comment = to_s(raw.get("comment").unwrap_or(&Value::Null)).map_err(halt)?;
+    let mut fields = Map::new();
+    fields.insert("file".into(), json!(name));
+    fields.insert("block".into(), json!(block));
+    fields.insert("title".into(), json!(title));
+    let stored = update(slug, |list| {
+        let mut found = None;
+        for (i, e) in list.iter().enumerate() {
+            let m = e.as_object().ok_or(Halt::Unported)?;
+            if m.get("kind") == Some(&json!("issue-comment")) {
+                let same = |k: &str| -> Result<bool, Halt> { Ok(to_s(m.get(k).unwrap_or(&Value::Null))? == to_s(fields.get(k).unwrap_or(&Value::Null))?) };
+                if same("file")? && same("block")? {
+                    found = Some(i);
+                    break;
+                }
+            }
+        }
+        if strip(&comment).is_empty() {
+            if let Some(i) = found {
+                list.remove(i);
+            }
+            return Ok(Value::Null);
+        }
+        if let Some(i) = found {
+            let entry = as_map(&mut list[i])?;
+            if !title.is_empty() {
+                entry.insert("title".into(), json!(title));
+            }
+            revise(entry, &comment)?;
+            return Ok(Value::Object(entry.clone()));
+        }
+        let added = new_entry("issue-comment", &comment, &fields);
+        list.push(Value::Object(added.clone()));
+        Ok(Value::Object(added))
+    })
+    .map_err(halt)?;
+    Ok(merged("draft", stored))
+}
+
+fn node_id(s: &str) -> bool {
+    (1..=200).contains(&s.chars().count()) && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// `thread-reply-put`: one reply draft per review thread, authored by the user.
+pub(crate) fn thread_reply_put(slug: &str, raw: &Map<String, Value>) -> R<Value> {
+    let get = |k: &str| raw.get(k).unwrap_or(&Value::Null);
+    let Some(thread) = get("thread").as_str().filter(|t| node_id(t)) else {
+        return Err(Stop::refuse(format!("'{}' is not a review thread id", to_s(get("thread")).map_err(halt)?)));
+    };
+    let Some(_) = get("repo").as_str().filter(|r| crate::review_threads::repo_ok(r)) else {
+        return Err(Stop::refuse(format!("'{}' is not an owner/name repo", to_s(get("repo")).map_err(halt)?)));
+    };
+    let number = crate::transcript_usage::to_i(raw.get("number")).map_err(|_| Stop::Unported)?;
+    if number <= 0 {
+        return Err(Stop::refuse("a reply needs its pull request's number"));
+    }
+    let mut fields = Map::new();
+    for k in ["thread", "repo", "number", "url", "path", "line", "author"] {
+        if let Some(v) = raw.get(k) {
+            if !blank(Some(v)) {
+                fields.insert(k.into(), v.clone());
+            }
+        }
+    }
+    fields.insert("number".into(), json!(number));
+    fields.insert("author".into(), json!("user")); // the action always sets it
+    let comment = to_s(get("comment")).map_err(halt)?;
+    let thread = thread.to_string();
+    let stored = update(slug, |list| {
+        let found = list.iter().position(|e| e.get("kind") == Some(&json!("thread-reply")) && e.get("thread") == Some(&json!(thread)));
+        if strip(&comment).is_empty() {
+            if let Some(i) = found {
+                list.remove(i);
+            }
+            return Ok(Value::Null);
+        }
+        if let Some(i) = found {
+            let entry = as_map(&mut list[i])?;
+            for (k, v) in &fields {
+                entry.insert(k.clone(), v.clone());
+            }
+            revise(entry, &comment)?;
+            return Ok(Value::Object(entry.clone()));
+        }
+        let added = new_entry("thread-reply", &comment, &fields);
+        list.push(Value::Object(added.clone()));
+        Ok(Value::Object(added))
+    })
+    .map_err(halt)?;
+    Ok(merged("draft", stored))
+}

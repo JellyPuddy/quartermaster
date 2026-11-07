@@ -266,7 +266,7 @@ fn run(payload: &Value) -> R<Value> {
             item.update_pf_mode(&args.text("mode")?).map_err(error)?;
             Ok(ok())
         }
-        "draft-edit" | "draft-delete" | "drafts-discard" | "draft-put" | "draft-move" => drafts(&cmd, &slug, &args),
+        "draft-edit" | "draft-delete" | "drafts-discard" | "draft-put" | "draft-move" | "issue-comment-put" | "thread-reply-put" => drafts(&cmd, &slug, &args),
         _ => Err(Stop::Unported),
     }
 }
@@ -951,6 +951,14 @@ fn drafts(cmd: &str, slug: &str, args: &Args) -> R<Value> {
         "draft-delete" => d::delete(&slug, &args.text("id")?),
         "drafts-discard" => d::discard(&slug, args.get("ids")?),
         "draft-move" => d::move_to(&slug, &args.text("id")?, args.get("to")?),
+        "issue-comment-put" => match args.0 {
+            Some(raw) => d::issue_comment_put(&slug, raw),
+            None => Err(Stop::Unported),
+        },
+        "thread-reply-put" => match args.0 {
+            Some(raw) => d::thread_reply_put(&slug, raw),
+            None => Err(Stop::Unported),
+        },
         _ => match args.0 {
             Some(raw) => d::put(&slug, raw),
             None => Err(Stop::Unported),

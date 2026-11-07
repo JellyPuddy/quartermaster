@@ -29,7 +29,7 @@ fn word(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
-fn repo_ok(repo: &str) -> bool {
+pub(crate) fn repo_ok(repo: &str) -> bool {
     let part = |s: &str| !s.is_empty() && s.chars().all(|c| word(c) || c == '.' || c == '-');
     matches!(repo.split_once('/'), Some((a, b)) if part(a) && part(b))
 }
