@@ -45,6 +45,8 @@ pub mod pr_deployment;
 pub mod pr_inbox;
 pub mod pr_items;
 pub mod review_threads;
+pub mod gui_draft_send;
+pub mod draft_messages;
 pub mod pr_prerequisites;
 pub mod pr_requires_command;
 pub mod pr_status;

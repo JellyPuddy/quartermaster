@@ -84,6 +84,24 @@ impl Tmux {
         valid_name(name) && self.run(&["send-keys", "-t", &format!("={name}:"), "-l", text]).0
     }
 
+    /// Pastes text into the session as one block (a bracketed paste through a named buffer), so a
+    /// message that spans lines doesn't submit at every newline.
+    pub fn paste(&self, name: &str, text: &str) -> bool {
+        use std::io::Write;
+        if !valid_name(name) {
+            return false;
+        }
+        let buffer = format!("qm-paste-{name}");
+        let Ok(mut child) = Command::new("tmux").args(["-L", &self.socket, "load-buffer", "-b", &buffer, "-"]).env_remove("TMUX").stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() else { return false };
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(text.as_bytes());
+        }
+        if !child.wait().is_ok_and(|s| s.success()) {
+            return false;
+        }
+        self.run(&["paste-buffer", "-t", &format!("={name}:"), "-p", "-d", "-b", &buffer]).0
+    }
+
     pub fn send_enter(&self, name: &str) -> bool {
         valid_name(name) && self.run(&["send-keys", "-t", &format!("={name}:"), "Enter"]).0
     }

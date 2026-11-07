@@ -3911,3 +3911,125 @@ fn the_pr_threads_route_matches_ruby() {
     }
     assert_eq!(fs::read_to_string(dirs[0].join("gh.log")).unwrap(), fs::read_to_string(dirs[1].join("gh.log")).unwrap(), "the gh calls");
 }
+
+#[test]
+fn drafts_send_and_issues_create_paste_the_same_messages_as_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let issue = |slug: &str, name: &str, front: &str, body: &str| {
+        let p = w.root.join(format!("issues/{slug}/{name}"));
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, format!("---\n{front}---\n\n{body}\n")).unwrap();
+    };
+    issue("stale", "01-bug.md", "title: A bug\nkind: bug\nnumber: 12\n", "first block\n\nsecond block\nthird line");
+    issue("stale", "02-feature.md", "title: A feature\nkind: feature\n", "feature body with a block of text");
+    issue("stale", "03-created.md", "title: Created too\nkind: feature\nnumber: 7\n", "body three");
+    issue("stale", "04-broken.md", "title: Broken\nkind: epic\n", "bad kind");
+    fs::write(w.root.join("issues/stale/05-nofront.md"), "just text\n").unwrap();
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let sockets = ["qm-test-send-0", "qm-test-send-1"];
+    let outs = [base.path().join("out0"), base.path().join("out1")];
+    let roots = [w.root.clone(), root2.clone()];
+    for i in 0..2 {
+        tmux_on(sockets[i], &["kill-server"]);
+        fs::write(&outs[i], "").unwrap();
+        tmux_on(sockets[i], &["new-session", "-d", "-s", "stale", "-x", "100", "-y", "30", &format!("cat >> {}", outs[i].display())]);
+    }
+    let env = |i: usize| -> Vec<(&'static str, String)> { vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("QM_TMUX_SOCKET", sockets[i].to_string())] };
+    let ruby = start_env(false, &roots[0], &w.home, &env(0));
+    let rust = start_env(true, &roots[1], &w.home, &env(1));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let long_html = "<div class=\"x\">".to_string() + &"y".repeat(700);
+    let drafts = serde_json::json!([
+        {"id": "da", "kind": "diff-comment", "comment": " A  ", "rev": 1, "path": "b.rs", "side": "new", "line": 10, "code": "x\ny\n", "branch": "feat"},
+        {"id": "db", "kind": "diff-comment", "comment": "B", "rev": 1, "path": "a.rs", "side": "new", "line": "3", "start_line": 1, "start_side": "old", "range": "abc1234..def5678"},
+        {"id": "dc", "kind": "diff-comment", "comment": "C", "rev": 2, "path": "a.rs", "side": "old", "line": 2, "committed": true, "code": "old line"},
+        {"id": "dd", "kind": "diff-comment", "comment": "D", "rev": 1, "path": "c.rs", "side": "new", "line": 7, "repo": "acme/widgets", "number": 5, "commit": "abcdef0123", "code": "\n\n"},
+        {"id": "de", "kind": "diff-comment", "comment": "E", "rev": 1, "path": "a.rs", "side": "new", "line": "0x10", "code": "  indented \r\n", "range": "abcd", "start_line": 12, "start_side": "new", "branch": "other"},
+        {"id": "df", "kind": "diff-comment", "comment": "F", "rev": 1, "path": "a.rs", "side": "new", "line": 1, "branch": "feat", "committed": false},
+        {"id": "an1", "kind": "annotation", "comment": "move this", "rev": 1, "page": "/other", "url": "http://h:3000/x?y=1#f", "title": "A  title", "selector": "div > a", "owners": [{"name": "Card", "as": "Tile", "file": "app/javascript/card.jsx", "line": 12, "via": "definition"}, {"name": "Page", "file": "app/javascript/page.jsx", "line": 0}, {"name": ""}, "junk", {"name": "Lone"}], "context": "ctx   text", "regions": "header"},
+        {"id": "an2", "kind": "annotation", "comment": "resize", "rev": 1, "page": "", "url": "http://h:3000/x?y=1#f", "title": "A  title", "components": ["Card", " Tile ", 5, ""], "text": "t".repeat(250), "html": long_html},
+        {"id": "an3", "kind": "annotation", "comment": "plain", "rev": 1, "url": "http://h:3000/x?y=1#f", "title": "", "component": "Lone  Comp"},
+        {"id": "an4", "kind": "annotation", "comment": "elsewhere", "rev": 1, "page": "/third", "url": "http://h", "title": "T"},
+        {"id": "an5", "kind": "annotation", "comment": "bad url", "rev": 1, "page": "/p", "url": "not a url", "title": "T"},
+        {"id": "an6", "kind": "annotation", "comment": "no title", "rev": 1, "url": "", "title": ""},
+        {"id": "an7", "kind": "annotation", "comment": "limits", "rev": 1, "page": "p".repeat(301), "url": "http://h:3000/x", "title": "T", "owners": [{"name": "n".repeat(81), "as": "a".repeat(81), "file": "f".repeat(201), "line": 3}], "context": "c".repeat(301), "regions": "r".repeat(201)},
+        {"id": "an8", "kind": "annotation", "comment": "chain", "rev": 1, "page": "p".repeat(300), "url": "http://h:3000/x", "title": "T", "components": ["k".repeat(81), "m".repeat(80), "z".repeat(80), "y".repeat(80)], "text": "t".repeat(200), "html": "h".repeat(601)},
+        {"id": "an9", "kind": "annotation", "comment": "exact", "rev": 1, "page": "p".repeat(300), "url": "http://h:3000/x", "title": "T", "components": ["k".repeat(80)], "text": "t".repeat(200), "html": "h".repeat(600), "context": "c".repeat(300), "regions": "r".repeat(200), "selector": "s"},
+        {"id": "i1", "kind": "issue-comment", "comment": "on first", "rev": 1, "file": "01-bug.md", "block": "second block\nthird line", "title": "A bug"},
+        {"id": "i2", "kind": "issue-comment", "comment": "on a changed block", "rev": 1, "file": "01-bug.md", "block": "gone\n\ntext"},
+        {"id": "i3", "kind": "issue-comment", "comment": "whole", "rev": 1, "file": "01-bug.md", "block": ""},
+        {"id": "i4", "kind": "issue-comment", "comment": "on a gone file", "rev": 1, "file": "99-gone.md", "block": "b", "title": "Old title"},
+        {"id": "i5", "kind": "issue-comment", "comment": "on a broken one", "rev": 1, "file": "04-broken.md", "block": "bad"},
+        {"id": "i6", "kind": "issue-comment", "comment": "first block", "rev": 1, "file": "01-bug.md", "block": "first block"},
+        {"id": "g1", "kind": "github-comment", "comment": "review", "rev": 1, "path": "a.rs", "line": 1, "repo": "acme/widgets", "number": 5, "commit": "abcdef0"},
+        {"id": "t1", "kind": "thread-reply", "comment": "reply", "rev": 1, "thread": "T1", "repo": "acme/widgets", "number": 5}
+    ]);
+    let reset = |ids: &[&str]| {
+        let entries: Vec<serde_json::Value> = drafts.as_array().unwrap().iter().filter(|e| ids.is_empty() || ids.contains(&e["id"].as_str().unwrap())).cloned().collect();
+        for r in &roots {
+            fs::create_dir_all(r.join("drafts")).unwrap();
+            fs::write(r.join("drafts/stale.json"), serde_json::to_string_pretty(&serde_json::json!({"v": 1, "entries": entries})).unwrap()).unwrap();
+        }
+    };
+    let act = |cmd: &str, slug: &str, args: &str| format!("{{\"cmd\":\"{cmd}\",\"slug\":\"{slug}\",\"args\":{args}}}");
+    let seen = |i: usize| -> String { fs::read_to_string(&outs[i]).unwrap_or_default().replace(&roots[i].display().to_string(), "ROOT") };
+    let mut step = |label: &str, body: &str| {
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, body, true), request(rust.port, "POST", "/api/action", &origin, body, true));
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        let (sa, sb) = (shown(&a, ruby.port).replace(&roots[0].display().to_string(), "ROOT"), shown(&b, rust.port).replace(&roots[1].display().to_string(), "ROOT"));
+        assert_eq!(sa, sb, "{label}: reply to {body}");
+        assert_eq!(seen(0), seen(1), "{label}: what the chat got after {body}");
+        let files = |r: &Path| fs::read_to_string(r.join("drafts/stale.json")).unwrap_or_default();
+        assert_eq!(files(&roots[0]), files(&roots[1]), "{label}: the drafts after {body}");
+        let log = |r: &Path| regex::Regex::new(r"(?m)^\S+ \[").unwrap().replace_all(&fs::read_to_string(r.join("qm.log")).unwrap_or_default(), "[").replace(&r.display().to_string(), "ROOT");
+        assert_eq!(log(&roots[0]), log(&roots[1]), "{label}: qm.log after {body}");
+    };
+    reset(&[]);
+    step("missing item", &act("drafts-send", "nowhere", "{}"));
+    step("no chat open", &act("drafts-send", "degrade", "{}"));
+    step("empty ids", &act("drafts-send", "stale", r#"{"ids":[]}"#));
+    step("only review drafts", &act("drafts-send", "stale", r#"{"ids":["g1","t1"]}"#));
+    for (label, ids, extra) in [
+        ("one comment on a branch", r#"["da"]"#, r#","branch":"feat","base":"main""#),
+        ("two comments, ranges", r#"["db","dc"]"#, r#","branch":"feat","base":"main""#),
+        ("a PR comment and a hex line", r#"["dd","de","df"]"#, r#","branch":"feat""#),
+        ("same branch for all", r#"["da","df"]"#, r#","branch":" feat ","base":" main ""#),
+        ("no branch", r#"["dc"]"#, ""),
+        ("odd branch type", r#"["dc"]"#, r#","branch":7,"base":null"#),
+        ("annotations on other pages", r#"["an1","an2"]"#, ""),
+        ("one annotation", r#"["an3"]"#, ""),
+        ("limits", r#"["an7"]"#, ""),
+        ("a long chain", r#"["an8","an9"]"#, ""),
+        ("a bare url", r#"["an4"]"#, ""),
+        ("an invalid url", r#"["an5"]"#, ""),
+        ("no url", r#"["an6"]"#, ""),
+        ("issue comments", r#"["i1","i2","i3","i4","i5","i6"]"#, ""),
+        ("everything", "null", r#","branch":"feat","base":"main""#),
+    ] {
+        reset(&[]);
+        step(label, &act("drafts-send", "stale", &format!("{{\"ids\":{ids}{extra}}}")));
+    }
+    reset(&["da", "an3", "i1"]);
+    step("mixed kinds", &act("drafts-send", "stale", r#"{"branch":"b"}"#));
+    step("nothing left", &act("drafts-send", "stale", "{}"));
+    reset(&[]);
+    for (label, files) in [
+        ("create all", "null"),
+        ("create chosen", r#"["02-feature.md"]"#),
+        ("create repeated", r#"["02-feature.md","02-feature.md"]"#),
+        ("create none chosen", "[]"),
+        ("create a created one", r#"["01-bug.md"]"#),
+        ("create a broken one", r#"["04-broken.md"]"#),
+        ("create a missing one", r#"["zzz.md"]"#),
+        ("create a number", "[5]"),
+        ("create from a string", r#""02-feature.md""#),
+    ] {
+        step(label, &act("issues-create", "stale", &format!("{{\"files\":{files}}}")));
+    }
+    step("create without a chat", &act("issues-create", "degrade", r#"{"files":null}"#));
+    step("create on a missing item", &act("issues-create", "nowhere", r#"{"files":null}"#));
+    tmux_on(sockets[0], &["kill-server"]);
+    tmux_on(sockets[1], &["kill-server"]);
+}

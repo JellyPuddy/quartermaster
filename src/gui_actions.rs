@@ -93,7 +93,7 @@ impl Args<'_> {
     }
 }
 
-fn find(slug: &str) -> R<WorkItem> {
+pub(crate) fn find(slug: &str) -> R<WorkItem> {
     WorkItem::find(slug).map_err(error)
 }
 
@@ -266,6 +266,11 @@ fn run(payload: &Value) -> R<Value> {
             item.update_pf_mode(&args.text("mode")?).map_err(error)?;
             Ok(ok())
         }
+        "drafts-send" => match args.0 {
+            Some(raw) => crate::gui_draft_send::drafts_send(&slug, raw),
+            None => Err(Stop::Unported),
+        },
+        "issues-create" => crate::gui_draft_send::issues_create(&slug, args.get("files")?),
         "draft-edit" | "draft-delete" | "drafts-discard" | "draft-put" | "draft-move" | "issue-comment-put" | "thread-reply-put" => drafts(&cmd, &slug, &args),
         _ => Err(Stop::Unported),
     }
@@ -596,7 +601,7 @@ fn live_turn(item: &WorkItem) -> Option<crate::chat_attention::Turn> {
     Some(crate::chat_attention::ChatAttention::new().turn_for(&session))
 }
 
-fn refuse_mid_turn(item: &WorkItem) -> R<()> {
+pub(crate) fn refuse_mid_turn(item: &WorkItem) -> R<()> {
     if let Some(turn) = live_turn(item) {
         if turn.state == "working" || turn.state == "blocked" {
             return Err(fail(format!("{}'s chat is mid-turn ({}) — try again once it is your turn", item.slug, turn.state)));
@@ -934,7 +939,7 @@ fn pane(slug: &str, fresh: bool, args: &Args) -> R<Value> {
     }
 }
 
-fn slug_shaped(slug: &str) -> bool {
+pub(crate) fn slug_shaped(slug: &str) -> bool {
     slug.chars().next().is_some_and(|c| c.is_ascii_alphanumeric()) && slug.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
 }
 
