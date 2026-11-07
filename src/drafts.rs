@@ -228,6 +228,14 @@ pub enum Halt {
 /// file exist even when `f` refuses), then written like Ruby writes them — an item left with no
 /// drafts and no clipboard load ids loses its file.
 pub fn update<T>(slug: &str, f: impl FnOnce(&mut Vec<Value>) -> Result<T, Halt>) -> Result<T, Halt> {
+    update_data(slug, |data| {
+        let Some(Value::Array(list)) = data.get_mut("entries") else { return Err(Halt::Unported) };
+        f(list)
+    })
+}
+
+/// `update`, handing the whole data (the entries and the clipboard load ids) to `f`.
+pub fn update_data<T>(slug: &str, f: impl FnOnce(&mut Map<String, Value>) -> Result<T, Halt>) -> Result<T, Halt> {
     use std::os::unix::io::AsRawFd;
     if !writable(slug) {
         return Err(Halt::Unported);
@@ -241,8 +249,7 @@ pub fn update<T>(slug: &str, f: impl FnOnce(&mut Vec<Value>) -> Result<T, Halt>)
         Some(Value::Object(d)) if d.get("entries").is_some_and(Value::is_array) => d,
         _ => Map::from_iter([("v".to_string(), Value::from(1)), ("entries".to_string(), Value::Array(vec![]))]),
     };
-    let Some(Value::Array(list)) = data.get_mut("entries") else { return Err(Halt::Unported) };
-    let result = f(list)?;
+    let result = f(&mut data)?;
     let no_entries = matches!(data.get("entries"), Some(Value::Array(l)) if l.is_empty());
     let no_loaded = match data.get("loaded") {
         None | Some(Value::Null) => true,

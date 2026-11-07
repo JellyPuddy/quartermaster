@@ -109,6 +109,12 @@ impl ChatAttention {
         Ok(out)
     }
 
+    /// `entry_for(item).sort_key`, the chat view's attention order.
+    pub fn sort_key_for(&mut self, item: &WorkItem) -> Res<(f64, f64)> {
+        let live = self.live_sessions(item);
+        Ok(self.entry_for(item, live)?.sort_key())
+    }
+
     fn vitals_for(&mut self, session: &Session) -> Option<&Vitals> {
         if !self.vitals.contains_key(&session.id) {
             let v = transcript_vitals::read(session.transcript().as_deref());

@@ -117,7 +117,7 @@ pub(crate) fn chat_branch(item: &WorkItem) -> Option<String> {
     g(&path, &["symbolic-ref", "--quiet", "--short", "HEAD"])
 }
 
-fn chat_checkout(item: &WorkItem) -> Option<String> {
+pub(crate) fn chat_checkout(item: &WorkItem) -> Option<String> {
     g(&chat_cwd(item), &["rev-parse", "--show-toplevel"])
 }
 

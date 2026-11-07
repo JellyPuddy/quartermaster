@@ -399,3 +399,116 @@ pub(crate) fn thread_reply_put(slug: &str, raw: &Map<String, Value>) -> R<Value>
     .map_err(halt)?;
     Ok(merged("draft", stored))
 }
+
+const ANNOTATION_FIELDS: [&str; 11] = ["page", "selector", "text", "html", "component", "components", "owners", "context", "regions", "url", "title"];
+const OWNER_FIELDS: [&str; 6] = ["name", "as", "file", "line", "via", "code"];
+const LOADED_IDS: usize = 50;
+
+/// `Drafts#add_annotations`: one relayed or loaded batch; every annotation with a comment becomes an
+/// entry. A clipboard load passes its payload id and an id already loaded is refused.
+pub(crate) fn add_annotations(slug: &str, raw: &Value, url: &str, title: &str, load_id: Option<&str>) -> R<Vec<Value>> {
+    let Value::Array(list) = raw else { return Err(Stop::refuse("annotations must be a list")) };
+    let mut annotations: Vec<&Map<String, Value>> = vec![];
+    for a in list {
+        if let Some(m) = a.as_object() {
+            if !strip(&to_s(m.get("comment").unwrap_or(&Value::Null)).map_err(halt)?).is_empty() {
+                annotations.push(m);
+            }
+        }
+    }
+    if annotations.is_empty() {
+        return Err(Stop::refuse("no annotations to send"));
+    }
+    let added = crate::drafts::update_data(slug, |data| {
+        if let Some(id) = load_id {
+            let mut loaded: Vec<Value> = match data.get("loaded") {
+                None | Some(Value::Null) => vec![],
+                Some(Value::Array(l)) => l.clone(),
+                Some(_) => return Err(Halt::Unported),
+            };
+            if loaded.contains(&json!(id)) {
+                return refuse(format!("already loaded — these annotations are in {slug}'s drafts or were sent"));
+            }
+            loaded.push(json!(id));
+            let skip = loaded.len().saturating_sub(LOADED_IDS);
+            data.insert("loaded".into(), Value::Array(loaded.split_off(skip)));
+        }
+        let mut added = vec![];
+        for annotation in &annotations {
+            let mut fields = Map::new();
+            for k in ANNOTATION_FIELDS {
+                if let Some(v) = annotation.get(k) {
+                    fields.insert(k.into(), v.clone());
+                }
+            }
+            fields.insert("url".into(), json!(url));
+            fields.insert("title".into(), json!(title));
+            if fields.contains_key("owners") {
+                let owners = match fields.get("owners") {
+                    Some(Value::Array(l)) => l.iter().filter_map(Value::as_object).map(|o| Value::Object(OWNER_FIELDS.iter().filter_map(|k| o.get(*k).map(|v| ((*k).to_string(), v.clone()))).collect())).collect(),
+                    _ => vec![],
+                };
+                fields.insert("owners".into(), Value::Array(owners));
+            }
+            let comment = strip(&to_s(annotation.get("comment").unwrap_or(&Value::Null))?).to_string();
+            added.push(Value::Object(new_entry("annotation", &comment, &fields)));
+        }
+        match data.get_mut("entries") {
+            Some(Value::Array(list)) => list.extend(added.iter().cloned()),
+            _ => return Err(Halt::Unported),
+        }
+        Ok(added)
+    })
+    .map_err(halt)?;
+    Ok(added)
+}
+
+/// `page-annotations`: a page overlay's batch becomes drafts of the item checked out where it serves.
+pub(crate) fn page_annotations(root: &Value, annotations: &Value, url: &Value, title: &Value) -> R<Value> {
+    let root = strip(&to_s(root).map_err(halt)?).to_string();
+    if root.is_empty() {
+        return Err(Stop::refuse("no checkout root given"));
+    }
+    let items = crate::gui_state::items_checked_out_at(&root);
+    if items.is_empty() {
+        let shown = crate::cli_format::short_path(Some(&crate::data_root::expand_path(&root).to_string_lossy()));
+        return Err(Stop::refuse(format!("no work item has {shown} checked out")));
+    }
+    let mut attention = crate::chat_attention::ChatAttention::new();
+    let mut best: Option<(usize, (f64, f64))> = None;
+    for (i, item) in items.iter().enumerate() {
+        let key = attention.sort_key_for(item).map_err(|_| Stop::Unported)?;
+        if best.is_none_or(|(_, b)| key.partial_cmp(&b) == Some(std::cmp::Ordering::Less)) {
+            best = Some((i, key));
+        }
+    }
+    let item = &items[best.unwrap().0];
+    if !crate::gui_actions::slug_shaped(&item.slug) {
+        return Err(Stop::refuse(format!("'{}' is not a work item slug", item.slug)));
+    }
+    add_annotations(&item.slug, annotations, &to_s(url).map_err(halt)?, &to_s(title).map_err(halt)?, None)?;
+    let mut out = ok();
+    out["slug"] = json!(item.slug);
+    Ok(out)
+}
+
+/// `drafts-load`: what a page overlay copied, loaded into the item whose toolbar it sits in.
+pub(crate) fn drafts_load(slug: &str, text: &Value) -> R<Value> {
+    use crate::clipboard_annotations as c;
+    let item = crate::gui_actions::find(slug)?;
+    let payload = match c::parse(text) {
+        Ok(p) => p,
+        Err(c::Fail::Refuse(m)) => return Err(Stop::refuse(m)),
+        Err(c::Fail::Unported) => return Err(Stop::Unported),
+    };
+    let root = crate::branch_diff::chat_checkout(&item);
+    let annotations = c::quote(&payload.annotations, root.as_deref());
+    if !crate::gui_actions::slug_shaped(&item.slug) {
+        return Err(Stop::refuse(format!("'{}' is not a work item slug", item.slug)));
+    }
+    let added = add_annotations(&item.slug, &Value::Array(annotations), &payload.url, &payload.title, Some(&payload.id))?;
+    let mut out = ok();
+    out["loaded"] = json!(added.len());
+    out["ids"] = Value::Array(added.iter().map(|e| e.get("id").cloned().unwrap_or(Value::Null)).collect());
+    Ok(out)
+}

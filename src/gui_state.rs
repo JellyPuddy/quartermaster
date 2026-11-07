@@ -160,6 +160,25 @@ fn same_checkout(path: &str, paths: &[String]) -> bool {
     paths.iter().any(|p| real(p) == target)
 }
 
+/// `GuiState#items_checked_out_at`: the items with a branch checked out at `path`.
+pub fn items_checked_out_at(path: &str) -> Vec<WorkItem> {
+    let target = real(path);
+    let mut cache: Vec<(String, Vec<(String, String)>)> = vec![];
+    let mut out = vec![];
+    for item in WorkItem::all().unwrap_or_default() {
+        let Some(root) = crate::project_map::root_for(item.project().as_deref()) else { continue };
+        if !cache.iter().any(|(r, _)| *r == root) {
+            cache.push((root.clone(), crate::branch_diff::branch_worktrees(&root)));
+        }
+        let by_branch = &cache.iter().find(|(r, _)| *r == root).unwrap().1;
+        let found = item.branches().iter().any(|b| by_branch.iter().find(|(k, _)| k == b).is_some_and(|(_, p)| std::path::Path::new(p).is_dir() && real(p) == target));
+        if found {
+            out.push(item);
+        }
+    }
+    out
+}
+
 fn note_json(n: &crate::note::Note) -> Value {
     json!({"stamp": n.stamp, "kind": n.kind, "text": n.text, "position": n.position})
 }

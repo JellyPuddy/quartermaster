@@ -1611,6 +1611,16 @@ fn resolving_offers_the_cleanup_plan_as_ruby_does() {
 
 fn tmux_on(socket: &str, args: &[&str]) -> String {
     let out = Command::new("tmux").args(["-L", socket]).args(args).env_remove("TMUX").output().unwrap();
+    if args == ["kill-server"] {
+        // the server goes asynchronously: a session made right away could land on the dying one
+        for _ in 0..60 {
+            let alive = Command::new("tmux").args(["-L", socket, "list-sessions"]).env_remove("TMUX").output().map(|o| o.status.success()).unwrap_or(false);
+            if !alive {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
@@ -4032,4 +4042,140 @@ fn drafts_send_and_issues_create_paste_the_same_messages_as_ruby() {
     step("create on a missing item", &act("issues-create", "nowhere", r#"{"files":null}"#));
     tmux_on(sockets[0], &["kill-server"]);
     tmux_on(sockets[1], &["kill-server"]);
+}
+
+#[test]
+fn page_annotations_and_clipboard_loads_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let bases = [base.path().join("a"), base.path().join("b")];
+    let worlds = [workspace_world(&bases[0], false), workspace_world(&bases[1], false)];
+    let sockets = ["qm-test-annot-0", "qm-test-annot-1"];
+    let js = "app/javascript";
+    for (i, w) in worlds.iter().enumerate() {
+        let wt = bases[i].join("wt-w");
+        fs::create_dir_all(wt.join(js)).unwrap();
+        fs::write(wt.join(js).join("card.jsx"), "line one\r\nline two\n  <Card a=\"b\" />\nbad \u{ff}\u{fe} bytes\n").unwrap();
+        let mut raw = b"ok \xff\xfe bad\n".to_vec();
+        raw.extend_from_slice(b"cut \xe2\x82 end\n");
+        raw.extend_from_slice("x".repeat(501).as_bytes());
+        raw.extend_from_slice(b"\n");
+        raw.extend_from_slice("y".repeat(500).as_bytes());
+        raw.extend_from_slice(b"\nlast no newline");
+        fs::write(wt.join(js).join("odd.jsx"), raw).unwrap();
+        fs::write(wt.join(js).join("big.jsx"), format!("short\n{}", "z".repeat(512 * 1024 - 6 + 1))).unwrap();
+        fs::write(wt.join(js).join("edge.jsx"), format!("short\n{}", "z".repeat(512 * 1024 - 6))).unwrap();
+        fs::write(wt.join(js).join("wide.jsx"), format!("{}\nnext\n", "é".repeat(300))).unwrap();
+        fs::write(wt.join("app/outside.jsx"), "secret\n").unwrap();
+        std::os::unix::fs::symlink(wt.join("app/outside.jsx"), wt.join(js).join("link.jsx")).unwrap();
+        fs::create_dir_all(wt.join(js).join("dir.jsx")).unwrap();
+        tmux_on(sockets[i], &["kill-server"]);
+        tmux_on(sockets[i], &["new-session", "-d", "-s", "w-exist", "-c", wt.to_str().unwrap(), "sleep 300"]);
+        let _ = w;
+    }
+    let env = |i: usize| -> Vec<(&'static str, String)> { vec![("HOME", worlds[i].home.display().to_string()), ("QM_TRANSCRIPTS_DIR", worlds[i].transcripts.display().to_string()), ("QM_TMUX_SOCKET", sockets[i].to_string())] };
+    let ruby = start_env(false, &worlds[0].root, &worlds[0].home, &env(0));
+    let rust = start_env(true, &worlds[1].root, &worlds[1].home, &env(1));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let norm = |text: String, i: usize| -> String {
+        let t = text.replace(&bases[i].display().to_string(), "BASE");
+        let t = regex::Regex::new(r#""(createdAt|updatedAt)":\s*"[^"]*""#).unwrap().replace_all(&t, "\"$1\":\"STAMP\"").into_owned();
+        regex::Regex::new(r#"\b[0-9a-f]{12}\b"#).unwrap().replace_all(&t, "ID").into_owned()
+    };
+    let state = |i: usize| -> String {
+        let mut out = String::new();
+        tree_text(&worlds[i].root.join("drafts"), "drafts", &mut out);
+        let log = fs::read_to_string(worlds[i].root.join("qm.log")).unwrap_or_default();
+        out += &regex::Regex::new(r"(?m)^\S+ \[").unwrap().replace_all(&log, "[");
+        norm(out, i)
+    };
+    let step = |label: &str, body: &str| {
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, body, true), request(rust.port, "POST", "/api/action", &origin, body, true));
+        let (sa, sb) = (norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1));
+        assert_eq!(sa, sb, "{label}: reply to {body}");
+        assert_eq!(state(0), state(1), "{label}: files after {body}");
+    };
+    let act = |cmd: &str, slug: &str, args: &serde_json::Value| serde_json::json!({"cmd": cmd, "slug": slug, "args": args}).to_string();
+    let wt = |i: usize| bases[i].join("wt-w").display().to_string();
+    let wt_a = wt(0);
+    let _ = wt_a;
+    let ann = |comment: &str| serde_json::json!({"comment": comment, "selector": "div", "text": "t", "owners": [{"name": "Card", "file": "app/javascript/card.jsx", "line": 3, "extra": 1}, "junk", {"name": "B", "code": "keep?"}], "stray": 1, "url": "http://other", "title": "other"});
+    // page annotations relayed from a dev server, by the checkout it serves
+    for (label, root_of, annotations) in [
+        ("one annotation", Some("wt"), serde_json::json!([ann("move it")])),
+        ("two, one blank", Some("wt"), serde_json::json!([ann("a"), ann("  "), "junk", {"selector": "x"}, ann("b")])),
+        ("owners that aren't a list", Some("wt"), serde_json::json!([{"comment": "c", "owners": "x"}, {"comment": "d", "owners": null}])),
+        ("trailing slash", Some("wt/"), serde_json::json!([ann("slashed")])),
+        ("a dotted path", Some("wt/../wt-w"), serde_json::json!([ann("dotted")])),
+        ("the stacked worktree", Some("st"), serde_json::json!([ann("stack")])),
+        ("the main checkout, several items", Some("repo"), serde_json::json!([ann("main")])),
+        ("no annotations", Some("wt"), serde_json::json!([])),
+        ("all blank", Some("wt"), serde_json::json!([ann(" ")])),
+        ("not a list", Some("wt"), serde_json::json!({"a": 1})),
+        ("nowhere", Some("nowhere"), serde_json::json!([ann("x")])),
+        ("blank root", Some("  "), serde_json::json!([ann("x")])),
+        ("no root", None, serde_json::json!([ann("x")])),
+    ] {
+        for (i, w) in worlds.iter().enumerate() {
+            let _ = (i, w);
+        }
+        let build = |i: usize| -> String {
+            let root = match root_of {
+                Some("wt") => serde_json::json!(wt(i)),
+                Some("wt/") => serde_json::json!(format!("{}/", wt(i))),
+                Some("wt/../wt-w") => serde_json::json!(format!("{}/../wt-w", wt(i))),
+                Some("st") => serde_json::json!(bases[i].join("wt-st1").display().to_string()),
+                Some("repo") => serde_json::json!(worlds[i].repo.display().to_string()),
+                Some(other) => serde_json::json!(other),
+                None => serde_json::Value::Null,
+            };
+            act("page-annotations", "", &serde_json::json!({"root": root, "annotations": annotations, "url": "http://dev:3000/p?q=1", "title": "A page"}))
+        };
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, &build(0), true), request(rust.port, "POST", "/api/action", &origin, &build(1), true));
+        assert_eq!(norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1), "{label}");
+        assert_eq!(state(0), state(1), "{label}: files");
+    }
+    // what a page overlay copied to the clipboard
+    let block = |v: serde_json::Value| format!("```pf-annotations\n{v}\n```\n");
+    let payload = |id: &str, annotations: serde_json::Value| serde_json::json!({"v": 1, "id": id, "url": "http://dev/p", "title": "T", "annotations": annotations});
+    let owners = |file: &str, line: serde_json::Value| serde_json::json!([{"name": "C", "file": file, "line": line, "code": "ignored"}]);
+    let load = |text: String| act("drafts-load", "w-exist", &serde_json::json!({"text": text}));
+    step("a valid load", &load(format!("Some message\n\n{}", block(payload("p1", serde_json::json!([{"comment": "one", "owners": owners("app/javascript/card.jsx", serde_json::json!(1))}, {"comment": "two", "owners": owners("app/javascript/card.jsx", serde_json::json!(2))}, {"comment": "three", "owners": owners("app/javascript/card.jsx", serde_json::json!(3))}, {"comment": "four", "owners": owners("app/javascript/card.jsx", serde_json::json!(4))}, {"comment": "five", "owners": owners("app/javascript/card.jsx", serde_json::json!(5))}]))))));
+    step("the same again", &load(block(payload("p1", serde_json::json!([{"comment": "one"}])))));
+    step("odd sources", &load(block(payload("p2", serde_json::json!([{"comment": "a", "owners": owners("app/javascript/odd.jsx", serde_json::json!(1))}, {"comment": "b", "owners": owners("app/javascript/odd.jsx", serde_json::json!(2))}, {"comment": "c", "owners": owners("app/javascript/odd.jsx", serde_json::json!(3))}, {"comment": "d", "owners": owners("app/javascript/odd.jsx", serde_json::json!(4))}, {"comment": "e", "owners": owners("app/javascript/odd.jsx", serde_json::json!(5))}, {"comment": "f", "owners": owners("app/javascript/odd.jsx", serde_json::json!(6))}, {"comment": "g", "owners": owners("app/javascript/odd.jsx", serde_json::json!(0))}, {"comment": "h", "owners": owners("app/javascript/odd.jsx", serde_json::json!(-1))}])))));
+    step("refused sources", &load(block(payload("p3", serde_json::json!([{"comment": "a", "owners": owners("app/javascript/big.jsx", serde_json::json!(1))}, {"comment": "b", "owners": owners("app/javascript/link.jsx", serde_json::json!(1))}, {"comment": "c", "owners": owners("app/javascript/dir.jsx", serde_json::json!(1))}, {"comment": "d", "owners": owners("app/javascript/../outside.jsx", serde_json::json!(1))}, {"comment": "d2", "owners": owners("app/javascript/edge.jsx", serde_json::json!(1))}, {"comment": "d3", "owners": owners("app/javascript/wide.jsx", serde_json::json!(1))}, {"comment": "e", "owners": owners("other/card.jsx", serde_json::json!(1))}, {"comment": "f", "owners": owners("app/javascript/missing.jsx", serde_json::json!(1))}, {"comment": "g", "owners": [{"name": "x", "file": 5, "line": 1}, "junk", {"name": "y", "file": "app/javascript/card.jsx", "line": "1"}]}, {"comment": "h", "owners": "nope"}])))));
+    for n in 0..52 {
+        step(&format!("load {n}"), &load(block(payload(&format!("many{n}"), serde_json::json!([{"comment": format!("n{n}")}])))));
+    }
+    step("the evicted id again", &load(block(payload("many0", serde_json::json!([{"comment": "back"}])))));
+    step("a recent id again", &load(block(payload("many51", serde_json::json!([{"comment": "no"}])))));
+    step("the last block counts", &load(format!("{}\nquoted older copy above\n{}", block(payload("p4", serde_json::json!([{"comment": "old"}]))), block(payload("p5", serde_json::json!([{"comment": "new"}]))))));
+    step("crlf fences", &load(format!("```pf-annotations  \r\n{}\r\n```  \r\n", payload("p6", serde_json::json!([{"comment": "crlf"}])))));
+    step("no closing fence", &load(format!("```pf-annotations\n{}\n", payload("p7", serde_json::json!([{"comment": "open"}])))));
+    step("a header in the text above", &load(format!("```pf-annotations\nnot json\n\n{}", block(payload("p8", serde_json::json!([{"comment": "ok"}]))))));
+    step("no block", &load("nothing here".into()));
+    step("a block without a fence line", &load("```pf-annotations x\n{}\n```\n".into()));
+    step("not json", &load("```pf-annotations\n{oops\n```\n".into()));
+    step("json but not an object", &load("```pf-annotations\n[1]\n```\n".into()));
+    for v in ["2", "\"x\"", "null", "true", "1.0", "\"a\\nb\"", "7"] {
+        step(&format!("version {v}"), &load(format!("```pf-annotations\n{{\"v\":{v},\"id\":\"vv{}\",\"annotations\":[{{\"comment\":\"c\"}}]}}\n```\n", v.len())));
+    }
+    step("no annotations", &load(block(payload("q1", serde_json::json!([])))));
+    step("annotations not a list", &load(block(payload("q2", serde_json::json!({"a": 1})))));
+    step("too many", &load(block(payload("q3", serde_json::json!((0..101).map(|i| serde_json::json!({"comment": format!("c{i}")})).collect::<Vec<_>>())))));
+    step("a hundred", &load(block(payload("q4", serde_json::json!((0..100).map(|i| serde_json::json!({"comment": format!("c{i}")})).collect::<Vec<_>>())))));
+    step("no id", &load(block(serde_json::json!({"v": 1, "annotations": [{"comment": "c"}]}))));
+    step("blank id", &load(block(payload("  ", serde_json::json!([{"comment": "c"}])))));
+    step("number id", &load(block(serde_json::json!({"v": 1, "id": 5, "annotations": [{"comment": "c"}]}))));
+    step("all blank comments", &load(block(payload("q5", serde_json::json!([{"comment": " "}, "x"])))));
+    step("an id with spaces", &load(block(payload("  q6  ", serde_json::json!([{"comment": "c"}])))));
+    step("the same id, trimmed", &load(block(payload("q6", serde_json::json!([{"comment": "again"}])))));
+    step("too much text", &load(format!("{}{}", "x".repeat(600 * 1024), block(payload("q7", serde_json::json!([{"comment": "c"}]))))));
+    step("a number as text", &act("drafts-load", "w-exist", &serde_json::json!({"text": 5})));
+    step("no text", &act("drafts-load", "w-exist", &serde_json::json!({})));
+    step("a url that is a number", &load(block(serde_json::json!({"v": 1, "id": "q8", "url": 5, "title": null, "annotations": [{"comment": "c"}]}))));
+    step("on an item without a chat", &act("drafts-load", "w-main", &serde_json::json!({"text": block(payload("r1", serde_json::json!([{"comment": "c", "owners": owners("app/javascript/card.jsx", serde_json::json!(1))}])))})));
+    step("on a missing item", &act("drafts-load", "nowhere", &serde_json::json!({"text": block(payload("r2", serde_json::json!([{"comment": "c"}])))})));
+    for s in sockets {
+        tmux_on(s, &["kill-server"]);
+    }
 }

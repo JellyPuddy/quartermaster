@@ -266,6 +266,8 @@ fn run(payload: &Value) -> R<Value> {
             item.update_pf_mode(&args.text("mode")?).map_err(error)?;
             Ok(ok())
         }
+        "page-annotations" => crate::gui_draft_actions::page_annotations(args.get("root")?, args.get("annotations")?, args.get("url")?, args.get("title")?),
+        "drafts-load" => crate::gui_draft_actions::drafts_load(&slug, args.get("text")?),
         "drafts-send" => match args.0 {
             Some(raw) => crate::gui_draft_send::drafts_send(&slug, raw),
             None => Err(Stop::Unported),
