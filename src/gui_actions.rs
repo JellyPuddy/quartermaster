@@ -416,6 +416,23 @@ fn presence_of(args: &Args, key: &str) -> R<Option<String>> {
     Ok((!text.is_empty()).then_some(text))
 }
 
+/// `LooseChat.kickoff`: a starter's prompt, which has the chat load something before the first question,
+/// ending in the typed question (or asking for one); else the question alone.
+fn loose_kickoff(starter: Option<&str>, question: Option<&str>) -> R<Option<String>> {
+    let question = question.map(|q| strip(q).to_string()).filter(|q| !q.is_empty());
+    let Some(starter) = starter else { return Ok(question) };
+    let config = crate::project_config::ProjectConfig::current();
+    let Some(known) = config.loose_starters().iter().find(|s| s.key == starter) else {
+        let shown = crate::ruby_text::inspect_ascii(starter).ok_or(Stop::Unported)?;
+        let keys: Vec<&str> = config.loose_starters().iter().map(|s| s.key.as_str()).collect();
+        return Err(fail(format!("unknown starter {shown} (config.yml loose_starters: {})", keys.join(", "))));
+    };
+    Ok(Some(match question {
+        Some(q) => format!("{} answer my question about them:\n\n{q}", known.prompt),
+        None => format!("{} ask me what I want to know about them.", known.prompt),
+    }))
+}
+
 /// `loose-start`: a chat that belongs to no item, in its own tmux session `loose--<id>` under `QM_LOOSE`.
 fn loose_start(args: &Args) -> R<Value> {
     let model = presence_of(args, "model")?;
@@ -425,10 +442,8 @@ fn loose_start(args: &Args) -> R<Value> {
             return Err(fail(format!("unknown model {shown} (sonnet, opus, haiku)")));
         }
     }
-    if presence_of(args, "starter")?.is_some() {
-        return Err(Stop::Unported); // starters come from config.yml
-    }
-    let prompt = presence_of(args, "prompt")?;
+    let starter = presence_of(args, "starter")?;
+    let prompt = loose_kickoff(starter.as_deref(), presence_of(args, "prompt")?.as_deref())?;
     let project = presence_of(args, "project")?.unwrap_or_else(|| "No project".to_string());
     let command = crate::launcher::chat_command().ok_or(Stop::Unported)?;
     let id = crate::gui_draft_actions::random_hex(4);
@@ -917,9 +932,7 @@ fn loose_close(args: &Args) -> R<Value> {
 /// `loose-promote`: an item from the chat's newest session, the tmux session renamed to its slug.
 /// "Tell the chat" types into the chat and stays Ruby's.
 fn loose_promote(args: &Args) -> R<Value> {
-    if matches!(args.get("tell")?, Value::Bool(true)) {
-        return Err(Stop::Unported);
-    }
+    let tell = matches!(args.get("tell")?, Value::Bool(true));
     let id = args.text("id")?;
     let title = strip(&args.text("title")?).to_string();
     if title.is_empty() {
@@ -931,10 +944,26 @@ fn loose_promote(args: &Args) -> R<Value> {
     let chat = format!("loose--{id}");
     let renamed = crate::tmux::Tmux::new().rename(&chat, &item.slug);
     let mut reply = json!({"ok": true, "slug": item.slug});
+    if tell {
+        reply["told"] = json!(renamed && tell_item(&item.slug));
+    }
     if !renamed {
         reply["warning"] = json!(format!("{} is created, but its chat stays under {chat}: a chat named {} already runs", item.slug, item.slug));
     }
     Ok(reply)
+}
+
+/// `LooseChat#tell_item`: one line into the promoted chat naming its item, typed once settled.
+fn tell_item(slug: &str) -> bool {
+    let tmux = crate::tmux::Tmux::new();
+    if !tmux.live(slug) || tmux.pane_dead(slug) {
+        return false;
+    }
+    if !tmux.send_text(slug, &format!("This chat is now work item {slug}; run qm show {slug} and follow its work item protocol from here.")) {
+        return false;
+    }
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    tmux.send_enter(slug)
 }
 
 /// `gui_pane`: the item's chat in a tmux session of its own — already running is `attached`, a live

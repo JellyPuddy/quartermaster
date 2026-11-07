@@ -61,6 +61,15 @@ pub struct ProjectConfig {
     projects: Vec<ProjectSettings>,
     ide: Option<Ide>,
     default_name: String,
+    starters: Vec<Starter>,
+}
+
+/// A loose-chat starter (config.yml `loose_starters:`): its prompt has the chat load something first.
+#[derive(Clone)]
+pub struct Starter {
+    pub key: String,
+    pub label: String,
+    pub prompt: String,
 }
 
 fn parse_ide(command: Option<&Value>, label: Option<&Value>) -> Option<Ide> {
@@ -128,7 +137,7 @@ impl ProjectConfig {
     pub fn parse(source: &str) -> ProjectConfig {
         let data = match serde_yaml::from_str::<Value>(source) {
             Ok(Value::Mapping(m)) => m,
-            _ => return ProjectConfig { projects: vec![], ide: None, default_name: String::new() },
+            _ => return ProjectConfig { projects: vec![], ide: None, default_name: String::new(), starters: vec![] },
         };
         let projects = match data.get("projects") {
             Some(Value::Mapping(m)) => m.iter().filter_map(|(k, v)| parse_project(text(k), v)).collect(),
@@ -138,7 +147,32 @@ impl ProjectConfig {
             Some(Value::String(t)) => t.clone(),
             _ => String::new(),
         };
-        ProjectConfig { projects, ide: parse_ide(get(&data, "ide_command"), get(&data, "ide_label")), default_name }
+        let mut starters: Vec<Starter> = vec![];
+        if let Some(Value::Mapping(m)) = get(&data, "loose_starters") {
+            for (key, starter) in m {
+                let Value::Mapping(fields) = starter else { continue };
+                let Some(Value::String(prompt)) = get(fields, "prompt") else { continue };
+                if crate::ruby_text::strip(prompt).is_empty() {
+                    continue;
+                }
+                let key = text(key);
+                let label = match get(fields, "label") {
+                    Some(Value::String(l)) if !l.is_empty() => l.clone(),
+                    _ => key.clone(),
+                };
+                let starter = Starter { key: key.clone(), label, prompt: crate::ruby_text::strip(prompt).to_string() };
+                match starters.iter_mut().find(|s| s.key == key) {
+                    Some(existing) => *existing = starter,
+                    None => starters.push(starter),
+                }
+            }
+        }
+        ProjectConfig { projects, ide: parse_ide(get(&data, "ide_command"), get(&data, "ide_label")), default_name, starters }
+    }
+
+    /// key → starter, in config order.
+    pub fn loose_starters(&self) -> &[Starter] {
+        &self.starters
     }
 
     /// Where an issue number with no project goes: `default_project:` when it names a configured project,

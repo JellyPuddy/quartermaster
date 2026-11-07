@@ -1014,6 +1014,8 @@ fn the_state_matches_ruby_over_a_richer_world() {
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     richer_state_world(&w, base.path());
+    let config = fs::read_to_string(w.root.join("config.yml")).unwrap();
+    fs::write(w.root.join("config.yml"), config + "loose_starters:\n  dev:\n    label: Dev docs\n    prompt: Load the dev docs.\n  plain:\n    prompt: Read it.\n  emptylabel:\n    label: \"\"\n    prompt: P\n  skipped:\n    prompt: \"\"\n").unwrap();
     // loose chats: two open in tmux (one with a session, one without), one closed and left in the inbox
     let socket = "qm-test-state-loose";
     tmux_on(socket, &["kill-server"]);
@@ -1057,7 +1059,7 @@ fn the_state_matches_ruby_over_a_richer_world() {
     }
     std::thread::sleep(std::time::Duration::from_millis(800));
     let first = compare_state(&ruby, &rust, "first build");
-    for needle in ["\"rich-item\"", "\"asideCount\":2", "\"rateLimits\":{", "\"wt-branch\"", "\"claude-haiku-5-5\":68", "inbox prompt one", "\"state\":\"working\"", "\"lowerBound\":true", "\"snoozed\":true", "\"name\":\"loose--ab12\"", "a long first prompt that goes past sixty characters so the …", "\"title\":\"New loose chat\"", "a chat that was closed", "\"cwd\":\"~/proj\"", "23h ago", "10d ago", "3d ago", "just now", "10m ago", "5h ago"] {
+    for needle in ["\"rich-item\"", "\"asideCount\":2", "\"rateLimits\":{", "\"wt-branch\"", "\"claude-haiku-5-5\":68", "inbox prompt one", "\"state\":\"working\"", "\"lowerBound\":true", "\"snoozed\":true", "\"looseStarters\":[{\"key\":\"dev\",\"label\":\"Dev docs\"},{\"key\":\"plain\",\"label\":\"plain\"},{\"key\":\"emptylabel\",\"label\":\"emptylabel\"}]", "\"name\":\"loose--ab12\"", "a long first prompt that goes past sixty characters so the …", "\"title\":\"New loose chat\"", "a chat that was closed", "\"cwd\":\"~/proj\"", "23h ago", "10d ago", "3d ago", "just now", "10m ago", "5h ago"] {
         assert!(first.contains(needle), "the world should reach {needle}");
     }
     compare_state(&ruby, &rust, "second build");
@@ -2031,7 +2033,7 @@ fn the_loose_chat_actions_match_ruby() {
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let config = fs::read_to_string(w.root.join("config.yml")).unwrap();
-    fs::write(w.root.join("config.yml"), config + "  gone: /nonexistent/project/root\n").unwrap();
+    fs::write(w.root.join("config.yml"), config + "  gone: /nonexistent/project/root\nloose_starters:\n  dev:\n    label: Dev docs\n    prompt: \"  Load the dev docs.  \"\n  nolabel:\n    prompt: Read the guide.\n  emptylabel:\n    label: \"\"\n    prompt: Read x.\n  empty:\n    prompt: \"  \"\n  broken: notamap\n  5:\n    prompt: numeric key\n").unwrap();
     let chat = base.path().join("fake-chat");
     // the stand-in chat records how it was started and registers a session, as the SessionStart hook would
     fs::write(&chat, "#!/bin/sh\n{ echo \"cwd: $(pwd)\"; echo \"args: $*\"; echo \"QM_LOOSE=${QM_LOOSE-unset}\"; echo \"QM_ITEM=[${QM_ITEM-unset}]\"; } > \"$FAKE_REC/.tmp-$$\"\nmv \"$FAKE_REC/.tmp-$$\" \"$FAKE_REC/rec-$$\"\nprintf '{\"v\":1,\"event\":\"start\",\"session_id\":\"sess-%s\",\"cwd\":\"%s\",\"pid\":%s,\"project\":\"demo\",\"loose\":\"%s\",\"ts\":\"%s\"}\\n' \"$QM_LOOSE\" \"$(pwd)\" \"$$\" \"$QM_LOOSE\" \"$(date -u +%FT%TZ)\" >> \"$QM_ROOT/sessions.jsonl\"\nexec sleep 300\n").unwrap();
@@ -2056,6 +2058,7 @@ fn the_loose_chat_actions_match_ruby() {
             }
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
+        start(&["new-session", "-d", "-s", "warn-two", "-n", "warn-two", "sleep 300"]);
     }
     let env_for = |sock: &str, rec: &Path| -> Vec<(&'static str, String)> {
         vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("QM_TMUX_SOCKET", sock.to_string()), ("QM_CHAT_COMMAND", format!("{} --flag", chat.display())), ("FAKE_REC", rec.display().to_string())]
@@ -2109,6 +2112,15 @@ fn the_loose_chat_actions_match_ruby() {
     step("start with a quoted model", &act("loose-start", r#"{"model":"a \"b\" \\c"}"#));
     step("start with a numeric project", &act("loose-start", r#"{"project":5,"prompt":7}"#));
     step("start blank", &act("loose-start", r#"{"project":"  ","starter":"  ","prompt":null}"#));
+    step("start with a starter", &act("loose-start", r#"{"starter":"dev"}"#));
+    step("start with a starter and a question", &act("loose-start", r#"{"starter":" nolabel ","prompt":"  why?  ","project":"demo"}"#));
+    step("start with a starter and a model", &act("loose-start", r#"{"starter":"emptylabel","model":"opus"}"#));
+    step("start with a numeric starter", &act("loose-start", r#"{"starter":"5"}"#));
+    step("start with an unknown starter", &act("loose-start", r#"{"starter":"nope"}"#));
+    step("start with a starter that has no prompt", &act("loose-start", r#"{"starter":"empty"}"#));
+    step("start with a starter that is no map", &act("loose-start", r#"{"starter":"broken"}"#));
+    step("start with a quoted starter", &act("loose-start", r#"{"starter":"a \"b\""}"#));
+    step("start with a bad model and an unknown starter", &act("loose-start", r#"{"starter":"nope","model":"gpt"}"#));
     let promoted = step("promote", &act("loose-promote", r#"{"id":"{ID1}","title":"  Promoted chat  "}"#));
     assert!(promoted.contains("\"slug\":\"promoted-chat\"") && !promoted.contains("warning"), "{promoted}");
     step("promote the same title", &act("loose-promote", r#"{"id":"{ID2}","title":"Promoted chat"}"#));
@@ -2118,12 +2130,22 @@ fn the_loose_chat_actions_match_ruby() {
     step("promote an unknown chat", &act("loose-promote", r#"{"id":"deadbeef","title":"Never"}"#));
     step("promote nothing", &act("loose-promote", "{}"));
     step("promote an old id", &act("loose-promote", r#"{"id":"{ID1}","title":"Again"}"#));
+    let told = step("promote and tell the chat", &act("loose-promote", r#"{"id":"{ID3}","title":"Told chat","tell":true}"#));
+    assert!(told.contains("\"told\":true"), "{told}");
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let pane = |sock: &str| tmux_on(sock, &["capture-pane", "-p", "-t", "=told-chat:"]);
+    assert_eq!(pane(sock_ruby), pane(sock_rust), "what the chat was told");
+    assert!(pane(sock_rust).contains("This chat is now work item told-chat; run qm show told-chat"), "{}", pane(sock_rust));
+    let warned_told = step("promote and tell onto a running chat", &act("loose-promote", r#"{"id":"{ID4}","title":"Warn two","tell":true}"#));
+    assert!(warned_told.contains("\"told\":false"), "{warned_told}");
+    step("promote and tell nothing", &act("loose-promote", r#"{"id":"{ID5}","title":"Plain again","tell":false}"#));
+    step("promote and tell with a title missing", &act("loose-promote", r#"{"id":"{ID6}","title":" ","tell":true}"#));
     for s in [sock_ruby, sock_rust] {
         tmux_on(s, &["kill-server"]);
     }
     // what is not read as Ruby does, and typing into the chat, stay Ruby's: nothing is written
     let before = action_traces(&root2, &w.root);
-    for body in [act("loose-promote", r#"{"id":"x","title":"y","tell":true}"#), act("loose-start", r#"{"starter":"dev"}"#), act("loose-start", r#"{"model":"é"}"#), act("rotate", r#"{"slug":"x"}"#)] {
+    for body in [act("loose-start", r#"{"model":"é"}"#), act("rotate", r#"{"slug":"x"}"#)] {
         let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
         assert!(a.status.starts_with("501"), "{body}: {}", a.status);
     }

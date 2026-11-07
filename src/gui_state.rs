@@ -383,9 +383,6 @@ fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R
 /// What a state build can't reproduce from the data alone: gates for the parts not ported.
 fn gates(_items: &[WorkItem], _log: &SessionLog) -> R<()> {
     let raw = config_raw();
-    if raw.get("loose_starters").is_some_and(|v| !matches!(v, Value::Null)) {
-        return Err(Unported);
-    }
     if let Some(Value::Object(projects)) = raw.get("projects") {
         if projects.values().any(|p| p.as_object().is_some_and(|m| m.contains_key("benchmark"))) {
             return Err(Unported);
@@ -529,7 +526,7 @@ pub fn build(token: &str) -> R<Value> {
         ("inbox", Value::Array(inbox)),
         ("projects", json!(projects)),
         ("defaultProject", default_project),
-        ("looseStarters", json!([])),
+        ("looseStarters", Value::Array(config.loose_starters().iter().map(|s| json!({"key": s.key, "label": s.label})).collect())),
         ("attention", Value::Array(attention_rows)),
         ("loose", Value::Array(loose_payload(&panes, &log))),
         ("pulse", json!(pulse_now)),
