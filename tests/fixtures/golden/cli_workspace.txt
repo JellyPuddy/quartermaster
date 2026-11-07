@@ -1,0 +1,1110 @@
+$ qm "pf-status"
+exit 0
+--- stdout
+ROOT/tools/devsrv stopped: never switched
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-switch"
+exit 1
+--- stderr
+usage: qm pf-switch SLUG [--mode MODE] [--worktree PATH]
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-switch" "w-item"
+exit 0
+--- stdout
+ROOT/tools/devsrv dev @ ROOT/wt-w
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-switch" "w-item" "--mode" "tunnel"
+exit 0
+--- stdout
+ROOT/tools/devsrv tunnel @ ROOT/wt-w
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-switch" "w-item" "--mode=tunnel"
+exit 0
+--- stdout
+ROOT/tools/devsrv tunnel @ ROOT/wt-w
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-switch" "w-item" "--mode" "bogus"
+exit 1
+--- stderr
+qm: ROOT/tools/devsrv mode must be one of: dev, tunnel
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-switch" "w-item" "--worktree" "/nowhere"
+exit 1
+--- stderr
+qm: no such worktree: /nowhere
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-switch" "w-none"
+exit 0
+--- stdout
+ROOT/tools/devsrv dev @ ROOT/repo
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-switch" "w-bare"
+exit 1
+--- stderr
+qm: bare has no dev server: set projects.bare.dev_server in config.yml
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-switch" "nowhere"
+exit 1
+--- stderr
+qm: no work item 'nowhere'
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-switch" "w-item" "--bogus"
+exit 1
+--- stderr
+/home/user/quartermaster/lib/quartermaster/cli_workspace.rb:55:in `cmd_workspace': invalid option: --bogus (OptionParser::InvalidOption)
+	from /home/user/quartermaster/lib/quartermaster/cli.rb:62:in `run'
+	from /home/user/quartermaster/quartermaster:24:in `<main>'
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "ide"
+exit 1
+--- stderr
+usage: qm ide SLUG [--worktree PATH]
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "ide" "w-item"
+exit 0
+--- stdout
+FakeIDE opened ROOT/wt-w
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "ide" "w-item" "--mode" "dev"
+exit 1
+--- stderr
+/home/user/quartermaster/lib/quartermaster/cli_workspace.rb:55:in `cmd_workspace': invalid option: --mode (OptionParser::InvalidOption)
+	from /home/user/quartermaster/lib/quartermaster/cli.rb:63:in `run'
+	from /home/user/quartermaster/quartermaster:24:in `<main>'
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "ide" "w-none"
+exit 0
+--- stdout
+FakeIDE opened ROOT/repo
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "term" "w-item"
+exit 0
+--- stdout
+Opened Warp tab: w-item · feat-w
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "term" "w-item" "--worktree" "ROOT/wt-w"
+exit 0
+--- stdout
+Opened Warp tab: w-item · wt-w
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "work-on" "w-item"
+exit 0
+--- stdout
+ROOT/tools/devsrv dev @ ROOT/wt-w
+FakeIDE opened ROOT/wt-w
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "work-on" "w-item" "--mode" "tunnel"
+exit 0
+--- stdout
+ROOT/tools/devsrv tunnel @ ROOT/wt-w
+FakeIDE opened ROOT/wt-w
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "work-on" "w-bare"
+exit 0
+--- stdout
+dev server skipped: bare has none configured
+FakeIDE opened ROOT/wt-w
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-status"
+exit 0
+--- stdout
+ROOT/tools/devsrv stopped: never switched
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-stop"
+exit 0
+--- stdout
+ROOT/tools/devsrv stopped
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "resume"
+exit 1
+--- stderr
+usage: qm resume SLUG [--session ID] [--here]
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "resume" "w-item"
+exit 0
+--- stdout
+Opened Warp tab: resume w-item
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "resume" "w-item" "--here"
+exit 0
+--- stdout
+claude --resume s-res item=unset cwd=ROOT/wt-w
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "resume" "w-item" "--session" "s-res"
+exit 0
+--- stdout
+Opened Warp tab: resume w-item
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "resume" "w-item" "--session" "nope"
+exit 0
+--- stdout
+Opened Warp tab: qm w-item
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "resume" "w-live"
+exit 1
+--- stderr
+qm: session s-live is running right now — switch to its Warp tab instead
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "resume" "w-none"
+exit 0
+--- stdout
+Opened Warp tab: qm w-none
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "resume" "w-none" "--here"
+exit 0
+--- stdout
+claude  item=w-none cwd=ROOT/repo
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "resume" "nowhere"
+exit 1
+--- stderr
+qm: no work item 'nowhere'
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "start"
+exit 1
+--- stderr
+usage: qm start SLUG [--here]
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "start" "w-item"
+exit 0
+--- stdout
+Opened Warp tab: qm w-item
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "start" "w-item" "--here"
+exit 0
+--- stdout
+claude  item=w-item cwd=ROOT/wt-w
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "start" "w-none"
+exit 0
+--- stdout
+Opened Warp tab: qm w-none
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "start" "nowhere"
+exit 1
+--- stderr
+qm: no work item 'nowhere'
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "start" "w-item" "--bogus"
+exit 1
+--- stderr
+/home/user/quartermaster/lib/quartermaster/cli_workspace.rb:30:in `cmd_start': invalid option: --bogus (OptionParser::InvalidOption)
+	from /home/user/quartermaster/lib/quartermaster/cli.rb:61:in `run'
+	from /home/user/quartermaster/quartermaster:24:in `<main>'
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-switch" "w-item"
+exit 1
+--- stderr
+qm: ROOT/tools/devsrv switch failed: devsrv exploded
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-stop"
+exit 1
+--- stderr
+qm: ROOT/tools/devsrv stop failed: devsrv exploded
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "term" "w-item"
+exit 1
+--- stderr
+qm: could not open a Warp tab (is Warp installed?)
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "start" "w-none"
+exit 1
+--- stderr
+qm: could not open a Warp tab (is Warp installed?)
+--- w-item.md
+---
+v: 1
+title: w-item
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-w
+- feat-x
+sessions:
+- id: s-res
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+tool log:
+devsrv status
+devsrv switch ROOT/wt-w dev
+devsrv switch ROOT/wt-w tunnel
+devsrv switch ROOT/wt-w tunnel
+devsrv switch ROOT/repo dev
+ide ROOT/wt-w
+ide ROOT/repo
+open warp://tab_config/qm-launch
+open warp://tab_config/qm-launch
+devsrv switch ROOT/wt-w dev
+ide ROOT/wt-w
+devsrv switch ROOT/wt-w tunnel
+ide ROOT/wt-w
+ide ROOT/wt-w
+devsrv status
+devsrv stop
+open warp://tab_config/qm-launch
+open warp://tab_config/qm-launch
+open warp://tab_config/qm-launch
+open warp://tab_config/qm-launch
+open warp://tab_config/qm-launch
+open warp://tab_config/qm-launch
+devsrv switch ROOT/wt-w dev
+devsrv stop
+open warp://tab_config/qm-launch
+open warp://tab_config/qm-launch
+warp:
+name = "qm w-none"
+
+[[panes]]
+id = "main"
+type = "terminal"
+directory = "ROOT/repo"
+commands = ["QM_ITEM=w-none claude"]

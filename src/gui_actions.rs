@@ -502,7 +502,7 @@ fn resume(slug: &str, args: &Args) -> R<Value> {
         _ => return Err(Stop::Unported),
     };
     match crate::launcher::resume_plan(&item, wanted.as_deref()) {
-        crate::launcher::Resume::Live => Err(fail(RUNNING_NOW)),
+        crate::launcher::Resume::Live { .. } => Err(fail(RUNNING_NOW)),
         crate::launcher::Resume::Resume { session_id, cwd } => {
             open_session(&cwd, &["claude", "--resume", &session_id], &[], &format!("resume {slug}"))?;
             Ok(ok())

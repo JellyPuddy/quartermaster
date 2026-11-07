@@ -73,7 +73,7 @@ pub fn fresh_chat_plan(item: &WorkItem) -> Option<Plan> {
 /// What resuming an item lands on (`Launcher#resume_plan`).
 pub enum Resume {
     Resume { session_id: String, cwd: String },
-    Live,
+    Live { session_id: String },
     Rehydrate { cwd: String },
 }
 
@@ -89,7 +89,7 @@ pub fn resume_plan(item: &WorkItem, session_id: Option<&str>) -> Resume {
     let resumable = mine.iter().find_map(|s| (s.tier() == "resumable").then(|| resume_cwd(s).map(|c| (s.id.clone(), c))).flatten());
     match resumable {
         Some((session_id, cwd)) => Resume::Resume { session_id, cwd },
-        None if mine.iter().any(|s| s.live) => Resume::Live,
+        None if mine.iter().any(|s| s.live) => Resume::Live { session_id: mine.iter().find(|s| s.live).map(|s| s.id.clone()).unwrap_or_default() },
         None => Resume::Rehydrate { cwd: start_cwd(item) },
     }
 }
@@ -122,7 +122,7 @@ pub fn chat_plan(item: &WorkItem, fresh: bool, session_id: Option<&str>, prompt:
     }
     match resume_plan(item, session_id) {
         Resume::Resume { session_id: id, cwd } => Some(Plan { mode: Mode::Resume, cwd, argv: command.iter().cloned().chain(["--resume".to_string(), id]).collect(), env: vec![] }),
-        Resume::Live => Some(Plan { mode: Mode::Live, cwd: String::new(), argv: vec![], env: vec![] }),
+        Resume::Live { .. } => Some(Plan { mode: Mode::Live, cwd: String::new(), argv: vec![], env: vec![] }),
         Resume::Rehydrate { .. } => Some(fresh_plan()),
     }
 }

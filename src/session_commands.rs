@@ -21,6 +21,7 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
         "ask" => crate::ask_command::ask(args),
         "grep" => crate::grep_command::grep(args),
         "attention" => crate::attention_command::attention(),
+        "pf-switch" | "ide" | "term" | "work-on" | "pf-stop" | "pf-status" | "resume" | "start" => crate::workspace_commands::run(command, args),
         "show" => crate::show_command::show(args),
         "show-session" => show_session(args),
         "session-item" => session_item(args),
