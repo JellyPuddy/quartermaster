@@ -266,6 +266,8 @@ fn run(payload: &Value) -> R<Value> {
             item.update_pf_mode(&args.text("mode")?).map_err(error)?;
             Ok(ok())
         }
+        "issue-preview" => issue_preview(&args),
+        "issue-start" => issue_start(&args),
         "pr-thread-resolve" => match args.0 {
             Some(raw) => crate::gui_review_actions::resolve(raw),
             None => Err(Stop::Unported),
@@ -1085,4 +1087,70 @@ pub(crate) fn plan_payload(plan: &crate::cleanup::Plan) -> Value {
         })
         .collect();
     json!({"scope": plan.scope, "summary": plan.summary(), "notes": plan.notes, "entries": entries})
+}
+
+fn issue_fail(f: crate::issue_start::Fail) -> Stop {
+    match f {
+        crate::issue_start::Fail::Arg(m) => fail(m),
+        crate::issue_start::Fail::Unported => Stop::Unported,
+    }
+}
+
+/// Where an issue number with no project goes.
+fn issue_project(args: &Args) -> R<String> {
+    if let Some(p) = presence_of(args, "project")? {
+        return Ok(p);
+    }
+    Ok(crate::project_config::ProjectConfig::current().default_project().unwrap_or_else(|| "No project".to_string()))
+}
+
+/// `issue-preview`: what Start would do with the issue.
+fn issue_preview(args: &Args) -> R<Value> {
+    let project = issue_project(args)?;
+    let preview = crate::issue_start::preview(args.get("number")?, &project).map_err(issue_fail)?;
+    let mut out = ok();
+    out["issue"] = preview;
+    Ok(out)
+}
+
+/// `issue-start`: the issue as an item with its own worktree, and a chat opened on it with the kickoff
+/// prompt; an item that already holds the issue just opens.
+fn issue_start(args: &Args) -> R<Value> {
+    let project = issue_project(args)?;
+    let preview = crate::issue_start::preview(args.get("number")?, &project).map_err(issue_fail)?;
+    if let Some(existing) = preview["existing"].as_object() {
+        let slug = existing["slug"].as_str().unwrap_or("").to_string();
+        let mut item = find(&slug)?;
+        if item.state().as_deref() == Some("resolved") {
+            item.update_state("in_progress").map_err(error)?;
+        }
+        let mut reply = pane(&item.slug, false, &Args(Some(&Map::new())))?;
+        reply["slug"] = json!(item.slug);
+        reply["existing"] = json!(true);
+        reply["issue"] = preview.clone();
+        return Ok(reply);
+    }
+    let from = presence_of(args, "from")?;
+    if let Some(f) = &from {
+        find(f)?;
+    }
+    let slug = preview["slug"].as_str().unwrap_or("").to_string();
+    let number = preview["number"].as_i64().unwrap_or(0);
+    let (job_slug, job_preview) = (slug.clone(), preview.clone());
+    let mut reply = crate::gui_jobs::background(&slug, &format!("starting #{number}…"), false, move || {
+        use crate::gui_jobs::Failure;
+        let relabel = |label: &str| crate::gui_jobs::relabel(&job_slug, label);
+        let (item, path) = crate::issue_start::start(&job_preview, from.as_deref(), &relabel).map_err(|f| match f {
+            crate::issue_start::Fail::Arg(m) => Failure::Argument(m),
+            crate::issue_start::Fail::Unported => Failure::Other("a value this port can't start an issue from yet".into(), "NotImplementedError"),
+        })?;
+        let plan = crate::launcher::chat_plan(&item, true, None, Some(&crate::issue_start::kickoff(number))).ok_or_else(|| Failure::Other("no chat command is configured".into(), "NotImplementedError"))?;
+        if !matches!(plan.mode, crate::launcher::Mode::Live) {
+            crate::tmux::Tmux::new().open(&item.slug, &plan.cwd, &plan.argv, &plan.env).map_err(Failure::Argument)?;
+        }
+        Ok(json!({"ok": true, "slug": item.slug, "branch": job_preview["branch"], "path": path, "message": format!("#{number} started as {} in {}", item.slug, crate::cli_format::short_path(Some(&path)))}))
+    });
+    reply["slug"] = json!(slug);
+    reply["issue"] = preview;
+    Ok(reply)
 }

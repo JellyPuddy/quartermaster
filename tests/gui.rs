@@ -4542,3 +4542,144 @@ fn the_review_actions_match_ruby() {
     step_w("place a missing draft", &place(serde_json::json!({"id": "zz", "how": "commit"})));
     step_w("place with no base", &place(serde_json::json!({"id": "g1", "how": "file", "commit": "<commit>"})));
 }
+
+#[test]
+fn issue_preview_and_start_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let bases = [base.path().join("a"), base.path().join("b")];
+    let chat = base.path().join("fake-chat");
+    executable(&chat, "#!/bin/sh\nexec sleep 300\n");
+    let mut worlds = vec![];
+    for (i, b) in bases.iter().enumerate() {
+        let w = attention_world(b, std::time::SystemTime::now(), None);
+        let origin = b.join("acme/widgets.git");
+        fs::create_dir_all(&origin).unwrap();
+        git(&origin, &["init", "-q", "--bare", "-b", "main"]);
+        git(&w.repo, &["remote", "add", "origin", origin.to_str().unwrap()]);
+        git(&w.repo, &["push", "-q", "origin", "main"]);
+        git(&w.repo, &["remote", "set-head", "origin", "main"]);
+        git(&w.repo, &["branch", "issue/14-old-work"]);
+        let plain = b.join("plain-repo");
+        common::repo(&plain, "main");
+        fs::write(w.root.join("config.yml"), format!("default_project: demo\nprojects:\n  plain: {}\n  demo: {}\n  other: {}\n", plain.display(), w.repo.display(), w.repo.display())).unwrap();
+        let item = |slug: &str, project: &str, state: &str, extra: &str, description: &str| {
+            fs::write(w.root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: {slug}\nstate: {state}\nproject: {project}\ncreated: '2026-01-01'\n{extra}---\n\n## Description\n\n{description}\n\n## Notes\n\n## Snapshots\n")).unwrap();
+        };
+        item("by-branch", "demo", "in_progress", "branches:\n- issue/12-the-thing\n", "d");
+        item("by-url", "demo", "in_progress", "", "see https://github.com/acme/widgets/issues/13 for more");
+        item("a-url-prefix", "demo", "in_progress", "", "see https://github.com/acme/widgets/issues/130 only");
+        item("a-url-23", "demo", "in_progress", "", "mentions https://github.com/acme/widgets/issues/23");
+        item("z-branch-23", "demo", "in_progress", "branches:\n- issue/23-held\n", "d");
+        item("dup-a", "demo", "in_progress", "branches:\n- issue/21-first\n", "d");
+        item("dup-b", "demo", "in_progress", "branches:\n- issue/21-second\n", "d");
+        item("linked-elsewhere", "plain", "in_progress", "branches:\n- issue/22-linked\n", "d");
+        git(&w.repo, &["branch", "issue/22-linked"]);
+        item("a-resolved", "demo", "resolved", "branches:\n- issue/17-old\n", "d");
+        item("both", "demo", "in_progress", "branches:\n- issue/17-newer\n", "d");
+        item("drafting", "demo", "in_progress", "", "where issues are drafted");
+        let gh = b.join("gh");
+        fs::create_dir_all(&gh).unwrap();
+        let issue = |n: i64, title: &str, state: &str| fs::write(gh.join(format!("issue-{n}.json")), serde_json::json!({"number": n, "title": title, "state": state, "url": format!("https://github.com/acme/widgets/issues/{n}")}).to_string()).unwrap();
+        issue(12, "The thing", "OPEN");
+        issue(13, "Linked by url", "OPEN");
+        issue(14, "Old work comes back", "OPEN");
+        issue(15, "A brand new issue with a very long title that has to be cut at a word boundary", "OPEN");
+        issue(16, "Closed one", "CLOSED");
+        issue(17, "Seventeen", "OPEN");
+        issue(18, "Über naïve — título", "OPEN");
+        issue(19, "!!!", "OPEN");
+        issue(20, "aaaaaaaaaa bbbbbbbbbb cccccccccc dddddddd eee", "OPEN");
+        issue(21, "Two holders", "OPEN");
+        issue(22, "Linked elsewhere", "OPEN");
+        issue(23, "Held by branch and url", "OPEN");
+        fs::write(gh.join("issue-500.json"), "not json").unwrap();
+        fs::write(gh.join("issue-501.json"), "[1]").unwrap();
+        executable(&b.join("bin/gh"), "#!/bin/sh\necho \"$*\" >> \"$FAKE_GH_LOG\"\ncase \"$1 $2\" in\n  \"issue view\") f=\"$FAKE_GH/issue-$3.json\"; [ -f \"$f\" ] && cat \"$f\" || { echo \"Could not resolve to an issue\" >&2; exit 1; };;\n  \"repo view\") echo main;;\nesac\n");
+        let _ = i;
+        worlds.push(w);
+    }
+    let env = |i: usize| -> Vec<(&'static str, String)> {
+        let w = &worlds[i];
+        vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("PATH", format!("{}:{}", bases[i].join("bin").display(), std::env::var("PATH").unwrap())), ("FAKE_GH", bases[i].join("gh").display().to_string()), ("FAKE_GH_LOG", bases[i].join("gh.log").display().to_string()), ("QM_TMUX_SOCKET", format!("qm-test-issue-{i}")), ("QM_CHAT_COMMAND", chat.display().to_string())]
+    };
+    for i in 0..2 {
+        tmux_on(&format!("qm-test-issue-{i}"), &["kill-server"]);
+    }
+    let ruby = start_env(false, &worlds[0].root, &worlds[0].home, &env(0));
+    let rust = start_env(true, &worlds[1].root, &worlds[1].home, &env(1));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let norm = |text: String, i: usize| -> String { text.replace(&bases[i].display().to_string(), "BASE").replace(&worlds[i].home.display().to_string(), "HOME") };
+    let state = |i: usize| -> String {
+        let mut out = String::new();
+        tree_text(&worlds[i].root.join("work-items"), "work-items", &mut out);
+        out += &git(&worlds[i].repo, &["worktree", "list"]);
+        out += &git(&worlds[i].repo, &["branch", "--list", "--format=%(refname:short) %(objectname:short)"]);
+        // the state builds ask gh for each linked branch's PR in the background: not what is compared
+        out += &fs::read_to_string(bases[i].join("gh.log")).unwrap_or_default().lines().filter(|l| !l.starts_with("pr view")).map(|l| format!("{l}\n")).collect::<String>();
+        out += &tmux_picture(&format!("qm-test-issue-{i}"));
+        let log = fs::read_to_string(worlds[i].root.join("qm.log")).unwrap_or_default();
+        out += &regex::Regex::new(r"(?m)^\S+ \[").unwrap().replace_all(&log, "[");
+        let t = norm(out, i);
+        regex::Regex::new(r"(?m)^(created|\s*- 20\d\d-\d\d-\d\dT[^\n]*|[^\n]*20\d\d-\d\d-\d\d[^\n]*)$").unwrap().replace_all(&t, "DATE").into_owned()
+    };
+    let act = |cmd: &str, slug: &str, args: serde_json::Value| serde_json::json!({"cmd": cmd, "slug": slug, "args": args}).to_string();
+    let step = |label: &str, body: &str| {
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, body, true), request(rust.port, "POST", "/api/action", &origin, body, true));
+        let (sa, sb) = (norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1));
+        assert_eq!(sa, sb, "{label}: reply to {body}");
+        if sa.contains("\"background\":true") {
+            std::thread::sleep(std::time::Duration::from_millis(2500));
+            let finished = |i: usize, port: u16| -> String {
+                let a = request(port, "GET", "/api/state", &[], "", true);
+                let v: serde_json::Value = serde_json::from_slice(&a.body).unwrap_or_default();
+                norm(v["finished"].to_string(), i)
+            };
+            assert_eq!(finished(0, ruby.port), finished(1, rust.port), "{label}: the job's result");
+        }
+        let (xa, xb) = (state(0), state(1));
+        if xa != xb {
+            let at = xa.bytes().zip(xb.bytes()).position(|(p, q)| p != q).unwrap_or(xa.len().min(xb.len()));
+            let from = xa[..at].rfind('\n').map(|n| n.saturating_sub(300)).unwrap_or(0);
+            panic!("{label}: what happened after {body}: first difference at byte {at}\nRuby: …{}\nRust: …{}", &xa[from.min(xa.len())..(at + 400).min(xa.len())], &xb[from.min(xb.len())..(at + 400).min(xb.len())]);
+        }
+    };
+    for (label, args) in [
+        ("an item holds the branch", serde_json::json!({"number": "#12"})),
+        ("an item holds the url", serde_json::json!({"number": 13})),
+        ("a url that only starts alike", serde_json::json!({"number": "130"})),
+        ("a branch no item links", serde_json::json!({"number": "14"})),
+        ("a new issue", serde_json::json!({"number": 15})),
+        ("a closed issue", serde_json::json!({"number": 16})),
+        ("resolved and unresolved holders", serde_json::json!({"number": 17})),
+        ("a title with accents", serde_json::json!({"number": 18})),
+        ("a title with nothing to slug", serde_json::json!({"number": 19})),
+        ("a title cut exactly at the limit", serde_json::json!({"number": 20})),
+        ("two unresolved holders", serde_json::json!({"number": 21})),
+        ("a branch another item links", serde_json::json!({"number": 22})),
+        ("a holder by branch and one by url", serde_json::json!({"number": 23})),
+        ("a chosen project", serde_json::json!({"number": 15, "project": "plain"})),
+        ("a project without a root", serde_json::json!({"number": 15, "project": "nowhere"})),
+        ("blank project", serde_json::json!({"number": 15, "project": "  "})),
+        ("no number", serde_json::json!({})),
+        ("zero", serde_json::json!({"number": 0})),
+        ("leading zero", serde_json::json!({"number": "012"})),
+        ("text", serde_json::json!({"number": "abc"})),
+        ("padded", serde_json::json!({"number": " #15 "})),
+        ("an issue that doesn't exist", serde_json::json!({"number": 404})),
+        ("an answer that isn't JSON", serde_json::json!({"number": 500})),
+    ] {
+        step(label, &act("issue-preview", "", args));
+    }
+    step("start an existing issue's item", &act("issue-start", "", serde_json::json!({"number": 12})));
+    step("start one that is resolved", &act("issue-start", "", serde_json::json!({"number": 17})));
+    step("start a new issue", &act("issue-start", "drafting", serde_json::json!({"number": 15, "from": "drafting"})));
+    step("start it again", &act("issue-start", "", serde_json::json!({"number": 15})));
+    step("start a reused branch", &act("issue-start", "", serde_json::json!({"number": 14})));
+    step("start a closed issue", &act("issue-start", "", serde_json::json!({"number": 16})));
+    step("start from a missing item", &act("issue-start", "", serde_json::json!({"number": 18, "from": "nowhere"})));
+    step("start in another project", &act("issue-start", "", serde_json::json!({"number": 18, "project": "plain", "from": ""})));
+    step("start with no number", &act("issue-start", "", serde_json::json!({})));
+    for i in 0..2 {
+        tmux_on(&format!("qm-test-issue-{i}"), &["kill-server"]);
+    }
+}

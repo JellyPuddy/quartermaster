@@ -45,6 +45,7 @@ pub mod pr_deployment;
 pub mod pr_inbox;
 pub mod pr_items;
 pub mod review_threads;
+pub mod issue_start;
 pub mod gui_review_actions;
 pub mod pending_review;
 pub mod clipboard_annotations;

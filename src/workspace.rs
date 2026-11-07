@@ -130,9 +130,12 @@ fn run_checked(argv: &[&str], label: &str, chdir: &str) -> Result<(), Failed> {
     Err(format!("{label} failed: {message}"))
 }
 
-fn add_worktree(root: &str, branch: &str, path: &str) -> Result<(), Failed> {
+fn add_worktree(root: &str, branch: &str, path: &str, base: Option<&str>) -> Result<(), Failed> {
     if git(Some(root), &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_some() {
         return run_checked(&["git", "worktree", "add", path, branch], "git worktree add", root);
+    }
+    if let Some(base) = base {
+        return run_checked(&["git", "worktree", "add", "--no-track", "-b", branch, path, base], "git worktree add", root);
     }
     if git(Some(root), &["rev-parse", "--verify", "--quiet", &format!("refs/remotes/origin/{branch}")]).is_none() {
         run_checked(&["git", "fetch", "origin", branch], "git fetch", root)?;
@@ -152,7 +155,7 @@ pub fn materialize(item: &mut WorkItem, worktree: Option<&str>, branch: Option<&
     let target = resolve(item, worktree, branch)?;
     if target.create {
         let root = root_for(item.project().as_deref())?;
-        add_worktree(&root, target.branch.as_deref().unwrap_or(""), &target.path)?;
+        add_worktree(&root, target.branch.as_deref().unwrap_or(""), &target.path, None)?;
         prepare_test_db(item.project().as_deref(), &target.path)?;
     }
     Ok(target)
@@ -290,13 +293,13 @@ pub fn job_reply(slug: &str, report: &Report) -> Value {
 
 /// `TargetWorktree#materialize_branch`: a PR's branch rather than an item's — its existing worktree, else a
 /// new one (the same never-switch-a-worktree rule as for items).
-pub fn materialize_branch(project: &str, branch: &str) -> Result<Target, Failed> {
+pub fn materialize_branch(project: &str, branch: &str, base: Option<&str>) -> Result<Target, Failed> {
     let root = root_for(Some(project))?;
     if let Some(path) = lookup(&checked_out(&root), branch) {
         return Ok(Target { path: path.clone(), branch: Some(branch.to_string()), create: false, warning: None, alternatives: vec![] });
     }
     let target = Target { path: new_worktree_path(&root, branch), branch: Some(branch.to_string()), create: true, warning: None, alternatives: vec![] };
-    add_worktree(&root, branch, &target.path)?;
+    add_worktree(&root, branch, &target.path, base)?;
     prepare_test_db(Some(project), &target.path)?;
     Ok(target)
 }
@@ -306,7 +309,7 @@ pub fn switch_pf_to_branch(project: &str, branch: &str, mode: Option<&str>) -> R
     let config = ProjectConfig::current();
     let server = dev_server_of(&config, Some(project))?;
     let mode = check_mode(&server, mode.unwrap_or(&server.default_mode))?;
-    let target = materialize_branch(project, branch)?;
+    let target = materialize_branch(project, branch, None)?;
     let shown = mode.clone();
     report(target, Some(mode), |steps, target| {
         steps.push(pf_step(&server, target, &shown)?);
@@ -318,7 +321,7 @@ pub fn switch_pf_to_branch(project: &str, branch: &str, mode: Option<&str>) -> R
 pub fn open_ide_on_branch(project: &str, branch: &str) -> Result<Report, Failed> {
     let config = ProjectConfig::current();
     let ide = config.ide(Some(project)).ok_or_else(no_ide)?;
-    let target = materialize_branch(project, branch)?;
+    let target = materialize_branch(project, branch, None)?;
     report(target, None, |steps, target| {
         steps.push(ide_step(ide, target)?);
         Ok(())

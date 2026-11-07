@@ -60,6 +60,7 @@ pub struct ProjectSettings {
 pub struct ProjectConfig {
     projects: Vec<ProjectSettings>,
     ide: Option<Ide>,
+    default_name: String,
 }
 
 fn parse_ide(command: Option<&Value>, label: Option<&Value>) -> Option<Ide> {
@@ -127,13 +128,26 @@ impl ProjectConfig {
     pub fn parse(source: &str) -> ProjectConfig {
         let data = match serde_yaml::from_str::<Value>(source) {
             Ok(Value::Mapping(m)) => m,
-            _ => return ProjectConfig { projects: vec![], ide: None },
+            _ => return ProjectConfig { projects: vec![], ide: None, default_name: String::new() },
         };
         let projects = match data.get("projects") {
             Some(Value::Mapping(m)) => m.iter().filter_map(|(k, v)| parse_project(text(k), v)).collect(),
             _ => vec![],
         };
-        ProjectConfig { projects, ide: parse_ide(get(&data, "ide_command"), get(&data, "ide_label")) }
+        let default_name = match get(&data, "default_project") {
+            Some(Value::String(t)) => t.clone(),
+            _ => String::new(),
+        };
+        ProjectConfig { projects, ide: parse_ide(get(&data, "ide_command"), get(&data, "ide_label")), default_name }
+    }
+
+    /// Where an issue number with no project goes: `default_project:` when it names a configured project,
+    /// else the first one.
+    pub fn default_project(&self) -> Option<String> {
+        if self.projects.iter().any(|p| p.name == self.default_name) {
+            return Some(self.default_name.clone());
+        }
+        self.projects.first().map(|p| p.name.clone())
     }
 
     /// One dev server serves one checkout at a time across projects: the first project that configures one.
