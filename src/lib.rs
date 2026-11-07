@@ -44,6 +44,7 @@ pub mod pane_follows_session;
 pub mod pr_deployment;
 pub mod pr_inbox;
 pub mod pr_items;
+pub mod review_threads;
 pub mod pr_prerequisites;
 pub mod pr_requires_command;
 pub mod pr_status;

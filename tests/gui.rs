@@ -3824,3 +3824,63 @@ fn the_prs_view_and_its_actions_match_ruby() {
         tmux_on(&format!("qm-test-prs-{side}"), &["kill-server"]);
     }
 }
+
+#[test]
+fn the_pr_threads_route_matches_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let dirs = [base.path().join("a"), base.path().join("b")];
+    let page1 = serde_json::json!({"data": {"viewer": {"login": "me"}, "repository": {"pullRequest": {"id": "PR_1",
+        "reviews": {"nodes": [null, {"id": "R_other", "viewerDidAuthor": false}, {"id": "R_mine", "viewerDidAuthor": true}]},
+        "reviewThreads": {"pageInfo": {"hasNextPage": true, "endCursor": "CUR1"}, "nodes": [
+            {"id": "T1", "path": "a.rs", "line": 5, "originalLine": 5, "startLine": 3, "diffSide": "RIGHT", "subjectType": "LINE", "isResolved": false, "isOutdated": false,
+             "viewerCanResolve": true, "viewerCanUnresolve": false, "viewerCanReply": true, "resolvedBy": null,
+             "comments": {"nodes": [{"id": "C1", "body": "first", "createdAt": "2026-03-01T10:00:00Z", "url": "u1", "state": "SUBMITTED", "diffHunk": "@@ -1 +1 @@\n-old\n+new line\n\n", "author": {"login": "octo"}}, null,
+                                    {"id": "C2", "body": null, "createdAt": "2026-03-01T11:00:00Z", "url": "u2", "state": "PENDING", "diffHunk": "", "author": null}]}},
+            null,
+            {"id": "T2", "path": "b.rs", "line": null, "originalLine": 9, "startLine": null, "diffSide": "LEFT", "subjectType": "FILE", "isResolved": true, "isOutdated": true,
+             "viewerCanResolve": false, "viewerCanUnresolve": true, "viewerCanReply": false, "resolvedBy": {"login": "boss"}, "comments": {"nodes": []}},
+            {"id": "T3", "path": "c.rs", "diffSide": null, "isResolved": "yes", "comments": null}
+        ]}}}}});
+    let page2 = serde_json::json!({"data": {"viewer": {"login": "me"}, "repository": {"pullRequest": {"id": "PR_1", "reviews": {"nodes": []},
+        "reviewThreads": {"pageInfo": {"hasNextPage": false, "endCursor": "CUR2"}, "nodes": [{"id": "T4", "path": "d.rs", "line": 1, "diffSide": "RIGHT", "comments": {"nodes": [{"id": "C4", "body": "late", "diffHunk": "x\ny", "author": {"login": "z"}}]}}]}}}}});
+    let mut env = vec![];
+    for (i, d) in dirs.iter().enumerate() {
+        fs::create_dir_all(d.join("bin")).unwrap();
+        fs::create_dir_all(d.join("gh")).unwrap();
+        fs::create_dir_all(d.join("home")).unwrap();
+        fs::write(d.join("gh/page1.json"), page1.to_string()).unwrap();
+        fs::write(d.join("gh/page2.json"), page2.to_string()).unwrap();
+        fs::write(d.join("gh/notfound.json"), "{\"data\":{\"viewer\":{\"login\":\"me\"},\"repository\":{\"pullRequest\":null}}}").unwrap();
+        fs::write(d.join("gh/errors.json"), "{\"errors\":[{\"message\":\"bad one\"},{\"nope\":1},{\"message\":\"bad two\"}],\"data\":null}").unwrap();
+        fs::write(d.join("gh/junk.json"), "this is not json\n").unwrap();
+        executable(&d.join("bin/gh"), "#!/bin/sh\necho \"$*\" | sed 's/query=.*//' >> \"$FAKE_GH_LOG\"\ncase \"$*\" in\n  *number=404*) cat \"$FAKE_GH/notfound.json\";;\n  *number=405*) cat \"$FAKE_GH/errors.json\";;\n  *number=406*) cat \"$FAKE_GH/junk.json\";;\n  *number=407*) echo \"boom on stderr\" >&2; exit 1;;\n  *number=408*) echo \"only stdout\"; exit 1;;\n  *cursor=CUR1*) cat \"$FAKE_GH/page2.json\";;\n  *) cat \"$FAKE_GH/page1.json\";;\nesac\n");
+        env.push(vec![("HOME", d.join("home").display().to_string()), ("PATH", format!("{}:{}", d.join("bin").display(), std::env::var("PATH").unwrap())), ("FAKE_GH", d.join("gh").display().to_string()), ("FAKE_GH_LOG", d.join("gh.log").display().to_string()), ("QM_TMUX_SOCKET", format!("qm-test-threads-{i}"))]);
+    }
+    let roots = [dirs[0].join("root"), dirs[1].join("root")];
+    for r in &roots {
+        fs::create_dir_all(r.join("work-items")).unwrap();
+    }
+    let ruby = start_env(false, &roots[0], &dirs[0].join("home"), &env[0]);
+    let rust = start_env(true, &roots[1], &dirs[1].join("home"), &env[1]);
+    let paths = [
+        "/api/pr-threads", "/api/pr-threads?repo=nope&number=1", "/api/pr-threads?repo=acme/widgets", "/api/pr-threads?repo=acme/widgets&number=x",
+        "/api/pr-threads?repo=acme/widgets&number=0", "/api/pr-threads?repo=acme/widgets&number=-3", "/api/pr-threads?repo=a/b/c&number=1", "/api/pr-threads?repo=a/b%0A&number=1",
+        "/api/pr-threads?repo=acme/widgets&number=7&head=h1", "/api/pr-threads?repo=acme/widgets&number=7&head=h1", "/api/pr-threads?repo=ACME/Widgets&number=7&head=h1",
+        "/api/pr-threads?repo=acme/widgets&number=%207%20&head=h2", "/api/pr-threads?repo=acme/widgets&number=+7&head=h3", "/api/pr-threads?repo=acme/widgets&number=0_7&head=h4",
+        "/api/pr-threads?repo=acme/widgets&number=7&head=h1&fresh=1", "/api/pr-threads?repo=acme/widgets&number=7&head=h1&fresh=0",
+        "/api/pr-threads?repo=acme/widgets&number=404", "/api/pr-threads?repo=acme/widgets&number=405", "/api/pr-threads?repo=acme/widgets&number=406",
+        "/api/pr-threads?repo=acme/widgets&number=407", "/api/pr-threads?repo=acme/widgets&number=408", "/api/pr-threads?repo=acme/widgets&number=1_&head=q", "/api/pr-threads?repo=ac9me/w9&number=1__0", "/api/pr-threads?repo=ac9me/w9&number=_1", "/api/pr-threads?repo=ac9me/w9&number=7&head=d",
+    ];
+    for path in paths {
+        let (a, b) = (request(ruby.port, "GET", path, &[], "", true), request(rust.port, "GET", path, &[], "", true));
+        let (a, b) = (shown(&a, ruby.port), shown(&b, rust.port));
+        assert_eq!(a, b, "{path}");
+    }
+    let (a, b) = (request(ruby.port, "GET", "/api/pr-threads?repo=acme/widgets&number=7&head=h1&fresh=1", &[], "", true), request(rust.port, "GET", "/api/pr-threads?repo=acme/widgets&number=7&head=h1&fresh=1", &[], "", true));
+    let body = String::from_utf8_lossy(&b.body).to_string();
+    assert_eq!(a.body, b.body);
+    for needle in ["\"ghost\"", "\"side\":\"old\"", "\"file\":true", "\"quote\":\"+new line\"", "\"quote\":null", "\"resolvedBy\":\"boss\"", "\"id\":\"T4\"", "\"quote\":\"y\"", "\"pendingReview\":null"] {
+        assert!(body.contains(needle), "{needle} in {body}");
+    }
+    assert_eq!(fs::read_to_string(dirs[0].join("gh.log")).unwrap(), fs::read_to_string(dirs[1].join("gh.log")).unwrap(), "the gh calls");
+}
