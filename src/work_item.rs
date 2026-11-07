@@ -661,6 +661,67 @@ impl WorkItem {
         .map(|_| ())
     }
 
+    /// The one snapshot of a session, replacing an earlier one: `### <date> — session <id>` in `## Snapshots`.
+    pub fn add_snapshot(&mut self, session_id: &str, text: &str) -> Res<()> {
+        let (id, text) = (session_id.to_string(), strip(text).to_string());
+        self.edit(move |fresh, _, body| {
+            let section = fresh.section_body("## Snapshots");
+            let header = format!(" — session {id}");
+            let mut chunks: Vec<String> = vec![];
+            for line in section.split_inclusive('\n') {
+                if line.starts_with("### ") || chunks.is_empty() {
+                    chunks.push(String::new());
+                }
+                chunks.last_mut().unwrap().push_str(line);
+            }
+            let is_mine = |chunk: &str| {
+                let first = chunk.split_inclusive('\n').next().unwrap_or("");
+                let Some(rest) = first.strip_prefix("### ") else { return false };
+                let dated = rest.get(..10).is_some_and(|d| d.bytes().enumerate().all(|(i, c)| if i == 4 || i == 7 { c == b'-' } else { c.is_ascii_digit() }));
+                dated && rest.get(10..).and_then(|r| r.strip_prefix(header.as_str())).is_some_and(|tail| strip(tail).is_empty())
+            };
+            let mut next = body.clone();
+            if chunks.iter().any(|c| is_mine(c)) {
+                let kept = chunks.iter().filter(|c| !is_mine(c)).cloned().collect::<String>();
+                let kept = strip(&kept).to_string();
+                next = sections::replace_section(&next, "## Snapshots", &if kept.is_empty() { "\n".to_string() } else { format!("\n{kept}\n") });
+            }
+            *body = sections::append_to_section(&next, "## Snapshots", &format!("\n### {} — session {id}\n\n{text}\n", clock::today()));
+            Ok(true)
+        })
+        .map(|_| ())
+    }
+
+    /// Records that the chat was handed over, with the notes the fresh session is told about: the item's
+    /// `rotations` list grows by `{at, from, via, carried, decisions, open}`.
+    pub fn record_rotation(&mut self, from_session: &str, via: &str, at: f64) -> Res<serde_json::Value> {
+        let (from, via) = (from_session.to_string(), via.to_string());
+        let mut recorded = serde_json::Value::Null;
+        self.edit(|fresh, lines, _| {
+            let carried = fresh.injectable_notes();
+            let decisions = carried.iter().filter(|n| n.kind == "decision").count();
+            let open = carried.iter().filter(|n| n.is_open()).count();
+            let positions: Vec<usize> = carried.iter().map(|n| n.position).collect();
+            let stamp = chrono::DateTime::from_timestamp(at.floor() as i64, 0).map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)).unwrap_or_default();
+            let unemittable = |what: &str| QmError::new(UNEMITTABLE, format!("cannot write {what} like Ruby"));
+            let mut entry = vec![format!("- at: {}", psych::scalar(6, &stamp).ok_or_else(|| unemittable("the time"))?)];
+            entry.push(format!("  from: {}", psych::scalar(8, &from).ok_or_else(|| unemittable("the session id"))?));
+            entry.push(format!("  via: {}", psych::scalar(7, &via).ok_or_else(|| unemittable("the way"))?));
+            if positions.is_empty() {
+                entry.push("  carried: []".to_string());
+            } else {
+                entry.push("  carried:".to_string());
+                entry.extend(positions.iter().map(|p| format!("  - {p}")));
+            }
+            entry.push(format!("  decisions: {decisions}"));
+            entry.push(format!("  open: {open}"));
+            front_edit::push_item(lines, "rotations", entry)?;
+            recorded = serde_json::json!({"at": stamp, "from": from, "via": via, "carried": positions, "decisions": decisions, "open": open});
+            Ok(true)
+        })?;
+        Ok(recorded)
+    }
+
     /// Retags the note at 1-based `position`; every stored note line is rewritten in its normal form.
     pub fn update_note_kind(&mut self, position: usize, kind: &str) -> Res<Note> {
         Self::validate_kind(kind)?;

@@ -269,6 +269,8 @@ fn run(payload: &Value) -> R<Value> {
             Ok(ok())
         }
         "benchmark-start" | "benchmark-cancel" | "benchmark-rerun" => benchmark_action(&cmd, &slug, &args),
+        "distill" => distill_action(&slug, &args),
+        "rotate" => rotate_action(&slug, &args),
         "board-answer" => board_answer(&slug, &args),
         "build-progress" => build_progress_action(&slug),
         "branch-stats-commentary" => branch_stats_commentary(&slug, &args),
@@ -1309,4 +1311,76 @@ fn benchmark_action(cmd: &str, slug: &str, args: &Args) -> R<Value> {
             }))
         }
     }
+}
+
+/// `distill`: the plan is made at once (so the already-distilled confirmation works), the haiku calls run
+/// on a thread; the page shows the item as distilling until a state build reports the outcome.
+fn distill_action(slug: &str, args: &Args) -> R<Value> {
+    use crate::distill::Fail;
+    let session = match args.get("session")? {
+        Value::Null => None,
+        Value::String(s) => Some(s.clone()),
+        Value::Bool(_) | Value::Number(_) => {
+            // an id of another type matches no attached session
+            let item = find(slug)?;
+            return Err(fail(format!("session {} of '{}' has no surviving transcript to distill", args.text("session")?, item.slug)));
+        }
+        _ => return Err(Stop::Unported),
+    };
+    let force = matches!(args.get("force")?, Value::Bool(true));
+    let (item, sessions) = match crate::distill::plan(slug, session.as_deref(), force) {
+        Ok(p) => p,
+        Err(Fail::Arg(m)) => return Err(fail(m)),
+        Err(Fail::Already(m)) => return Err(Stop::Reply(json!({"ok": false, "needs_confirmation": true, "error": m}))),
+        Err(Fail::Unported) => return Err(Stop::Unported),
+    };
+    if !crate::gui_jobs::start_distill(slug, sessions.len()) {
+        return Ok(json!({"ok": false, "error": format!("'{slug}' is already being distilled")}));
+    }
+    let (name, count) = (slug.to_string(), sessions.len());
+    std::thread::spawn(move || {
+        let mut item = item;
+        for session in &sessions {
+            if let Err(f) = crate::distill::session(&mut item, session) {
+                let message = match f {
+                    Fail::Arg(m) | Fail::Already(m) => m,
+                    Fail::Unported => "a transcript this port can't distill yet".to_string(),
+                };
+                crate::data_root::log_error("gui-distill", "ArgumentError", &message);
+                crate::gui_jobs::finish_distill(&name, json!({"ok": false, "error": message}));
+                return;
+            }
+        }
+        crate::gui_jobs::finish_distill(&name, json!({"ok": true, "sessions": count}));
+    });
+    Ok(json!({"ok": true, "background": true, "sessions": count}))
+}
+
+/// `rotate`: hand the item's chat over to a fresh session as the item's background job.
+fn rotate_action(slug: &str, args: &Args) -> R<Value> {
+    use crate::rotation::Fail;
+    let item = find(slug)?;
+    let flag = |key: &str| -> R<bool> { Ok(matches!(args.get(key)?, Value::Bool(true))) };
+    let (close, finish, by_chat) = (flag("close")?, flag("finish")?, flag("self")?);
+    let session = presence_of(args, "session")?;
+    let plan = match crate::rotation::plan(&item, close, finish, by_chat, session.as_deref()) {
+        Ok(p) => p,
+        Err(Fail::Arg(m)) => return Err(fail(m)),
+        Err(Fail::Unported) => return Err(Stop::Unported),
+    };
+    let label = crate::rotation::label(&plan);
+    let (mode, closed) = (plan.mode.name(), plan.close);
+    let name = slug.to_string();
+    let mut reply = crate::gui_jobs::background(slug, label, false, move || {
+        use crate::gui_jobs::Failure;
+        let mut item = item;
+        let relabel = |l: &str| crate::gui_jobs::relabel(&name, l);
+        crate::rotation::run(&mut item, &plan, &relabel).map_err(|f| match f {
+            Fail::Arg(m) => Failure::Argument(m),
+            Fail::Unported => Failure::Other("a value this port can't rotate yet".into(), "NotImplementedError"),
+        })
+    });
+    reply["mode"] = json!(mode);
+    reply["close"] = closed.map(|c| json!(c)).unwrap_or(Value::Null);
+    Ok(reply)
 }

@@ -1169,13 +1169,6 @@ fn the_data_actions_match_ruby() {
     for (label, body) in &cases {
         step(label, body);
     }
-    // what is not ported answers 501 before anything happens, with the files untouched
-    let before = action_traces(&root2, &w.root);
-    for body in [act("distill", "stale", "{}"), act("rotate", "stale", "{}")] {
-        let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
-        assert!(a.status.starts_with("501"), "{body}: {}", a.status);
-    }
-    assert_eq!(before, action_traces(&root2, &w.root));
 }
 
 /// Drafts and item files as the draft actions leave them, with the random parts named: each
@@ -2145,7 +2138,7 @@ fn the_loose_chat_actions_match_ruby() {
     }
     // what is not read as Ruby does, and typing into the chat, stay Ruby's: nothing is written
     let before = action_traces(&root2, &w.root);
-    for body in [act("loose-start", r#"{"model":"é"}"#), act("rotate", r#"{"slug":"x"}"#)] {
+    for body in [act("loose-start", r#"{"model":"é"}"#)] {
         let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
         assert!(a.status.starts_with("501"), "{body}: {}", a.status);
     }
@@ -4603,7 +4596,7 @@ fn issue_preview_and_start_match_ruby() {
         item("both", "demo", "in_progress", "branches:\n- issue/17-newer\n", "d");
         item("drafting", "demo", "in_progress", "", "where issues are drafted");
         // what the state builds may touch on their own is not compared; what an action touches or makes is
-        baseline.push(fs::read_dir(w.root.join("work-items")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).filter(|n| !["a-resolved.md", "both.md", "drafting.md", "by-branch.md"].contains(&n.as_str())).collect::<Vec<String>>());
+        baseline.push(fs::read_dir(w.root.join("work-items")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).filter(|n| !["a-resolved.md", "both.md", "drafting.md"].contains(&n.as_str())).collect::<Vec<String>>());
         let gh = b.join("gh");
         fs::create_dir_all(&gh).unwrap();
         let issue = |n: i64, title: &str, state: &str| fs::write(gh.join(format!("issue-{n}.json")), serde_json::json!({"number": n, "title": title, "state": state, "url": format!("https://github.com/acme/widgets/issues/{n}")}).to_string()).unwrap();
@@ -5302,6 +5295,13 @@ fn benchmark_runs_match_ruby() {
         assert_eq!(sa, sb, "{label}: reply to {body}");
         sa
     };
+    let post_each = |label: &str, build: &dyn Fn(usize) -> String| -> String {
+        let (ba, bb) = (build(0), build(1));
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, &ba, true), request(rust.port, "POST", "/api/action", &origin, &bb, true));
+        let (sa, sb) = (norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1));
+        assert_eq!(sa, sb, "{label}: reply to {bb}");
+        sa
+    };
     let compare = |label: &str| {
         let (ta, tb) = (tree(0), tree(1));
         if ta != tb {
@@ -5364,7 +5364,7 @@ fn benchmark_runs_match_ruby() {
         assert!(s.contains("\"benchmark\":null") && s.contains("\"benchmarkable\":true") && s.contains("\"benchmarked\":{\"feat-w\":{\"id\":\"RUNID\""), "{s}");
     }
     // a re-run of its script
-    post("a re-run", &act("benchmark-rerun", "w-exist", serde_json::json!({"run": ida.clone()})));
+    post_each("a re-run", &|i| act("benchmark-rerun", "w-exist", serde_json::json!({"run": if i == 0 { ida.clone() } else { idb.clone() }})));
     wait_final("the re-run");
     compare("the re-run");
     post("a re-run of nothing", &act("benchmark-rerun", "w-exist", serde_json::json!({"run": "20990101_000000"})));
@@ -5424,11 +5424,11 @@ fn benchmark_runs_match_ruby() {
     assert!(busy.contains("\"state\":\"planning\"") && busy.contains("\"activity\":\"Odd\""), "{busy}");
     let busy_reply = post("a second start while busy", &act("benchmark-start", "w-exist", serde_json::json!({})));
     assert!(busy_reply.contains("\"busy\":{"), "{busy_reply}");
-    post("a re-run while busy", &act("benchmark-rerun", "w-exist", serde_json::json!({"run": ida.clone()})));
+    post_each("a re-run while busy", &|i| act("benchmark-rerun", "w-exist", serde_json::json!({"run": if i == 0 { ida.clone() } else { idb.clone() }})));
     let s = state(1, rust.port);
     assert!(s.contains("\"benchmark\":{\"id\":\"RUNID\""), "{s}");
     set("dropdb-fails", "");
-    post("a cancel while planning, dropdb failing", &act("benchmark-cancel", "w-exist", serde_json::json!({"run": run_of(0)})));
+    post_each("a cancel while planning, dropdb failing", &|i| act("benchmark-cancel", "w-exist", serde_json::json!({"run": run_of(i)})));
     std::thread::sleep(std::time::Duration::from_millis(1500));
     compare("a run cancelled while planning");
     unset("dropdb-fails");
@@ -5442,7 +5442,7 @@ fn benchmark_runs_match_ruby() {
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     set("dropdb-fails", "");
-    post("a cancel while measuring, dropdb failing", &act("benchmark-cancel", "w-exist", serde_json::json!({"run": run_of(0)})));
+    post_each("a cancel while measuring, dropdb failing", &|i| act("benchmark-cancel", "w-exist", serde_json::json!({"run": run_of(i)})));
     std::thread::sleep(std::time::Duration::from_millis(4500));
     compare("a run cancelled while measuring");
     unset("dropdb-fails");
@@ -5450,10 +5450,10 @@ fn benchmark_runs_match_ruby() {
     set("rails-mode", "");
     post("a slow run for the plain cancel", &act("benchmark-start", "w-exist", serde_json::json!({})));
     std::thread::sleep(std::time::Duration::from_millis(500));
-    post("a cancel", &act("benchmark-cancel", "w-exist", serde_json::json!({"run": run_of(0)})));
+    post_each("a cancel", &|i| act("benchmark-cancel", "w-exist", serde_json::json!({"run": run_of(i)})));
     std::thread::sleep(std::time::Duration::from_millis(1500));
     compare("a cancelled run");
-    post("a cancel of a cancelled run", &act("benchmark-cancel", "w-exist", serde_json::json!({"run": run_of(0)})));
+    post_each("a cancel of a cancelled run", &|i| act("benchmark-cancel", "w-exist", serde_json::json!({"run": run_of(i)})));
     post("a cancel of nothing", &act("benchmark-cancel", "w-exist", serde_json::json!({"run": "20990101_000000"})));
     // a branch that moved: the report says so and a re-run is refused
     for (i, _) in worlds.iter().enumerate() {
@@ -5465,7 +5465,7 @@ fn benchmark_runs_match_ruby() {
     set("plan-mode", "");
     let moved = get("/api/benchmark/w-exist?branch=feat-w&run={FIRST}".replace("{FIRST}", &ida).as_str());
     assert!(moved.contains("\"moved\":true") && moved.contains("\"canRerun\":false"), "{moved}");
-    let refused = post("a re-run after the branch moved", &act("benchmark-rerun", "w-exist", serde_json::json!({"run": ida.clone()})));
+    let refused = post_each("a re-run after the branch moved", &|i| act("benchmark-rerun", "w-exist", serde_json::json!({"run": if i == 0 { ida.clone() } else { idb.clone() }})));
     assert!(refused.contains("moved since it ran"), "{refused}");
     // two runs that both look live: the report and the state name different ones
     for i in 0..2 {
@@ -5481,5 +5481,343 @@ fn benchmark_runs_match_ruby() {
     assert_eq!(busy_of(&hand_state(0, ruby.port)), busy_of(&both), "the state with two live runs");
     for i in 0..2 {
         tmux_on(&format!("qm-test-bench-{i}"), &["kill-server"]);
+    }
+}
+
+#[test]
+fn distilling_matches_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let transcripts = w.transcripts.join("p");
+    let big = |n: usize| (0..n).map(|i| format!("{{\"line\":{i},\"pad\":\"{}\"}}\n", "x".repeat(60))).collect::<String>();
+    let session = |id: &str, text: &str, pid: u32| {
+        let path = transcripts.join(format!("{id}.jsonl"));
+        fs::write(&path, text).unwrap();
+        let log = fs::read_to_string(w.root.join("sessions.jsonl")).unwrap();
+        fs::write(w.root.join("sessions.jsonl"), log + &format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"{id}\",\"cwd\":\"/srv/app\",\"pid\":{pid},\"transcript_path\":\"{}\",\"ts\":\"2026-03-01T00:00:00+00:00\"}}\n", path.display())).unwrap();
+    };
+    session("dist-big", &big(8000), 999999); // about 560 KB: the tail is cut
+    session("dist-small", "{\"line\":1}\n", 999999);
+    session("dist-newer", "{\"line\":2}\n", 999999);
+    session("dist-tie-a", "{\"line\":\"a\"}\n", 999999);
+    session("dist-tie-b", "{\"line\":\"b\"}\n", 999999);
+    let log = fs::read_to_string(w.root.join("sessions.jsonl")).unwrap();
+    fs::write(w.root.join("sessions.jsonl"), log + "{\"v\":1,\"event\":\"end\",\"session_id\":\"dist-newer\",\"ts\":\"2026-03-05T00:00:00+00:00\"}\n{\"v\":1,\"event\":\"end\",\"session_id\":\"dist-tie-a\",\"ts\":\"2026-03-06T00:00:00+00:00\"}\n{\"v\":1,\"event\":\"end\",\"session_id\":\"dist-tie-b\",\"ts\":\"2026-03-06T00:00:00+00:00\"}\n").unwrap();
+    let item = |slug: &str, sessions: &[&str], body: &str| {
+        let list: String = sessions.iter().map(|s| format!("- id: {s}\n")).collect();
+        fs::write(w.root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: {slug}\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\nsessions:\n{list}---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n{body}")).unwrap();
+    };
+    item("dist-item", &["dist-big", "dist-small", "dist-newer"], "");
+    item("dist-tie", &["dist-tie-a", "dist-tie-b"], "");
+    item("dist-done", &["dist-small", "dist-newer"], "\n### 2026-02-01 — session dist-newer\n\nolder snapshot\n\n### 2026-02-02 — session other\n\nkept\n");
+    item("dist-none", &["d-nolog", "d-notranscript"], "");
+    let bin = base.path().join("bin2");
+    executable(&bin.join("claude"), "#!/bin/sh\nn=$(ls \"$FAKE_DIR\" | grep -c '^stdin-')\ncat > \"$FAKE_DIR/stdin-$n\"\necho \"$* size=$(wc -c < \"$FAKE_DIR/stdin-$n\") head=$(head -c 60 \"$FAKE_DIR/stdin-$n\" | head -1)\" | cut -c1-200 >> \"$FAKE_DIR/claude.log\"\nsleep \"$(cat \"$FAKE_DIR/delay\" 2>/dev/null || echo 0)\"\nmode=$(cat \"$FAKE_DIR/mode\" 2>/dev/null)\ncase \"$mode\" in\n  fail) echo 'quota exceeded' >&2; exit 3;;\n  failout) echo 'only stdout'; exit 3;;\n  empty) exit 0;;\n  toolong) echo 'Prompt is too long'; exit 1;;\n  toolong-once) if [ \"$n\" -lt \"$(cat \"$FAKE_DIR/short-until\")\" ]; then echo 'prompt is too long (x tokens)'; exit 1; fi;;\nesac\nprintf '  The goal was X.\\n\\nNext: Y.  \\n'\n");
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let fakes = [base.path().join("fake-a"), base.path().join("fake-b")];
+    for f in &fakes {
+        fs::create_dir_all(f).unwrap();
+    }
+    let env = |i: usize| -> Vec<(&'static str, String)> { vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("PATH", format!("{}:{}:{}", bin.display(), w.bin.display(), std::env::var("PATH").unwrap())), ("FAKE_GH_DATA", w.gh_data.display().to_string()), ("FAKE_GH_LOG", base.path().join(format!("gh{i}.log")).display().to_string()), ("FAKE_DIR", fakes[i].display().to_string()), ("QM_TMUX_SOCKET", format!("qm-test-distill-{i}"))] };
+    let ruby = start_env(false, &w.root, &w.home, &env(0));
+    let rust = start_env(true, &root2, &w.home, &env(1));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let roots = [&w.root, &root2];
+    let norm = |t: String, i: usize| t.replace(&roots[i].display().to_string(), "ROOT").replace(&base.path().display().to_string(), "BASE");
+    let items_of = |i: usize| -> String {
+        let mut out = String::new();
+        tree_text(&roots[i].join("work-items"), "work-items", &mut out);
+        let log = fs::read_to_string(roots[i].join("qm.log")).unwrap_or_default();
+        out += &regex::Regex::new(r"(?m)^\S+ \[").unwrap().replace_all(&log, "[");
+        let t = norm(out, i);
+        regex::Regex::new(r"(?m)^### 20\d\d-\d\d-\d\d").unwrap().replace_all(&t, "### DATE").into_owned()
+    };
+    let finished = |i: usize, port: u16| -> String {
+        let v: serde_json::Value = serde_json::from_slice(&request(port, "GET", "/api/state", &[], "", true).body).unwrap_or_default();
+        norm(format!("{} / {}", v["distilling"], v["distilled"]), i)
+    };
+    let set = |file: &str, value: &str| {
+        for f in &fakes {
+            fs::write(f.join(file), value).unwrap();
+        }
+    };
+    let act = |slug: &str, args: serde_json::Value| serde_json::json!({"cmd": "distill", "slug": slug, "args": args}).to_string();
+    let step = |label: &str, slug: &str, args: serde_json::Value, wait_ms: u64| {
+        let body = act(slug, args);
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, &body, true), request(rust.port, "POST", "/api/action", &origin, &body, true));
+        assert_eq!(norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1), "{label}: reply to {body}");
+        std::thread::sleep(std::time::Duration::from_millis(wait_ms));
+        assert_eq!(finished(0, ruby.port), finished(1, rust.port), "{label}: the state's distill fields");
+        assert_eq!(items_of(0), items_of(1), "{label}: files after {body}");
+        let log = |i: usize| norm(fs::read_to_string(fakes[i].join("claude.log")).unwrap_or_default(), i);
+        assert_eq!(log(0), log(1), "{label}: what the model was asked");
+    };
+    set("mode", "");
+    step("an explicit session", "dist-item", serde_json::json!({"session": "dist-small"}), 800);
+    step("the same again (needs a confirmation)", "dist-item", serde_json::json!({"session": "dist-small"}), 300);
+    step("forced", "dist-item", serde_json::json!({"session": "dist-small", "force": true}), 800);
+    step("a big transcript is cut to its tail", "dist-item", serde_json::json!({"session": "dist-big"}), 800);
+    step("bare: the newest resumable one", "dist-item", serde_json::json!({}), 800);
+    step("bare with two equally recent sessions", "dist-tie", serde_json::json!({}), 800);
+    step("bare, already distilled", "dist-done", serde_json::json!({}), 300);
+    step("bare with expiring transcripts (several)", "degrade", serde_json::json!({}), 1200);
+    step("a session that isn't attached", "dist-item", serde_json::json!({"session": "d-soon"}), 300);
+    step("a session without a transcript", "dist-item", serde_json::json!({"session": "d-nolog"}), 300);
+    step("no session has a transcript", "dist-none", serde_json::json!({}), 300);
+    step("a missing item", "nowhere", serde_json::json!({}), 100);
+    step("a session that is no string", "dist-item", serde_json::json!({"session": 5}), 100);
+    set("mode", "fail");
+    step("claude fails", "dist-item", serde_json::json!({"session": "dist-newer"}), 800);
+    set("mode", "failout");
+    step("claude fails on stdout", "dist-item", serde_json::json!({"session": "dist-newer"}), 800);
+    set("mode", "empty");
+    step("claude says nothing", "dist-item", serde_json::json!({"session": "dist-newer"}), 800);
+    set("mode", "toolong");
+    step("the prompt is always too long", "dist-item", serde_json::json!({"session": "dist-big"}), 1500);
+    set("mode", "toolong-once");
+    for f in &fakes {
+        let n = fs::read_dir(f).unwrap().filter(|e| e.as_ref().unwrap().file_name().to_string_lossy().starts_with("stdin-")).count();
+        fs::write(f.join("short-until"), (n + 2).to_string()).unwrap();
+    }
+    step("too long twice, then it fits", "dist-item", serde_json::json!({"session": "dist-big", "force": true}), 1500);
+    set("mode", "");
+    set("delay", "1");
+    let body = act("dist-item", serde_json::json!({"session": "dist-newer", "force": true}));
+    let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, &body, true), request(rust.port, "POST", "/api/action", &origin, &body, true));
+    assert_eq!(norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1));
+    let again = (request(ruby.port, "POST", "/api/action", &origin, &body, true), request(rust.port, "POST", "/api/action", &origin, &body, true));
+    assert_eq!(norm(shown(&again.0, ruby.port), 0), norm(shown(&again.1, rust.port), 1), "a second distill while one runs");
+    assert!(String::from_utf8_lossy(&again.1.body).contains("already being distilled"));
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    assert_eq!(finished(0, ruby.port), finished(1, rust.port));
+    for i in 0..2 {
+        tmux_on(&format!("qm-test-distill-{i}"), &["kill-server"]);
+    }
+}
+
+const ROTATION_CHAT: &str = r##"#!/bin/sh
+# a stand-in chat: registers its session, answers the wrap-up prompt with a Stop and ends on /exit
+sid="${FAKE_SID:-fresh-$$}"
+printf '{"v":1,"event":"start","session_id":"%s","cwd":"%s","pid":%s,"transcript_path":"%s","ts":"%s"}\n' "$sid" "$(pwd)" "$$" "$FAKE_T/$sid.jsonl" "$(date -u +%Y-%m-%dT%H:%M:%S+00:00)" >> "$QM_ROOT/sessions.jsonl"
+echo '{}' > "$FAKE_T/$sid.jsonl"
+echo "started $sid item=${QM_ITEM-unset} args=$*" >> "$FAKE_REC"
+ev() { printf '{"v":1,"ts":"%s","event":"%s","session_id":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$sid" >> "$QM_ROOT/events.jsonl"; }
+while IFS= read -r line; do
+  echo "$sid got: $line" >> "$FAKE_REC"
+  case "$line" in
+    "/exit") echo "$sid exiting" >> "$FAKE_REC"; exit 0;;
+    Wrap*|"This work item"*) ev UserPromptSubmit; sleep 1; ev Stop;;
+  esac
+done
+"##;
+
+#[test]
+fn rotations_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let chat = base.path().join("rot-chat");
+    executable(&chat, ROTATION_CHAT);
+    let bin = base.path().join("bin2");
+    executable(&bin.join("claude"), "#!/bin/sh\ncat > /dev/null\necho \"$*\" | cut -c1-80 >> \"$FAKE_DIR/claude.log\"\nprintf 'a distilled snapshot\\n'\n");
+    let sessions = ["a", "b", "c", "d", "e", "f", "g", "h", "mid", "out", "nocap"];
+    let item = |root: &Path, slug: &str, sids: &[&str], notes: &str| {
+        let list: String = sids.iter().map(|s| format!("- id: {s}\n")).collect();
+        fs::write(root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: {slug}\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\nsessions:\n{list}---\n\n## Description\n\nd\n\n## Notes\n{notes}\n## Snapshots\n")).unwrap();
+    };
+    let notes = "\n- 2026-03-01 [decision]: chose X\n- 2026-03-02 [open]: still to do\n- 2026-03-03 [question]: is it Y?\n- 2026-03-04 [history]: not carried\n";
+    let root2 = base.path().join("root2");
+    let fakes = [base.path().join("fake-a"), base.path().join("fake-b")];
+    let t = base.path().join("t");
+    fs::create_dir_all(&t).unwrap();
+    for f in &fakes {
+        fs::create_dir_all(f).unwrap();
+    }
+    let roots = [w.root.clone(), root2.clone()];
+    let slugs = ["rot-live", "rot-close", "rot-finish", "rot-self", "rot-dead", "rot-dead2"];
+    // sessions that exist in the log, one per chat plus special ones
+    let mut log = fs::read_to_string(w.root.join("sessions.jsonl")).unwrap();
+    for id in ["dead-1", "dead-2", "dead-3", "dead-4", "mid-live", "out-live", "nocap-live"] {
+        let path = w.transcripts.join(format!("p/{id}.jsonl"));
+        fs::write(&path, "{}\n").unwrap();
+        let pid = if id.ends_with("-live") { std::process::id() } else { 999999 };
+        log += &format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"{id}\",\"cwd\":\"/srv/app\",\"pid\":{pid},\"transcript_path\":\"{}\",\"ts\":\"{}\"}}\n", path.display(), if id == "out-live" { "2030-01-01T00:00:00+00:00" } else { "2026-03-01T00:00:00+00:00" });
+    }
+    fs::write(w.root.join("sessions.jsonl"), log).unwrap();
+    for root in [&w.root] {
+        item(root, "rot-live", &["rot-live-sid"], notes);
+        item(root, "rot-close", &["rot-close-sid"], notes);
+        item(root, "rot-finish", &["rot-finish-sid"], notes);
+        item(root, "rot-self", &["rot-self-sid"], notes);
+        item(root, "rot-dead", &["dead-1"], notes);
+        item(root, "rot-dead2", &["dead-2"], "");
+        item(root, "rot-mid", &["mid-live"], notes);
+        item(root, "rot-out", &["out-live"], notes);
+        item(root, "rot-none", &[], notes);
+        item(root, "rot-two", &["out-live", "rot-two-sid"], notes);
+        item(root, "rot-outpane", &["out-live"], notes);
+        fs::write(root.join("work-items/rot-dead3.md"), "---\nv: 1\ntitle: rot-dead3\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\nsessions:\n- id: dead-3\n---\n\n## Description\n\nd\n\n## Notes\n\n- 2026-03-01 [decision]: x\n\n## Snapshots\n\n### 2026-02-01 — session dead-3\n\nalready distilled\n").unwrap();
+        fs::write(root.join("work-items/rot-dead4.md"), "---\nv: 1\ntitle: rot-dead4\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\nsessions:\n- id: dead-4\n---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n\n### 2026-02-01 — session dead-4extra\n\nanother session's\n").unwrap();
+        item(root, "rot-nocap", &["nocap-never-captured"], notes);
+    }
+    let _ = (sessions, slugs);
+    copy_dir(&w.root, &root2);
+    let sockets = ["qm-test-rot-0", "qm-test-rot-1"];
+    let env = |i: usize| -> Vec<(&'static str, String)> { vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("PATH", format!("{}:{}:{}", bin.display(), w.bin.display(), std::env::var("PATH").unwrap())), ("FAKE_GH_DATA", w.gh_data.display().to_string()), ("FAKE_GH_LOG", base.path().join(format!("gh{i}.log")).display().to_string()), ("FAKE_DIR", fakes[i].display().to_string()), ("FAKE_T", t.display().to_string()), ("FAKE_REC", fakes[i].join("rec.log").display().to_string()), ("QM_CHAT_COMMAND", chat.display().to_string()), ("QM_TMUX_SOCKET", sockets[i].to_string())] };
+    for s in sockets {
+        tmux_on(s, &["kill-server"]);
+    }
+    // a chat in its pane, started as the GUI would have: the tmux server holds the environment the chats inherit
+    let start_chat = |i: usize, slug: &str, sid: &str| {
+        let status = Command::new("tmux").args(["-L", sockets[i], "new-session", "-d", "-s", slug, "-n", slug, "-x", "160", "-y", "48", "env", &format!("FAKE_SID={sid}"), "sh", chat.to_str().unwrap()]).env_remove("TMUX").env("QM_ROOT", roots[i].display().to_string()).env("FAKE_T", t.display().to_string()).env("FAKE_REC", fakes[i].join("rec.log").display().to_string()).status().unwrap();
+        assert!(status.success());
+    };
+    let ruby = start_env(false, &w.root, &w.home, &env(0));
+    let rust = start_env(true, &root2, &w.home, &env(1));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let norm = |text: String, i: usize| -> String {
+        let t = text.replace(&roots[i].display().to_string(), "ROOT").replace(&base.path().display().to_string(), "BASE").replace(&format!("fake-{}", if i == 0 { "a" } else { "b" }), "fake-X");
+        let t = regex::Regex::new(r"20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d(Z|[+-]\d\d:\d\d)").unwrap().replace_all(&t, "STAMP").into_owned();
+        regex::Regex::new(r"fresh-\d+").unwrap().replace_all(&t, "fresh-PID").into_owned()
+    };
+    let state = |i: usize| -> String {
+        let mut out = String::new();
+        let mut notes = String::new();
+        tree_text(&roots[i].join("work-items"), "work-items", &mut notes);
+        out += notes.split("== ").filter(|b| b.starts_with("work-items/rot-")).collect::<String>().as_str();
+        out += &fs::read_to_string(fakes[i].join("rec.log")).unwrap_or_default().lines().filter(|l| !l.contains("fresh-")).map(|l| format!("{l}\n")).collect::<String>();
+        out += &fs::read_to_string(fakes[i].join("claude.log")).unwrap_or_default();
+        out += &tmux_picture(sockets[i]);
+        let log = fs::read_to_string(roots[i].join("qm.log")).unwrap_or_default();
+        out += &regex::Regex::new(r"(?m)^\S+ \[").unwrap().replace_all(&log, "[");
+        norm(out, i)
+    };
+    let results: std::cell::RefCell<[Vec<String>; 2]> = std::cell::RefCell::new([vec![], vec![]]);
+    let jobs_running = |i: usize, port: u16| -> bool {
+        let v: serde_json::Value = serde_json::from_slice(&request(port, "GET", "/api/state", &[], "", true).body).unwrap_or_default();
+        if let Some(list) = v["finished"].as_array() {
+            results.borrow_mut()[i].extend(list.iter().map(|r| norm(r.to_string(), i)));
+        }
+        v["jobs"].as_array().is_some_and(|j| !j.is_empty())
+    };
+    let act = |slug: &str, args: serde_json::Value| serde_json::json!({"cmd": "rotate", "slug": slug, "args": args}).to_string();
+    let post = |label: &str, body: &str| -> String {
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, body, true), request(rust.port, "POST", "/api/action", &origin, body, true));
+        let (sa, sb) = (norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1));
+        assert_eq!(sa, sb, "{label}: reply to {body}");
+        sa
+    };
+    let settle = |label: &str| {
+        for _ in 0..300 {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            if !jobs_running(0, ruby.port) && !jobs_running(1, rust.port) {
+                break;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        let (sa, sb) = (state(0), state(1));
+        if sa != sb {
+            let at = sa.bytes().zip(sb.bytes()).position(|(x, y)| x != y).unwrap_or(sa.len().min(sb.len()));
+            panic!("{label}: first difference at byte {at}\nRuby: …{}\nRust: …{}", &sa[at.saturating_sub(300)..(at + 300).min(sa.len())], &sb[at.saturating_sub(300)..(at + 300).min(sb.len())]);
+        }
+        let (ra, rb) = { let mut all = results.borrow_mut(); (std::mem::take(&mut all[0]), std::mem::take(&mut all[1])) };
+        assert_eq!(ra, rb, "{label}: the job's result");
+    };
+    // refusals first: nothing happens
+    for i in 0..2 {
+        start_chat(i, "rot-mid", "mid-live");
+        start_chat(i, "rot-nocap", "nocap-never-captured-x");
+    }
+    let mut events = fs::read_to_string(w.root.join("events.jsonl")).unwrap_or_default();
+    events += "{\"v\":1,\"ts\":\"2026-03-01T10:00:00Z\",\"event\":\"UserPromptSubmit\",\"session_id\":\"mid-live\"}\n";
+    for r in &roots {
+        fs::write(r.join("events.jsonl"), &events).unwrap();
+    }
+    post("a chat that is mid-turn", &act("rot-mid", serde_json::json!({})));
+    post("a chat with no captured session", &act("rot-nocap", serde_json::json!({})));
+    post("a chat outside the GUI", &act("rot-out", serde_json::json!({})));
+    post("a close with no chat open", &act("rot-out", serde_json::json!({"close": true})));
+    post("no session to rotate from", &act("rot-none", serde_json::json!({})));
+    post("a missing item", &act("nowhere", serde_json::json!({})));
+    post("self: not open in the gui", &act("rot-self", serde_json::json!({"self": true})));
+    post("self: a session that isn't the chat's", &act("rot-mid", serde_json::json!({"self": true, "session": "nope"})));
+    post("self: a chat with no live session", &act("rot-nocap", serde_json::json!({"self": true})));
+    settle("the refusals");
+    // a live chat hands over: wrap-up typed, its Stop awaited, /exit, the rotation recorded, a fresh chat in its pane
+    for i in 0..2 {
+        start_chat(i, "rot-live", "rot-live-sid");
+    }
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    let reply = post("rotate a live chat", &act("rot-live", serde_json::json!({})));
+    assert!(reply.contains("\"mode\":\"wrap_up\"") && reply.contains("\"close\":false"), "{reply}");
+    post("a second rotate while it runs", &act("rot-live", serde_json::json!({})));
+    settle("a live rotation");
+    let after = fs::read_to_string(root2.join("work-items/rot-live.md")).unwrap();
+    assert!(after.contains("rotations:") && after.contains("via: wrap-up") && after.contains("decisions: 2") && after.contains("carried:\n  - 1\n  - 2\n  - 3"), "{after}");
+    assert!(fs::read_to_string(fakes[1].join("rec.log")).unwrap().contains("rot-live-sid got: Wrap up for a context rotation"), "{}", fs::read_to_string(fakes[1].join("rec.log")).unwrap());
+    // wrap up and close
+    for i in 0..2 {
+        start_chat(i, "rot-close", "rot-close-sid");
+    }
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    let reply = post("wrap up and close", &act("rot-close", serde_json::json!({"close": true})));
+    assert!(reply.contains("\"close\":true"), "{reply}");
+    settle("wrap up and close");
+    // finish: closed, then resolved
+    for i in 0..2 {
+        start_chat(i, "rot-finish", "rot-finish-sid");
+    }
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    post("finish", &act("rot-finish", serde_json::json!({"finish": true})));
+    settle("finish");
+    assert!(fs::read_to_string(root2.join("work-items/rot-finish.md")).unwrap().contains("state: resolved"));
+    // a chat asks for its own hand-over: it waits for that chat's Stop after the request
+    for i in 0..2 {
+        start_chat(i, "rot-self", "rot-self-sid");
+    }
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    let reply = post("self rotation", &act("rot-self", serde_json::json!({"self": true})));
+    assert!(reply.contains("\"mode\":\"self\""), "{reply}");
+    std::thread::sleep(std::time::Duration::from_millis(1200));
+    for r in &roots {
+        let mut f = fs::OpenOptions::new().append(true).open(r.join("events.jsonl")).unwrap();
+        use std::io::Write;
+        let stamp = (chrono::Utc::now() + chrono::Duration::seconds(1)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        writeln!(f, "{{\"v\":1,\"ts\":\"{stamp}\",\"event\":\"UserPromptSubmit\",\"session_id\":\"rot-self-sid\"}}").unwrap();
+        writeln!(f, "{{\"v\":1,\"ts\":\"{stamp}\",\"event\":\"Stop\",\"session_id\":\"rot-self-sid\"}}").unwrap();
+    }
+    settle("self rotation");
+    // self rotation names the pane's own chat: one outside the pane is refused, and the right one picked
+    for i in 0..2 {
+        start_chat(i, "rot-outpane", "rot-outpane-sid");
+        start_chat(i, "rot-two", "rot-two-sid");
+    }
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    post("self: the session runs outside the pane", &act("rot-outpane", serde_json::json!({"self": true, "session": "out-live"})));
+    post("self: the live session found in the pane", &act("rot-two", serde_json::json!({"self": true})));
+    std::thread::sleep(std::time::Duration::from_millis(1200));
+    for r in &roots {
+        let mut f = fs::OpenOptions::new().append(true).open(r.join("events.jsonl")).unwrap();
+        use std::io::Write;
+        let stamp = (chrono::Utc::now() + chrono::Duration::seconds(1)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        writeln!(f, "{{\"v\":1,\"ts\":\"{stamp}\",\"event\":\"UserPromptSubmit\",\"session_id\":\"rot-two-sid\"}}").unwrap();
+        writeln!(f, "{{\"v\":1,\"ts\":\"{stamp}\",\"event\":\"Stop\",\"session_id\":\"rot-two-sid\"}}").unwrap();
+    }
+    settle("self rotation in a pane with two live sessions");
+    // a dead chat: its transcript is distilled, then a fresh chat starts
+    post("a dead chat rotates", &act("rot-dead", serde_json::json!({})));
+    settle("a dead chat");
+    post("a dead chat that was distilled already", &act("rot-dead", serde_json::json!({})));
+    settle("a dead chat, again");
+    post("a dead chat with no notes", &act("rot-dead2", serde_json::json!({})));
+    settle("a dead chat with no notes");
+    post("a dead chat whose session was distilled", &act("rot-dead3", serde_json::json!({})));
+    settle("a dead chat, distilled before");
+    post("a dead chat next to another session's snapshot", &act("rot-dead4", serde_json::json!({})));
+    settle("a dead chat, a snapshot of another session");
+    post("a dead chat, wrapping up to close", &act("rot-dead", serde_json::json!({"close": true})));
+    post("a dead chat, finishing", &act("rot-dead", serde_json::json!({"finish": true})));
+    for s in sockets {
+        tmux_on(s, &["kill-server"]);
     }
 }

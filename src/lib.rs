@@ -45,6 +45,8 @@ pub mod pr_deployment;
 pub mod pr_inbox;
 pub mod pr_items;
 pub mod review_threads;
+pub mod distill;
+pub mod rotation;
 pub mod benchmark_report;
 pub mod benchmark_run;
 pub mod benchmark_pipeline;

@@ -79,6 +79,24 @@ impl Tmux {
         Err(format!("tmux could not start {name}: {}", crate::ruby_text::strip(&mixed)))
     }
 
+    /// Starts `argv` afresh in the session's pane, killing whatever still runs (`Tmux#respawn`).
+    pub fn respawn(&self, name: &str, cwd: &str, argv: &[String], env: &[(String, String)]) -> Result<(), String> {
+        let cwd = if std::path::Path::new(cwd).is_dir() { cwd.to_string() } else { crate::data_root::home() };
+        let mut args: Vec<String> = ["respawn-pane", "-t", &format!("={name}:"), "-k", "-c", &cwd, "sh", "-c", SCRUB, "qm-chat", "env"].iter().map(|s| s.to_string()).collect();
+        args.extend(env.iter().map(|(k, v)| format!("{k}={v}")));
+        args.extend(argv.iter().cloned());
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        if valid_name(name) && self.run(&refs).0 {
+            return Ok(());
+        }
+        Err(format!("tmux could not restart {name}"))
+    }
+
+    /// `remain-on-exit`: the window (and every client attached to it) outlives its program.
+    pub fn keep_on_exit(&self, name: &str, keep: bool) -> bool {
+        valid_name(name) && self.run(&["set-option", "-w", "-t", &format!("={name}:"), "remain-on-exit", if keep { "on" } else { "off" }]).0
+    }
+
     /// Types text into the session as if from the keyboard (`-l`: no key-name lookup).
     pub fn send_text(&self, name: &str, text: &str) -> bool {
         valid_name(name) && self.run(&["send-keys", "-t", &format!("={name}:"), "-l", text]).0

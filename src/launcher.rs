@@ -63,6 +63,13 @@ pub(crate) fn resume_cwd(session: &Session) -> Option<String> {
     Path::new(&cwd).is_dir().then_some(cwd)
 }
 
+/// A fresh QM_ITEM chat, with no live-session check: Start, and a context rotation once it has ended
+/// the old chat itself (`Launcher#fresh_chat_plan`).
+pub fn fresh_chat_plan(item: &WorkItem) -> Option<Plan> {
+    let command = chat_command()?;
+    Some(Plan { mode: Mode::Start, cwd: start_cwd(item), argv: command, env: vec![("QM_ITEM".into(), item.slug.clone())] })
+}
+
 /// What resuming an item lands on (`Launcher#resume_plan`).
 pub enum Resume {
     Resume { session_id: String, cwd: String },

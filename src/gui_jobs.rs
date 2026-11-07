@@ -106,3 +106,36 @@ pub fn store_progress(slug: &str, result: Value) {
 pub fn progress() -> Vec<(String, Value)> {
     PROGRESS.lock().unwrap_or_else(|p| p.into_inner()).clone()
 }
+
+
+static DISTILLING: Mutex<Vec<(String, usize)>> = Mutex::new(Vec::new());
+static DISTILLED: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+
+/// False when the slug is already being distilled.
+pub fn start_distill(slug: &str, sessions: usize) -> bool {
+    let mut running = DISTILLING.lock().unwrap_or_else(|p| p.into_inner());
+    if running.iter().any(|(k, _)| k == slug) {
+        return false;
+    }
+    running.push((slug.to_string(), sessions));
+    true
+}
+
+pub fn finish_distill(slug: &str, result: Value) {
+    DISTILLING.lock().unwrap_or_else(|p| p.into_inner()).retain(|(k, _)| k != slug);
+    let mut map = match result {
+        Value::Object(m) => m,
+        other => Map::from_iter([("result".to_string(), other)]),
+    };
+    map.insert("slug".into(), json!(slug));
+    DISTILLED.lock().unwrap_or_else(|p| p.into_inner()).push(Value::Object(map));
+}
+
+pub fn distilling_slugs() -> Vec<String> {
+    DISTILLING.lock().unwrap_or_else(|p| p.into_inner()).iter().map(|(k, _)| k.clone()).collect()
+}
+
+/// The finished distills, handed out once.
+pub fn take_distilled() -> Vec<Value> {
+    std::mem::take(&mut *DISTILLED.lock().unwrap_or_else(|p| p.into_inner()))
+}
