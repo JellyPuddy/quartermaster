@@ -27,7 +27,7 @@ current, so Claude itself writes the notes.
 
 ## Screenshots
 
-All taken on the made-up demo world in [`showcase/`](showcase/README.md).
+All taken on a made-up demo world.
 
 | | |
 |---|---|
@@ -287,8 +287,7 @@ QM_BIN=$PWD/target/debug/qm cargo test                    # the same assertions 
 
 Tests run against a temporary `QM_ROOT` and their own tmux socket, never your live data. Start
 with [`CLAUDE.md`](CLAUDE.md) (the hard constraints) and [`docs/README.md`](docs/README.md),
-which indexes one page per area. `showcase/` builds a fake demo world to run the real GUI on
-made-up data.
+which indexes one page per area.
 
 ## License
 

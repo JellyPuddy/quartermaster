@@ -59,6 +59,4 @@ goes in the commit message.
 ## Also here
 
 - `gui-mockup.html` — the GUI's design-reference prototype (fake data).
-- `showcase/` — a fake demo world for running the real `qm gui` on made-up data, scripted
-  screenshots of it and the narrated overview video; how to run them is in `showcase/README.md`.
 - `test/docs_shape_test.rb` checks these pages' shape: headers, code ownership, links, sizes.
