@@ -194,5 +194,5 @@ covers it and passes on both.
 - **Known Ruby race, not fixed here**: Ruby reads an item before taking the lock and saves with a
   plain `File.write`, so concurrent Ruby writers often fail with "malformed work item file". Rust
   writers cannot produce that state; the mixed-writer test allows only that failure, from Ruby.
-- **Not ported yet** (still Ruby): `feature-use`, the default `qm gui` (Rust's is opt-in), unknown-command handling and
-  `statusline/statusline.rb`.
+- **Not ported yet** (still Ruby): `statusline/statusline.rb`, and the fallbacks to the Ruby launcher for the argument shapes
+  listed above. `feature-use`, the unknown-command answer and `qm gui` are Rust (`QM_RUST_GUI` no longer matters).

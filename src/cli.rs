@@ -60,12 +60,19 @@ pub fn run(raw: Vec<OsString>) -> i32 {
     };
     let command = args.first().map(String::as_str);
     let rest = args.get(1..).unwrap_or(&[]);
+    // `feature-use` counts itself in its own report; every other command is recorded once it ran, and
+    // not at all here when Ruby takes it over (Ruby records it)
+    if command == Some("feature-use") {
+        feature_use::command(command);
+    }
     if let Some(word) = command {
         if let Some(outcome) = work_item_commands::run(word, rest).or_else(|| session_commands::run(word, rest)) {
             return match outcome {
                 Outcome::Delegate => delegate::exec_ruby(&raw),
                 Outcome::Done { code, stdout, stderr } => {
-                    feature_use::command(command);
+                    if command != Some("feature-use") {
+                        feature_use::command(command);
+                    }
                     out(&stdout);
                     let _ = std::io::stderr().write_all(stderr.as_bytes());
                     code
@@ -119,7 +126,7 @@ pub fn run(raw: Vec<OsString>) -> i32 {
             }
         }
         // bare `qm` lists when there is no terminal; with one it opens the fzf viewer
-        None if !std::io::stdout().is_terminal() => match work_item_commands::run("list", &[]) {
+        None if !std::io::stdout().is_terminal() || !crate::viewer::fzf_available() => match work_item_commands::run("list", &[]) {
             Some(Outcome::Done { code, stdout, stderr }) => {
                 out(&stdout);
                 let _ = std::io::stderr().write_all(stderr.as_bytes());
@@ -137,6 +144,23 @@ pub fn run(raw: Vec<OsString>) -> i32 {
                 }
                 Outcome::Delegate => delegate::exec_ruby(&raw),
             }
+        }
+        None => {
+            feature_use::command(command);
+            match crate::viewer::open() {
+                Outcome::Done { code, stdout, stderr } => {
+                    out(&stdout);
+                    let _ = std::io::stderr().write_all(stderr.as_bytes());
+                    code
+                }
+                Outcome::Delegate => delegate::exec_ruby(&raw),
+            }
+        }
+        Some(word) if !feature_use::is_known_cli(word) && !matches!(word, "help" | "--help" | "-h") => {
+            feature_use::command(command);
+            let _ = std::io::stderr().write_all(format!("qm: unknown command '{word}'\n").as_bytes());
+            out(crate::session_commands::USAGE);
+            1
         }
         _ => delegate::exec_ruby(&raw),
     }

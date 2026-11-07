@@ -10,19 +10,24 @@ use crate::ruby_text::prefix;
 use crate::session_log::SessionLog;
 use crate::work_item::WorkItem;
 
-const USAGE: &str = include_str!("usage.txt");
+pub(crate) const USAGE: &str = include_str!("usage.txt");
 
 /// `Some(outcome)` for the commands ported here, `None` for every other word.
 pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
     Some(match command {
         "viewer-rows" | "session-rows" | "inbox-rows" | "cycle-filter" => crate::viewer_commands::run(command, args),
         "rotate" | "caffeinate" | "pane-start" | "pane-resume" => return crate::chats_commands::run(command, args),
-        "gui" if std::env::var_os("QM_RUST_GUI").is_some_and(|v| !v.is_empty()) => crate::gui_server::run(),
+        "gui" => crate::gui_server::run(),
         "ask" => crate::ask_command::ask(args),
         "grep" => crate::grep_command::grep(args),
         "attention" => crate::attention_command::attention(),
         "pf-switch" | "ide" | "term" | "work-on" | "pf-stop" | "pf-status" | "resume" | "start" => crate::workspace_commands::run(command, args),
         "show" => crate::show_command::show(args),
+        "feature-use" => match crate::feature_use::report(args) {
+            Ok(Some(text)) => done(crate::cli_format::puts(&text)),
+            Ok(None) => Outcome::Delegate,
+            Err(m) => abort(&format!("qm: {m}")),
+        },
         "overview" => crate::overview::run(args),
         "viewer" => crate::viewer::open(),
         "sessions-view" => crate::viewer::sessions_view(args),
