@@ -266,6 +266,7 @@ fn run(payload: &Value) -> R<Value> {
             item.update_pf_mode(&args.text("mode")?).map_err(error)?;
             Ok(ok())
         }
+        "board-answer" => board_answer(&slug, &args),
         "build-progress" => build_progress_action(&slug),
         "branch-stats-commentary" => branch_stats_commentary(&slug, &args),
         "issue-preview" => issue_preview(&args),
@@ -1226,4 +1227,15 @@ fn build_progress_action(slug: &str) -> R<Value> {
         crate::gui_jobs::store_progress(&item.slug, result.clone());
         Ok(if result["ok"] == Value::Bool(true) { json!({"ok": true, "message": format!("{}: build progress updated", item.slug)}) } else { result })
     }))
+}
+
+/// `board-answer`: the user's answer to a blocked row, as the file its sub-agent polls for.
+fn board_answer(slug: &str, args: &Args) -> R<Value> {
+    let item = find(slug)?;
+    let (doc_id, text) = (args.text("doc_id")?, args.text("text")?);
+    match crate::board_mirror::answer(&item, &doc_id, &text) {
+        Ok(_) => Ok(ok()),
+        Err(Ok(m)) => Err(fail(m)),
+        Err(Err(_)) => Err(Stop::Unported),
+    }
 }

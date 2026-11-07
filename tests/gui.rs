@@ -1171,7 +1171,7 @@ fn the_data_actions_match_ruby() {
     }
     // what is not ported answers 501 before anything happens, with the files untouched
     let before = action_traces(&root2, &w.root);
-    for body in [act("board-answer", "stale", "{}"), act("distill", "stale", "{}"), act("rotate", "stale", "{}")] {
+    for body in [act("benchmark-start", "stale", "{}"), act("distill", "stale", "{}"), act("rotate", "stale", "{}")] {
         let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
         assert!(a.status.starts_with("501"), "{body}: {}", a.status);
     }
@@ -4975,4 +4975,159 @@ fn build_progress_matches_ruby() {
     compare_state(&ruby, &rust, "a task ended");
     tmux_on("qm-test-build-0", &["kill-server"]);
     tmux_on("qm-test-build-1", &["kill-server"]);
+}
+
+#[test]
+fn the_status_board_mirror_and_answers_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let url = "https://claude.ai/artifact/abc123?x=1";
+    let item = |root: &Path, slug: &str, extra: &str| fs::write(root.join(format!("work-items/{slug}.md")), format!("---\nv: 1\ntitle: {slug}\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\n{extra}---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n")).unwrap();
+    let root2 = base.path().join("root2");
+    let answers = [w.root.join("answers"), root2.join("answers")];
+    let write_items = |root: &Path, dir: &Path| {
+        item(root, "board-item", &format!("board: '{url}'\nboard_answers_dir: {}\n", dir.display()));
+        item(root, "board-noans", &format!("board: '{url}'\n"));
+        item(root, "board-other", "board: https://claude.ai/code/artifact/0a1b2c3d-uuid/\n");
+        item(root, "board-bare", "board: just-a-key/\n");
+    };
+    write_items(&w.root, &answers[0]);
+    let tool = |input: serde_json::Value, response: serde_json::Value| serde_json::json!({"tool_name": "mcp__claude__ArtifactData", "tool_input": input, "tool_response": response});
+    let committed = serde_json::json!("update committed");
+    let line = |v: &serde_json::Value| format!("{v}\n");
+    let set = |id: &str, data: serde_json::Value| tool(serde_json::json!({"action": "set", "url": url, "collection": "tasks", "doc_id": id, "data": data}), serde_json::json!("set committed"));
+    let mut log = String::new();
+    log += &line(&set("t1", serde_json::json!({"status": "RUNNING", "title": "First", "order": 2, "batch": "2026-01-01-a", "note": "n", "extra": 1})));
+    log += &line(&set("t2", serde_json::json!({"status": "BLOCKED", "title": "Second", "order": 1.5, "batch": "2026-01-01-a", "batchLabel": "Batch A", "updatedAt": "writer clock"})));
+    log += &line(&set("t3", serde_json::json!({"status": "blocked", "title": "Third", "batch": "2026-02-01-b", "dependsOn": ["t1"], "order": 1})));
+    log += &line(&set("t4", serde_json::json!({"title": "No status, no batch", "gone": {"__delete__": true}, "nested": {"a": {"__delete__": true}, "b": 1}})));
+    log += &line(&set("t5", serde_json::json!({"status": "DONE", "title": "Fifth", "batch": "2026-02-01-b", "order": 1})));
+    log += &line(&serde_json::json!({"ts": "2026-03-01T10:00:00Z", "payload": set("t6", serde_json::json!({"status": "RUNNING", "title": "Wrapped"}))}));
+    log += &line(&{ let mut v = set("t7", serde_json::json!({"status": "RUNNING", "title": "Stamped by ts"})); v["ts"] = serde_json::json!("2026-03-02T10:00:00Z"); v });
+    log += &line(&tool(serde_json::json!({"action": "update", "url": url, "collection": "tasks", "doc_id": "t1", "data": {"note": {"__delete__": true}, "status": "BLOCKED", "meta": {"x": 1, "y": {"z": 2}}}}), committed.clone()));
+    log += &line(&tool(serde_json::json!({"action": "update", "url": url, "collection": "tasks", "doc_id": "t1", "data": {"meta": {"y": {"z": {"__delete__": true}, "w": 3}}, "title": "First, renamed"}}), committed.clone()));
+    log += &line(&tool(serde_json::json!({"action": "update", "url": url, "collection": "tasks", "doc_id": "fresh", "data": {"status": "RUNNING", "title": "created by update", "batch": "2026-03-01-c"}}), committed.clone()));
+    log += &line(&tool(serde_json::json!({"action": "str_replace", "url": url, "collection": "tasks", "doc_id": "t2", "field": "title", "old_str": "Second", "new_str": "2nd"}), committed.clone()));
+    log += &line(&tool(serde_json::json!({"action": "str_replace", "url": url, "collection": "tasks", "doc_id": "t5", "field": "title", "old_str": "th", "new_str": "TH"}), committed.clone()));
+    log += &line(&set("t8", serde_json::json!({"status": "RUNNING", "title": "aa bb aa"})));
+    log += &line(&set("t9", serde_json::json!({"status": "RUNNING", "title": "zz zz", "note": {"__delete__": true, "x": 1}})));
+    log += &line(&tool(serde_json::json!({"action": "str_replace", "url": url, "collection": "tasks", "doc_id": "t9", "field": "title", "old_str": "zz", "new_str": "Y"}), committed.clone()));
+    log += &line(&serde_json::json!({"payload": {"ts": "2026-03-03T10:00:00Z", "tool_name": "ArtifactData", "tool_input": {"action": "set", "url": url, "collection": "tasks", "doc_id": "t10", "data": {"status": "RUNNING", "title": "ts inside the payload"}}, "tool_response": "ok"}}));
+    log += &line(&serde_json::json!({"ts": "2026-03-04T10:00:00Z", "payload": set("t11", serde_json::json!({"status": "RUNNING", "title": "own clock wins", "updatedAt": "own"}))}));
+    log += &line(&set("plus+id@x:y~z", serde_json::json!({"status": "BLOCKED", "title": "odd id"})));
+    log += &line(&tool(serde_json::json!({"action": "str_replace", "url": url, "collection": "tasks", "doc_id": "t8", "field": "title", "old_str": "aa", "new_str": "X"}), committed.clone()));
+    log += &line(&tool(serde_json::json!({"action": "str_replace", "url": url, "collection": "tasks", "doc_id": "t8", "field": "title", "old_str": "aa", "new_str": "X", "replace_all": true}), committed.clone()));
+    log += &line(&tool(serde_json::json!({"action": "str_replace", "url": url, "collection": "tasks", "doc_id": "t8", "field": "title", "old_str": "bb"}), committed.clone()));
+    log += &line(&tool(serde_json::json!({"action": "str_replace", "url": url, "collection": "tasks", "doc_id": "nothere", "field": "title", "old_str": "a", "new_str": "b"}), committed.clone()));
+    log += &line(&tool(serde_json::json!({"action": "batch", "url": url, "writes": [{"op": "set", "collection": "tasks", "doc_id": "b1", "data": {"status": "RUNNING", "title": "batched one", "batch": "2026-03-01-c", "order": 2}}, {"op": "update", "collection": "tasks", "doc_id": "b1", "data": {"order": 1}}, {"op": "set", "collection": "tasks", "doc_id": "b2", "data": {"status": "RUNNING", "title": "batched two", "batch": "2026-03-01-c"}}, {"op": "delete", "collection": "tasks", "doc_id": "b2"}, {"op": "set", "collection": "other", "doc_id": "o1", "data": {"title": "another collection"}}, {"op": "nonsense", "collection": "tasks", "doc_id": "b3", "data": {}}, "junk", {"collection": 5, "doc_id": "b4", "op": "set", "data": {}}]}), serde_json::json!({"content": [{"type": "text", "text": "batch committed"}]})));
+    log += &line(&tool(serde_json::json!({"action": "batch", "url": url, "writes": "nope"}), committed.clone()));
+    log += &line(&tool(serde_json::json!({"action": "delete", "url": url, "collection": "tasks", "doc_id": "t5"}), committed.clone()));
+    // refused or failed writes leave no trace; reads neither
+    for response in [serde_json::json!({"is_error": true}), serde_json::json!({"isError": true, "content": "x"}), serde_json::json!({"error": "denied"}), serde_json::json!("Error: version conflict"), serde_json::json!("<tool_use_error>nope</tool_use_error>"), serde_json::json!("nothing was written"), serde_json::json!("write refused"), serde_json::json!({"content": [{"type": "text", "text": "a conflict happened"}]}), serde_json::json!([{"text": "ok"}, "nothing is written"])] {
+        log += &line(&tool(serde_json::json!({"action": "set", "url": url, "collection": "tasks", "doc_id": "refused", "data": {"title": "must not appear", "status": "RUNNING"}}), response));
+    }
+    for response in [serde_json::json!("committed write to row \"merge-conflict\""), serde_json::json!({"error": false, "content": "done"}), serde_json::json!({"text": "fine"}), serde_json::json!(null), serde_json::json!(5)] {
+        log += &line(&tool(serde_json::json!({"action": "set", "url": url, "collection": "tasks", "doc_id": "ok-quoted", "data": {"title": "survives", "status": "RUNNING"}}), response));
+    }
+    log += &line(&tool(serde_json::json!({"action": "get", "url": url, "collection": "tasks", "doc_id": "t1"}), committed.clone()));
+    log += &line(&serde_json::json!({"tool_name": "Bash", "tool_input": {"action": "set", "url": url, "collection": "tasks", "doc_id": "bash", "data": {"title": "not ArtifactData"}}, "tool_response": "ok"}));
+    log += &line(&serde_json::json!({"tool_name": "ArtifactData", "tool_input": "text", "tool_response": "ok"}));
+    log += &line(&tool(serde_json::json!({"action": "set", "url": "", "collection": "tasks", "doc_id": "nourl", "data": {"title": "x"}}), committed.clone()));
+    log += "not json\n[1]\n\"s\"\n\n";
+    // another board, a link with a path form, and data from a file
+    let from_file = base.path().join("data.json");
+    fs::write(&from_file, "{\"status\": \"RUNNING\", \"title\": \"from a file\", \"batch\": \"2026-03-01-c\"}").unwrap();
+    fs::write(base.path().join("array.json"), "[1]").unwrap();
+    log += &line(&tool(serde_json::json!({"action": "set", "url": url, "collection": "tasks", "doc_id": "file1", "file_path": from_file.display().to_string()}), committed.clone()));
+    log += &line(&tool(serde_json::json!({"action": "set", "url": url, "collection": "tasks", "doc_id": "file2", "file_path": base.path().join("array.json").display().to_string()}), committed.clone()));
+    log += &line(&tool(serde_json::json!({"action": "set", "url": url, "collection": "tasks", "doc_id": "file3", "file_path": "/nonexistent/file.json"}), committed.clone()));
+    log += &line(&tool(serde_json::json!({"action": "set", "url": "https://claude.ai/code/artifact/0a1b2c3d-uuid", "collection": "tasks", "doc_id": "u1", "data": {"status": "BLOCKED", "title": "other board", "batch": "2026-01-01-a", "order": 1}}), committed.clone()));
+    log += &line(&tool(serde_json::json!({"action": "set", "url": "just-a-key", "collection": "tasks", "doc_id": "k1", "data": {"status": "RUNNING", "title": "bare key"}}), committed.clone()));
+    log += &line(&tool(serde_json::json!({"action": "set", "url": url, "collection": "tasks", "doc_id": "numeric-order", "data": {"title": "odd order", "order": "3", "batch": 7}}), committed.clone()));
+    fs::write(w.root.join("board-writes.jsonl"), &log).unwrap();
+    copy_dir(&w.root, &root2);
+    write_items(&root2, &answers[1]);
+    let env = vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string())];
+    let ruby = start_env(false, &w.root, &w.home, &env);
+    let rust = start_env(true, &root2, &w.home, &env);
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    for srv in [&ruby, &rust] {
+        request(srv.port, "GET", "/api/state", &[], "", true);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(900));
+    let rows_of = |state: &str, slug: &str| -> String {
+        let body = state.splitn(3, " | ").nth(2).unwrap();
+        let v: serde_json::Value = serde_json::from_str(body).unwrap();
+        v["items"].as_array().unwrap().iter().find(|i| i["slug"] == slug).map(|i| i["boardRows"].to_string()).unwrap_or_default()
+    };
+    let first = compare_state(&ruby, &rust, "the board folded");
+    let rows = rows_of(&first, "board-item");
+    for needle in ["\"First, renamed\"", "\"title\":\"2nd\"", "\"X  X\"", "survives", "batched one", "from a file", "created by update", "Wrapped", "\"updatedAt\":\"2026-03-02T10:00:00Z\"", "\"updatedAt\":\"writer clock\""] {
+        assert!(rows.contains(needle), "{needle} in {rows}");
+    }
+    for needle in ["must not appear", "not ArtifactData", "batched two", "\"t5\""] {
+        assert!(!rows.contains(needle), "{needle} in {rows}");
+    }
+    assert!(rows_of(&first, "board-other").contains("other board") && rows_of(&first, "board-bare").contains("bare key"));
+    // appended lines are folded on the next build, a partial line only once it is whole
+    let more = line(&set("late", serde_json::json!({"status": "RUNNING", "title": "appended later"})));
+    let partial = line(&set("partial", serde_json::json!({"status": "RUNNING", "title": "split in two"})));
+    for root in [&w.root, &root2] {
+        let mut f = fs::OpenOptions::new().append(true).open(root.join("board-writes.jsonl")).unwrap();
+        use std::io::Write;
+        f.write_all(more.as_bytes()).unwrap();
+        f.write_all(&partial.as_bytes()[..30]).unwrap();
+    }
+    let second = compare_state(&ruby, &rust, "lines appended");
+    assert!(rows_of(&second, "board-item").contains("appended later") && !rows_of(&second, "board-item").contains("split in two"));
+    for root in [&w.root, &root2] {
+        let mut f = fs::OpenOptions::new().append(true).open(root.join("board-writes.jsonl")).unwrap();
+        use std::io::Write;
+        f.write_all(&partial.as_bytes()[30..]).unwrap();
+    }
+    let third = compare_state(&ruby, &rust, "the partial line completed");
+    assert!(rows_of(&third, "board-item").contains("split in two"));
+    // the answers: only a blocked row, once, as a file its sub-agent polls for
+    let act = |slug: &str, args: serde_json::Value| serde_json::json!({"cmd": "board-answer", "slug": slug, "args": args}).to_string();
+    let tree = |i: usize| -> String {
+        let mut out = String::new();
+        tree_text(&answers[i], "answers", &mut out);
+        out
+    };
+    let long_id = "a".repeat(201);
+    let max_id = "b".repeat(200);
+    for (label, slug, args) in [
+        ("answer a blocked row", "board-item", serde_json::json!({"doc_id": "t2", "text": "Go ahead"})),
+        ("answer a lowercase blocked row", "board-item", serde_json::json!({"doc_id": "t3", "text": "multi\nline\n"})),
+        ("answer a running row", "board-item", serde_json::json!({"doc_id": "t6", "text": "x"})),
+        ("answer a row without status", "board-item", serde_json::json!({"doc_id": "t4", "text": "x"})),
+        ("answer an updated blocked row", "board-item", serde_json::json!({"doc_id": "t1", "text": "  yes  "})),
+        ("answer a row with every allowed character", "board-item", serde_json::json!({"doc_id": "plus+id@x:y~z", "text": "ok"})),
+        ("answer a missing row", "board-item", serde_json::json!({"doc_id": "nope", "text": "x"})),
+        ("answer with a bad id", "board-item", serde_json::json!({"doc_id": "../t2", "text": "x"})),
+        ("answer with a dot id", "board-item", serde_json::json!({"doc_id": ".", "text": "x"})),
+        ("answer with two dots", "board-item", serde_json::json!({"doc_id": "..", "text": "x"})),
+        ("answer with a space id", "board-item", serde_json::json!({"doc_id": "a b", "text": "x"})),
+        ("answer with a long id", "board-item", serde_json::json!({"doc_id": long_id, "text": "x"})),
+        ("answer with the longest id", "board-item", serde_json::json!({"doc_id": max_id, "text": "x"})),
+        ("answer with an empty text", "board-item", serde_json::json!({"doc_id": "t2", "text": "  \n"})),
+        ("answer with no text", "board-item", serde_json::json!({"doc_id": "t2"})),
+        ("answer with no id", "board-item", serde_json::json!({"text": "x"})),
+        ("answer on an item without an answers dir", "board-noans", serde_json::json!({"doc_id": "t2", "text": "x"})),
+        ("answer on an item without a board", "fridge-old", serde_json::json!({"doc_id": "t2", "text": "x"})),
+        ("answer on a missing item", "nowhere", serde_json::json!({"doc_id": "t2", "text": "x"})),
+        ("answer a numeric id", "board-item", serde_json::json!({"doc_id": 5, "text": 7})),
+    ] {
+        let body = act(slug, args);
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, &body, true), request(rust.port, "POST", "/api/action", &origin, &body, true));
+        assert_eq!(shown(&a, ruby.port), shown(&b, rust.port), "{label}: reply to {body}");
+        assert_eq!(tree(0).replace(&answers[0].display().to_string(), "A"), tree(1).replace(&answers[1].display().to_string(), "A"), "{label}: the answer files after {body}");
+    }
+    assert!(tree(1).contains("== answers/t2.md\nGo ahead\n"), "{}", tree(1));
+    // a rotated (shrunken) file is refolded from the start
+    for root in [&w.root, &root2] {
+        fs::write(root.join("board-writes.jsonl"), line(&set("only", serde_json::json!({"status": "RUNNING", "title": "after rotation"})))).unwrap();
+    }
+    let rotated = compare_state(&ruby, &rust, "the file shrank");
+    assert!(rows_of(&rotated, "board-item").contains("after rotation") && !rows_of(&rotated, "board-item").contains("First"), "{}", rows_of(&rotated, "board-item"));
 }

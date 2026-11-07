@@ -45,6 +45,7 @@ pub mod pr_deployment;
 pub mod pr_inbox;
 pub mod pr_items;
 pub mod review_threads;
+pub mod board_mirror;
 pub mod build_progress;
 pub mod branch_stats;
 pub mod issue_start;

@@ -274,9 +274,6 @@ struct Context<'a> {
 }
 
 fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R<Value> {
-    if item.board().is_some() {
-        return Err(Unported); // the status board's rows are BoardMirror's
-    }
     // first, so the payload's branches already include auto-linked ones
     crate::gh_stack::sync(item);
     let config = crate::project_config::ProjectConfig::current();
@@ -367,7 +364,7 @@ fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R
         ("pane", json!(c.panes.contains(&item.slug))),
         ("aside", json!(c.panes.contains(&aside))),
         ("asideCount", json!(c.aside_counts.iter().find(|(s, _)| *s == item.slug).map(|(_, n)| *n).unwrap_or(0))),
-        ("boardRows", json!([])),
+        ("boardRows", Value::Array(crate::board_mirror::rows_for(item).map_err(|_| Unported)?)),
         ("rotations", json!(item.rotation_count())),
         ("sessionList", Value::Array(sessions)),
         ("usage", usage_payload(item, c.log, ledger, c.prices)?),
