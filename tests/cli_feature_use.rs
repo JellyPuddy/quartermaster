@@ -31,5 +31,7 @@ fn feature_use_reports_and_unknown_commands_are_refused() {
         (&["bogus"], ""),
         (&["--bogus"], ""),
     ];
-    golden("cli_feature_use.txt", &normalize(&transcript(&qm, "none", &steps)));
+    // Ruby has no `statusline` command: the golden predates it
+    let text = normalize(&transcript(&qm, "none", &steps)).replace(", statusline,", ",");
+    golden("cli_feature_use.txt", &text);
 }

@@ -99,15 +99,16 @@ version rewrites a file the other cannot read.
    `qm install-hooks` printed to `…/quartermaster/target/release/qm hook-session-start` (and `-end`).
    Leave the other entries, which run the `hooks/*.sh` scripts, as they are. Roll back by putting the
    launcher path back. Rebuild after every `git pull`; the hooks run whatever binary is at that path.
-5. **The GUI.** `qm gui` is still Ruby's, and the status line (`statusline/statusline.rb`) stays Ruby
-   for now. To try the Rust server, run it beside the Ruby one on a *copy* of your data, since it
+5. **The status line.** `qm statusline` is the Rust port of `statusline/statusline.rb`: set
+   `"statusLine": {"type": "command", "command": "/path/to/qm statusline"}` in settings.json to use it
+   (it needs no system Ruby; the Ruby script keeps working until you switch).
+6. **The GUI.** `qm gui` now runs the Rust server (`QM_RUST_GUI` no longer matters). To try it first, run it beside the Ruby one on a *copy* of your data, since it
    writes real files when you click:
    ```sh
    cp -a ~/.claude/quartermaster /tmp/qm-try
-   QM_ROOT=/tmp/qm-try QM_RUST_GUI=1 QM_GUI_PORT=7712 target/release/qm gui
+   QM_ROOT=/tmp/qm-try QM_GUI_PORT=7712 target/release/qm gui
    ```
-   Routes and actions not ported yet answer `501 not ported yet`, so it is not yet a replacement for
-   daily use; the list is in `docs/areas/rust-port.md`.
+   Every route and action is ported; `docs/areas/rust-port.md` lists what is pinned against Ruby.
 
 **Rolling back** is always the reverse: unset `QM_USE_RUST`, point the hooks at the launcher again
 (`qm install-hooks` prints them), keep using `qm gui` as before. Report anything that differs between

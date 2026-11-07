@@ -22,10 +22,10 @@ pub fn record(kind: &str, name: &str) {
     }
 }
 
-/// A `qm` run by its command word; hooks and `QM_SKIP` runs are capture plumbing, not uses.
+/// A `qm` run by its command word; hooks, the status line (it runs on every refresh) and `QM_SKIP` runs are plumbing, not uses.
 pub fn command(word: Option<&str>) {
     let Some(word) = word else { return };
-    if word.starts_with("hook-") || std::env::var_os("QM_SKIP").is_some() {
+    if word.starts_with("hook-") || word == "statusline" || std::env::var_os("QM_SKIP").is_some() {
         return;
     }
     record("cli", word);
@@ -38,7 +38,7 @@ const KNOWN_ACTIONS: &[&str] = &[
 ];
 const KNOWN_GETS: &[&str] = &["/api/asides", "/api/attention", "/api/branch-stats", "/api/diff", "/api/diff-file", "/api/history", "/api/issues", "/api/pr-threads", "/api/prs", "/api/session", "/api/workspace"];
 const KNOWN_CLI: &[&str] = &[
-    "ack", "ask", "attach", "attach-session", "attention", "bench-run", "board", "board-answer", "board-rows", "caffeinate", "choose-project", "choose-snooze", "choose-state", "cleanup", "cycle-filter", "describe", "detach", "dismiss", "distill", "draft", "feature-use", "grep", "gui", "help", "ide", "inbox", "inbox-rows", "inbox-view", "install-hooks", "issues-dir", "item-from-session", "link-branch", "list", "loose", "move", "new", "note", "open-chat", "overview", "pane-resume", "pane-start", "pf-mode", "pf-status", "pf-stop", "pf-switch", "pr", "pr-requires", "resume", "retag", "retitle", "rotate", "session-item", "session-rows", "sessions", "sessions-view", "show", "show-session", "snooze", "start", "start-issue", "state", "sweep", "term", "unlink-branch", "viewer", "viewer-rows", "work-on",
+    "ack", "ask", "attach", "attach-session", "attention", "bench-run", "board", "board-answer", "board-rows", "caffeinate", "choose-project", "choose-snooze", "choose-state", "cleanup", "cycle-filter", "describe", "detach", "dismiss", "distill", "draft", "feature-use", "grep", "gui", "help", "ide", "inbox", "inbox-rows", "inbox-view", "install-hooks", "issues-dir", "item-from-session", "link-branch", "list", "loose", "move", "new", "note", "open-chat", "overview", "pane-resume", "pane-start", "pf-mode", "pf-status", "pf-stop", "pf-switch", "pr", "pr-requires", "resume", "retag", "retitle", "rotate", "session-item", "session-rows", "sessions", "sessions-view", "show", "show-session", "snooze", "start", "start-issue", "state", "statusline", "sweep", "term", "unlink-branch", "viewer", "viewer-rows", "work-on",
 ];
 
 fn known(kind: &str) -> &'static [&'static str] {

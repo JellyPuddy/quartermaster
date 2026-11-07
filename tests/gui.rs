@@ -5245,7 +5245,13 @@ fn benchmark_runs_match_ruby() {
         dirs.sort();
         for d in dirs {
             for f in ["meta.json", "events.jsonl", "bench.rb", "run.json", "bench.out", "bench.log", "verdict.md", "pipeline.log", "agent.jsonl"] {
-                if let Ok(t) = fs::read_to_string(d.join(f)) {
+                if let Ok(mut t) = fs::read_to_string(d.join(f)) {
+                    if f == "pipeline.log" {
+                        // a cancelled pipeline logs its SIGTERM while the cancel logs its own line: either order happens
+                        let mut lines: Vec<&str> = t.lines().collect();
+                        lines.sort();
+                        t = lines.join("\n") + "\n";
+                    }
                     out += &format!("== {}/{f}\n{t}\n", d.file_name().unwrap().to_string_lossy());
                 }
             }

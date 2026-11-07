@@ -88,6 +88,7 @@ pub mod session_rows;
 pub mod terminal_bridge;
 pub mod tmux;
 pub mod overview;
+pub mod statusline;
 pub mod viewer;
 pub mod viewer_commands;
 pub mod transcript_search;

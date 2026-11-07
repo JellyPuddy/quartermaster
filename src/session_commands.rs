@@ -28,6 +28,11 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
             Ok(None) => Outcome::Delegate,
             Err(m) => abort(&format!("qm: {m}")),
         },
+        "statusline" => {
+            let mut input = String::new();
+            let _ = std::io::Read::read_to_string(&mut std::io::stdin(), &mut input);
+            crate::statusline::run(&input)
+        }
         "overview" => crate::overview::run(args),
         "viewer" => crate::viewer::open(),
         "sessions-view" => crate::viewer::sessions_view(args),
