@@ -29,14 +29,36 @@ pub struct Out {
     pub code: i32,
 }
 
+/// The binary under test: `QM_BIN` (point it at an oracle's launcher to regenerate a golden), else the
+/// Rust `qm` cargo built.
 pub fn bin() -> PathBuf {
     match std::env::var("QM_BIN") {
         Ok(p) => PathBuf::from(p),
-        Err(_) => Path::new(env!("CARGO_MANIFEST_DIR")).join("quartermaster"),
+        Err(_) => Path::new(env!("CARGO_BIN_EXE_qm")).into(),
     }
 }
 
-/// Dates, timestamps and pids vary per run; everything else is compared verbatim.
+/// A checkout of the last commit that still held the Ruby implementation (6c25480), named by
+/// `QM_RUBY_ORACLE`. The differential tests, which run Ruby and Rust side by side, need it and skip
+/// without it: `git worktree add ../qm-ruby 6c25480 && QM_RUBY_ORACLE=$PWD/../qm-ruby cargo test`.
+pub fn oracle() -> Option<PathBuf> {
+    std::env::var_os("QM_RUBY_ORACLE").filter(|v| !v.is_empty()).map(PathBuf::from)
+}
+
+/// The oracle's Ruby launcher; panics when there is none (callers have passed `need_oracle!`).
+pub fn ruby_launcher() -> PathBuf {
+    oracle().expect("QM_RUBY_ORACLE").join("quartermaster")
+}
+
+/// True (after saying so) when a differential test has no Ruby oracle to run against: `if skip() { return; }`.
+pub fn skip() -> bool {
+    let none = oracle().is_none();
+    if none {
+        eprintln!("skipped: needs QM_RUBY_ORACLE (a checkout of 6c25480, the last commit with the Ruby code)");
+    }
+    none
+}
+
 pub fn normalize(s: &str) -> String {
     let ts = Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})?").unwrap();
     let date = Regex::new(r"\d{4}-\d{2}-\d{2}").unwrap();

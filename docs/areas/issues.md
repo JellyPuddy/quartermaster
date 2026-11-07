@@ -1,7 +1,7 @@
 # Issues
 
-**Code:** `lib/quartermaster/issue_start.rb`, `lib/quartermaster/issue_index.rb`, `lib/quartermaster/issue_comments.rb`, `lib/quartermaster/gui/js/issue-start.js`, `lib/quartermaster/gui/js/issues.js`, `lib/quartermaster/gui/js/issues-list.js`, `lib/quartermaster/gui/css/issue-start.css`, `lib/quartermaster/gui/css/issues.css`, `lib/quartermaster/gui/css/issues-list.css`
-**Tests:** `test/issue_start_test.rb`, `test/issue_comments_test.rb`, `test/issue_cleanup_test.rb`
+**Code:** `src/issue_start.rs`, `src/gui_issues.rs`, `gui/js/issue-start.js`, `gui/js/issues.js`, `gui/js/issues-list.js`, `gui/css/issue-start.css`, `gui/css/issues.css`, `gui/css/issues-list.css`
+**Tests:** `tests/gui.rs`, `tests/issue_drafts.rs`
 **Depends on:** [drafts](drafts.md), [worktrees](worktrees.md), [linking](linking.md)
 
 ## What it does

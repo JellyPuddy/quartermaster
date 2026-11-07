@@ -1262,15 +1262,8 @@ notes:
 === array answer: qm ["ask", "q"] → 1
 --- stdout
 --- stderr
-/home/user/quartermaster/lib/quartermaster/ask_search.rb:95:in `dig': no implicit conversion of String into Integer (TypeError)
-
-      hits = JSON.parse(out).dig("structured_output", "hits")
-                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-	from /home/user/quartermaster/lib/quartermaster/ask_search.rb:95:in `parse'
-	from /home/user/quartermaster/lib/quartermaster/ask_search.rb:56:in `call'
-	from /home/user/quartermaster/lib/quartermaster/cli.rb:361:in `cmd_ask'
-	from /home/user/quartermaster/lib/quartermaster/cli.rb:61:in `run'
-	from /home/user/quartermaster/quartermaster:8:in `<main>'
+qm: can't do this as given: qm ask q
+qm help lists the forms each command takes; odd data in a file it reads can also cause this
 --- claude args
 [-p]
 [You are a search engine over a developer's work items (stdin holds one
@@ -1424,15 +1417,8 @@ notes:
 === structured output a string: qm ["ask", "q"] → 1
 --- stdout
 --- stderr
-/home/user/quartermaster/lib/quartermaster/ask_search.rb:95:in `dig': String does not have #dig method (TypeError)
-
-      hits = JSON.parse(out).dig("structured_output", "hits")
-                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-	from /home/user/quartermaster/lib/quartermaster/ask_search.rb:95:in `parse'
-	from /home/user/quartermaster/lib/quartermaster/ask_search.rb:56:in `call'
-	from /home/user/quartermaster/lib/quartermaster/cli.rb:361:in `cmd_ask'
-	from /home/user/quartermaster/lib/quartermaster/cli.rb:61:in `run'
-	from /home/user/quartermaster/quartermaster:8:in `<main>'
+qm: can't do this as given: qm ask q
+qm help lists the forms each command takes; odd data in a file it reads can also cause this
 --- claude args
 [-p]
 [You are a search engine over a developer's work items (stdin holds one

@@ -211,7 +211,7 @@ end
 ledger.save
 puts JSON.generate(out)"#;
     let out = Command::new("ruby")
-        .args(["-e", script, env!("CARGO_MANIFEST_DIR")])
+        .args(["-e", script, common::oracle().unwrap().to_str().unwrap()])
         .env_clear()
         .env("QM_ROOT", &w.root)
         .env("QM_TRANSCRIPTS_DIR", &w.transcripts)
@@ -228,6 +228,9 @@ puts JSON.generate(out)"#;
 
 #[test]
 fn rust_and_ruby_keep_the_same_ledger_pass_after_pass() {
+    if common::skip() {
+        return;
+    }
     let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
     let (ruby, rust) = (world(a.path()), world(b.path()));
     let mut first_ledger: Option<Value> = None;
@@ -258,7 +261,7 @@ fn rust_and_ruby_keep_the_same_ledger_pass_after_pass() {
 fn ruby_json(script: &str, input: &Value) -> Value {
     use std::io::Write;
     let mut child = Command::new("ruby")
-        .args(["-e", &format!("require File.join(ARGV[0], 'lib', 'quartermaster'); include Quartermaster; puts JSON.generate(({script}).call(JSON.parse($stdin.read)))"), env!("CARGO_MANIFEST_DIR")])
+        .args(["-e", &format!("require File.join(ARGV[0], 'lib', 'quartermaster'); include Quartermaster; puts JSON.generate(({script}).call(JSON.parse($stdin.read)))"), common::oracle().unwrap().to_str().unwrap()])
         .env("LANG", "C.UTF-8")
         .env("QM_ROOT", tempfile::tempdir().unwrap().keep())
         .stdin(Stdio::piped())
@@ -284,6 +287,9 @@ impl Lcg {
 
 #[test]
 fn costs_sum_like_rubys_kahan_babuska_over_mixed_rates() {
+    if common::skip() {
+        return;
+    }
     let mut rng = Lcg(42);
     let models = ["claude-opus-5-5", "claude-opus-5-5:fast", "claude-haiku-5-5:long", "claude-fable-5-1", "claude-sonnet-4-5", "claude-3-5-haiku", "claude-opus-4-1", "nope", "claude-opus-5-5:fast:long"];
     let cases: Vec<Value> = (0..400)
@@ -307,6 +313,9 @@ fn costs_sum_like_rubys_kahan_babuska_over_mixed_rates() {
 
 #[test]
 fn token_and_dollar_labels_round_like_ruby() {
+    if common::skip() {
+        return;
+    }
     let mut counts: Vec<i64> = vec![0, 1, 999, 1000, 1499, 1500, 1501, 2500, 3500, 999_499, 999_500, 999_949_999, 999_950_000, 1_250_000, 2_500_000, 1_250_000_000, 123_456_789_012];
     let mut rng = Lcg(7);
     counts.extend((0..300).map(|_| rng.below(5_000_000_000) as i64));
@@ -327,6 +336,9 @@ fn token_and_dollar_labels_round_like_ruby() {
 
 #[test]
 fn mtimes_become_the_same_floats_as_rubys_to_f() {
+    if common::skip() {
+        return;
+    }
     let dir = tempfile::tempdir().unwrap();
     let mut rng = Lcg(99);
     let mut paths = vec![];
@@ -346,6 +358,9 @@ fn mtimes_become_the_same_floats_as_rubys_to_f() {
 
 #[test]
 fn format_f_matches_rubys_sprintf_including_its_tie_handling() {
+    if common::skip() {
+        return;
+    }
     let mut rng = Lcg(2024);
     let mut inputs: Vec<(f64, usize)> = vec![];
     for prec in 0..=3usize {
@@ -389,6 +404,9 @@ fn format_f_matches_rubys_sprintf_including_its_tie_handling() {
 /// record too — the merge over what is on disk keeps it, in disk-first order.
 #[test]
 fn a_save_keeps_what_another_process_saved_in_between() {
+    if common::skip() {
+        return;
+    }
     let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
     let (ruby, rust) = (world(a.path()), world(b.path()));
 
@@ -402,7 +420,7 @@ second.session_usage(log.session_for("u-custom"))
 second.save
 first.save"#;
     let out = Command::new("ruby")
-        .args(["-e", script, env!("CARGO_MANIFEST_DIR")])
+        .args(["-e", script, common::oracle().unwrap().to_str().unwrap()])
         .env_clear()
         .env("QM_ROOT", &ruby.root)
         .env("QM_TRANSCRIPTS_DIR", &ruby.transcripts)

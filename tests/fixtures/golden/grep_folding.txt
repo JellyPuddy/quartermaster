@@ -3,7 +3,7 @@ exit 0
 --- stdout
 unlinked
   DATE 10:00  s-eszett
-    you: Die Straße first filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler …
+    you: …iller filler filler filler filler filler filler filler then STRASSE last
 Resume: qm resume SLUG --session ID (unlinked: claude --resume ID from its project dir)
 
 $ qm "grep" "straße"
@@ -19,6 +19,6 @@ exit 0
 --- stdout
 unlinked
   DATE 10:00  s-eszett
-    you: Die Straße first filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler…
+    you: …r filler filler filler filler filler filler filler then STRASSE last
 Resume: qm resume SLUG --session ID (unlinked: claude --resume ID from its project dir)
 

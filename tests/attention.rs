@@ -42,7 +42,7 @@ fn ruby_run(base: &Path, retention: Option<u32>, now: SystemTime) -> Run {
     let script = r#"require File.join(ARGV[0], "lib", "quartermaster")
 puts JSON.generate(Quartermaster::Attention.new.entries.map { |e| { "slug" => e.slug, "kind" => e.kind, "message" => e.message, "session_id" => e.session_id } })"#;
     let mut cmd = Command::new("ruby");
-    cmd.args(["-e", script, env!("CARGO_MANIFEST_DIR")]).env_clear().env("QM_TMUX_SOCKET", "qm-test-attention");
+    cmd.args(["-e", script, common::oracle().unwrap().to_str().unwrap()]).env_clear().env("QM_TMUX_SOCKET", "qm-test-attention");
     for (k, v) in env_for(&w, &log) {
         cmd.env(k, v);
     }
@@ -99,6 +99,9 @@ fn compare(retention: Option<u32>) -> Value {
 
 #[test]
 fn rust_and_ruby_agree_on_every_attention_rule() {
+    if common::skip() {
+        return;
+    }
     let entries = compare(None);
     let slugs_kinds: Vec<(String, String)> =
         entries.as_array().unwrap().iter().map(|e| (e["slug"].as_str().unwrap().into(), e["kind"].as_str().unwrap().into())).collect();
@@ -116,5 +119,8 @@ fn rust_and_ruby_agree_on_every_attention_rule() {
 
 #[test]
 fn rust_and_ruby_agree_under_a_shorter_retention() {
+    if common::skip() {
+        return;
+    }
     compare(Some(10));
 }

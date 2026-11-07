@@ -169,9 +169,7 @@ created: 'DATE'
 === "line\nbreak" / "09"
 ---
 v: 1
-title: |-
-  line
-  break
+title: "line\nbreak"
 state: in_progress
 project: '09'
 created: 'DATE'
@@ -416,7 +414,7 @@ created: 'DATE'
 === "<<" / ""
 ---
 v: 1
-title: !!str '<<'
+title: "<<"
 state: in_progress
 project: ''
 created: 'DATE'

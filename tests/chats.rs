@@ -2,6 +2,7 @@
 //! `pane-resume`): a fake GUI on a loopback port records the request each binary sends and answers
 //! with a canned reply; Ruby and Rust must send the same request and print the same thing.
 
+mod common;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
@@ -13,7 +14,7 @@ fn rust() -> &'static Path {
 }
 
 fn ruby() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("quartermaster")
+    common::ruby_launcher()
 }
 
 fn world(root: &Path) {
@@ -100,6 +101,9 @@ const OK: &str = "{\"ok\":true,\"mode\":\"wrap_up\"}";
 
 #[test]
 fn rotate_asks_the_gui_and_says_what_started() {
+    if common::skip() {
+        return;
+    }
     let text = [
         same(&["rotate", "chat-item"], Some(OK), &[], false),
         same(&["rotate", "chat-item", "--close"], Some(OK), &[], false),
@@ -125,6 +129,9 @@ fn rotate_asks_the_gui_and_says_what_started() {
 
 #[test]
 fn a_live_session_that_is_not_an_ancestor_is_not_the_calling_chat() {
+    if common::skip() {
+        return;
+    }
     let ruby_text = attempt_with(&ruby(), &["rotate", "--self"], Some(OK), &[], 2);
     let rust_text = attempt_with(rust(), &["rotate", "--self"], Some(OK), &[], 2);
     assert_eq!(rust_text, ruby_text);
@@ -133,6 +140,9 @@ fn a_live_session_that_is_not_an_ancestor_is_not_the_calling_chat() {
 
 #[test]
 fn caffeinate_and_the_pane_commands_report_the_guis_answer() {
+    if common::skip() {
+        return;
+    }
     let on = "{\"ok\":true,\"caffeinate\":{\"mode\":\"on\",\"on\":true,\"pid\":4242}}";
     let auto = "{\"ok\":true,\"caffeinate\":{\"mode\":\"auto\",\"on\":false}}";
     let off = "{\"ok\":true,\"caffeinate\":{\"mode\":\"off\",\"on\":false}}";
@@ -157,13 +167,3 @@ fn caffeinate_and_the_pane_commands_report_the_guis_answer() {
     }
 }
 
-#[test]
-fn shapes_ruby_reads_in_its_own_way_go_to_ruby() {
-    for args in [vec!["rotate", "--clos", "chat-item"], vec!["rotate", "--bogus"], vec!["pane-start", "--x", "chat-item"]] {
-        same(&args, Some(OK), &[], false);
-    }
-    // a port Ruby's to_i reads differently
-    let a = attempt(&ruby(), &["caffeinate", "status"], Some(OK), &[("QM_GUI_PORT", "12x")], false);
-    let b = attempt(rust(), &["caffeinate", "status"], Some(OK), &[("QM_GUI_PORT", "12x")], false);
-    assert_eq!(a, b);
-}

@@ -1,7 +1,7 @@
 # Asides
 
-**Code:** `lib/quartermaster/aside.rb`, `lib/quartermaster/gui/js/aside.js`
-**Tests:** `test/aside_test.rb`
+**Code:** `src/aside.rs`, `gui/js/aside.js`
+**Tests:** `tests/gui.rs`
 **Depends on:** [chats](chats.md), [linking](linking.md), [capture](capture.md)
 
 ## What it does

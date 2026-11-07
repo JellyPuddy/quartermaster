@@ -40,6 +40,7 @@ pub mod gui_state;
 pub mod hook;
 pub mod issue_drafts;
 pub mod note;
+pub mod opt_parse;
 pub mod outcome;
 pub mod pf;
 pub mod pane_follows_session;

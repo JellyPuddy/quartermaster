@@ -26,7 +26,7 @@ const MAX_LINES: usize = 20_000;
 type Reply = (&'static str, &'static str, Vec<u8>);
 
 fn gui_dir() -> PathBuf {
-    delegate::checkout_launcher().parent().map(|p| p.join("lib/quartermaster/gui")).unwrap_or_default()
+    delegate::checkout().join("gui")
 }
 
 /// `URI.decode_www_form_component`.
@@ -338,7 +338,7 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
         if route == "/api/attention" {
             return match crate::gui_state::attention_payload() {
                 Some(v) => json_reply(v),
-                None => text_reply("501 Not Implemented", "not ported yet: this attention"),
+                None => text_reply("501 Not Implemented", "unsupported input: this attention"),
             };
         }
         if route == "/api/pulse" {
@@ -354,74 +354,74 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
         if route == "/api/state" {
             return match crate::gui_state::build(token) {
                 Ok(v) => json_reply(v),
-                Err(_) => text_reply("501 Not Implemented", "not ported yet: this state (status boards, benchmarks, loose chats, build progress)"),
+                Err(_) => text_reply("501 Not Implemented", "unsupported input: this state (status boards, benchmarks, loose chats, build progress)"),
             };
         }
         if route == "/api/pr-threads" {
             return match crate::review_threads::payload(&params(query)) {
                 Some(v) => json_reply(v),
-                None => text_reply("501 Not Implemented", "not ported yet: these review threads"),
+                None => text_reply("501 Not Implemented", "unsupported input: these review threads"),
             };
         }
         if route == "/api/prs" {
             return match crate::gui_prs::payload(&params(query)) {
                 Some(v) => json_reply(v),
-                None => text_reply("501 Not Implemented", "not ported yet: this PR list"),
+                None => text_reply("501 Not Implemented", "unsupported input: this PR list"),
             };
         }
         if let Some(rest) = route.strip_prefix("/api/history/") {
             return match history_payload(rest, &params(query)) {
                 Some(v) => json_reply(v),
-                None => text_reply("501 Not Implemented", "not ported yet: this history"),
+                None => text_reply("501 Not Implemented", "unsupported input: this history"),
             };
         }
         if let Some(slug) = route.strip_prefix("/api/workspace/") {
             return match crate::gui_issues::workspace(slug, query, &params(query)) {
                 Some(v) => json_reply(v),
-                None => text_reply("501 Not Implemented", "not ported yet: this workspace"),
+                None => text_reply("501 Not Implemented", "unsupported input: this workspace"),
             };
         }
         if route == "/api/issues" {
             return match crate::gui_issues::index() {
                 Some(v) => json_reply(v),
-                None => text_reply("501 Not Implemented", "not ported yet: these issue drafts"),
+                None => text_reply("501 Not Implemented", "unsupported input: these issue drafts"),
             };
         }
         if let Some(slug) = route.strip_prefix("/api/issues/") {
             return match crate::gui_issues::payload(&decode(slug)) {
                 Some(v) => json_reply(v),
-                None => text_reply("501 Not Implemented", "not ported yet: these issue drafts"),
+                None => text_reply("501 Not Implemented", "unsupported input: these issue drafts"),
             };
         }
         if let Some(id) = route.strip_prefix("/api/session/") {
             return match crate::session_detail::session_detail(id) {
                 Some(v) => json_reply(v),
-                None => text_reply("501 Not Implemented", "not ported yet: this session"),
+                None => text_reply("501 Not Implemented", "unsupported input: this session"),
             };
         }
         if let Some(slug) = route.strip_prefix("/api/asides/") {
             return match asides_payload(slug) {
                 Some(v) => json_reply(v),
-                None => text_reply("501 Not Implemented", "not ported yet: this drawer"),
+                None => text_reply("501 Not Implemented", "unsupported input: this drawer"),
             };
         }
         if let Some(slug) = route.strip_prefix("/api/diff/") {
             return match diff_payload(slug, query) {
                 Some(v) => json_reply(v),
-                None => text_reply("501 Not Implemented", "not ported yet: this diff scope (pr, prompt) or a Review item"),
+                None => text_reply("501 Not Implemented", "unsupported input: this diff scope (pr, prompt) or a Review item"),
             };
         }
         if let Some(slug) = route.strip_prefix("/api/branch-stats/") {
             return match branch_stats_payload(slug, query) {
                 Some(v) => json_reply(v),
-                None => text_reply("501 Not Implemented", "not ported yet: these branch stats"),
+                None => text_reply("501 Not Implemented", "unsupported input: these branch stats"),
             };
         }
         if route.starts_with("/api/benchmark/") || route.starts_with("/api/benchmark-plan/") || route.starts_with("/api/benchmark-log/") {
             let given: std::collections::HashMap<String, String> = params(query).into_iter().filter_map(|(k, v)| v.as_str().map(|t| (k, t.to_string()))).collect();
             return match crate::benchmark_report::respond(route, &given) {
                 Some(reply) => reply,
-                None => text_reply("501 Not Implemented", "not ported yet: this benchmark answer"),
+                None => text_reply("501 Not Implemented", "unsupported input: this benchmark answer"),
             };
         }
         if let Some(slug) = route.strip_prefix("/api/diff-file/") {
@@ -451,9 +451,9 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
             (true, Some(q)) => match crate::ask_command::search(&q) {
                 Ok(found) => json_reply(json!({"ok": true, "hits": found.iter().map(|(slug, why)| json!({"slug": slug, "why": why})).collect::<Vec<_>>()})),
                 Err(crate::ask_command::Fail::Message(m)) => json_reply(json!({"ok": false, "error": m})),
-                Err(crate::ask_command::Fail::Ruby) => text_reply("501 Not Implemented", "not ported yet: this question"),
+                Err(crate::ask_command::Fail::Ruby) => text_reply("501 Not Implemented", "unsupported input: this question"),
             },
-            _ => text_reply("501 Not Implemented", "not ported yet: this question"),
+            _ => text_reply("501 Not Implemented", "unsupported input: this question"),
         };
     }
     if method == "POST" && route == "/api/grep" {
@@ -474,9 +474,9 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
                     json_reply(out)
                 }
                 Err(crate::transcript_search::Failure::Abort(m)) => json_reply(json!({"ok": false, "error": m})),
-                Err(crate::transcript_search::Failure::Ruby) => text_reply("501 Not Implemented", "not ported yet: this search"),
+                Err(crate::transcript_search::Failure::Ruby) => text_reply("501 Not Implemented", "unsupported input: this search"),
             },
-            _ => text_reply("501 Not Implemented", "not ported yet: this search"),
+            _ => text_reply("501 Not Implemented", "unsupported input: this search"),
         };
     }
     if method == "POST" && route == "/api/cleanup-plan" {
@@ -484,17 +484,17 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
         let scope = payload.get("scope").cloned().unwrap_or(Value::Null);
         return match crate::gui_actions::cleanup_plan(&scope) {
             Some(v) => json_reply(v),
-            None => text_reply("501 Not Implemented", "not ported yet: this cleanup plan"),
+            None => text_reply("501 Not Implemented", "unsupported input: this cleanup plan"),
         };
     }
     if method == "POST" && route == "/api/action" {
         let payload = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
         return match crate::gui_actions::dispatch(&payload) {
             Some(v) => json_reply(v),
-            None => text_reply("501 Not Implemented", "not ported yet: this action"),
+            None => text_reply("501 Not Implemented", "unsupported input: this action"),
         };
     }
-    text_reply("501 Not Implemented", &format!("not ported yet: {method} {route}"))
+    text_reply("501 Not Implemented", &format!("unsupported input: {method} {route}"))
 }
 
 fn handle(mut stream: TcpStream, guard: &Guard, token: &str) {

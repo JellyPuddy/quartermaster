@@ -1,18 +1,24 @@
 $ qm "grep" "needle"
-exit 1
---- stderr
-/home/user/quartermaster/lib/quartermaster/transcript_search.rb:111:in `dig': String does not have #dig method (TypeError)
-
-        content = entry.dig("message", "content")
-                            ^^^^^^^^^^^^^^^^^^^^
-	from /home/user/quartermaster/lib/quartermaster/transcript_search.rb:111:in `conversation_text'
-	from /home/user/quartermaster/lib/quartermaster/transcript_search.rb:84:in `block in scan'
-	from /home/user/quartermaster/lib/quartermaster/transcript_search.rb:77:in `foreach'
-	from /home/user/quartermaster/lib/quartermaster/transcript_search.rb:77:in `scan'
-	from /home/user/quartermaster/lib/quartermaster/transcript_search.rb:44:in `block in call'
-	from /home/user/quartermaster/lib/quartermaster/transcript_search.rb:40:in `each'
-	from /home/user/quartermaster/lib/quartermaster/transcript_search.rb:40:in `call'
-	from /home/user/quartermaster/lib/quartermaster/cli.rb:371:in `cmd_grep'
-	from /home/user/quartermaster/lib/quartermaster/cli.rb:61:in `run'
-	from /home/user/quartermaster/quartermaster:8:in `<main>'
+exit 0
+--- stdout
+done-work  Done work  (resolved)
+  DATE 10:00  s-unicode
+    you: héllo wörld 🙂 ünï — NEEDLE ünï 🙂 after
+later-work  Later work  (fridge)
+  DATE 08:00  s-squash
+    you: first line second line NEEDLE third fourth
+  DATE 10:00  s-long
+    you: …word word word word word word word word word word word word NEEDLE tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail…
+unlinked
+  DATE 10:00  s-wide
+    you: éééééééééééééééééééééééééééééééééééééééééééééééééé NEEDLE and the rest of it
+  DATE 10:00  s-case
+    you: NeEdLe in odd case
+  DATE 10:00  s-unlinked
+    you: needle unlinked and unclaimed
+  DATE 10:00  s-junk
+    you: needle after junk
+  ????-??-?? --:--  s-nots
+    you: needle without any timestamp
+Resume: qm resume SLUG --session ID (unlinked: claude --resume ID from its project dir)
 

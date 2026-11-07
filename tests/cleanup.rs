@@ -13,7 +13,7 @@ fn rust() -> &'static Path {
 }
 
 fn ruby() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("quartermaster")
+    common::ruby_launcher()
 }
 
 struct Git {
@@ -283,6 +283,9 @@ fn transcript(bin: &Path, w: &World, slugs: &[String], commands: &[&[&str]]) -> 
 
 #[test]
 fn rust_and_ruby_plan_the_same_cleanup_and_leave_the_same_traces() {
+    if common::skip() {
+        return;
+    }
     let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
     let ((wa, slugs), (wb, _)) = (world(a.path()), world(b.path()));
     let commands: [&[&str]; 2] = [&["cleanup"], &["state", "resolved"]];
@@ -333,6 +336,9 @@ fn sweeps(bin: &Path, w: &World, slugs: &[String]) -> String {
 
 #[test]
 fn rust_and_ruby_plan_the_same_sweep() {
+    if common::skip() {
+        return;
+    }
     let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
     let ((wa, slugs), (wb, _)) = (world(a.path()), world(b.path()));
     for w in [&wa, &wb] {
@@ -430,6 +436,9 @@ fn s(parts: &[&str]) -> Vec<String> {
 
 #[test]
 fn rust_and_ruby_remove_the_same_things_from_cleanup_slug() {
+    if common::skip() {
+        return;
+    }
     let text = compare_removal(|slugs| {
         let wt = |name: &str| format!("{{base}}/repo/.claude/worktrees/{name}");
         let mut steps = vec![
@@ -461,6 +470,9 @@ fn rust_and_ruby_remove_the_same_things_from_cleanup_slug() {
 
 #[test]
 fn rust_and_ruby_remove_the_same_things_in_a_sweep() {
+    if common::skip() {
+        return;
+    }
     let text = compare_removal(|_| {
         vec![
             s(&["sweep"]),

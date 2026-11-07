@@ -54,21 +54,43 @@ fn abort(message: &str) -> i32 {
     1
 }
 
+/// Prints what a command ended with (the refusal of its options, say), as every ported command does.
+fn finish(outcome: Outcome, command: Option<&str>, raw: &[OsString]) -> i32 {
+    match outcome {
+        Outcome::Delegate => delegate::refuse(raw),
+        Outcome::Done { code, stdout, stderr } => {
+            feature_use::command(command);
+            out(&stdout);
+            let _ = std::io::stderr().write_all(stderr.as_bytes());
+            code
+        }
+    }
+}
+
 pub fn run(raw: Vec<OsString>) -> i32 {
     let Some(args) = raw.iter().map(|a| a.to_str().map(String::from)).collect::<Option<Vec<String>>>() else {
-        delegate::exec_ruby(&raw) // arguments that are not UTF-8 are Ruby's to read
+        delegate::refuse(&raw) // arguments that are not UTF-8 are not read
     };
     let command = args.first().map(String::as_str);
     let rest = args.get(1..).unwrap_or(&[]);
-    // `feature-use` counts itself in its own report; every other command is recorded once it ran, and
-    // not at all here when Ruby takes it over (Ruby records it)
+    // `feature-use` counts itself in its own report; every other command is recorded once it ran
     if command == Some("feature-use") {
         feature_use::command(command);
     }
+    let normalized = command.and_then(|word| crate::opt_parse::normalize(word, rest));
+    let rest_owned;
+    let rest = match normalized {
+        Some(Ok(args)) => {
+            rest_owned = args;
+            &rest_owned[..]
+        }
+        Some(Err(refused)) => return finish(refused, command, &raw),
+        None => rest,
+    };
     if let Some(word) = command {
         if let Some(outcome) = work_item_commands::run(word, rest).or_else(|| session_commands::run(word, rest)) {
             return match outcome {
-                Outcome::Delegate => delegate::exec_ruby(&raw),
+                Outcome::Delegate => delegate::refuse(&raw),
                 Outcome::Done { code, stdout, stderr } => {
                     if command != Some("feature-use") {
                         feature_use::command(command);
@@ -132,7 +154,7 @@ pub fn run(raw: Vec<OsString>) -> i32 {
                 let _ = std::io::stderr().write_all(stderr.as_bytes());
                 code
             }
-            _ => delegate::exec_ruby(&raw),
+            _ => delegate::refuse(&raw),
         },
         None if crate::viewer::fzf_available() => {
             feature_use::command(command);
@@ -142,7 +164,7 @@ pub fn run(raw: Vec<OsString>) -> i32 {
                     let _ = std::io::stderr().write_all(stderr.as_bytes());
                     code
                 }
-                Outcome::Delegate => delegate::exec_ruby(&raw),
+                Outcome::Delegate => delegate::refuse(&raw),
             }
         }
         None => {
@@ -153,7 +175,7 @@ pub fn run(raw: Vec<OsString>) -> i32 {
                     let _ = std::io::stderr().write_all(stderr.as_bytes());
                     code
                 }
-                Outcome::Delegate => delegate::exec_ruby(&raw),
+                Outcome::Delegate => delegate::refuse(&raw),
             }
         }
         Some(word) if !feature_use::is_known_cli(word) && !matches!(word, "help" | "--help" | "-h") => {
@@ -162,6 +184,6 @@ pub fn run(raw: Vec<OsString>) -> i32 {
             out(crate::session_commands::USAGE);
             1
         }
-        _ => delegate::exec_ruby(&raw),
+        _ => delegate::refuse(&raw),
     }
 }

@@ -1,7 +1,7 @@
 # Chats
 
-**Code:** `lib/quartermaster/tmux.rb`, `lib/quartermaster/terminal_bridge.rb`, `lib/quartermaster/web_socket.rb`, `lib/quartermaster/drops.rb`, `lib/quartermaster/chat_history.rb`, `lib/quartermaster/transcript_history.rb`, `lib/quartermaster/pane_follows_session.rb`, `lib/quartermaster/gui/js/chat.js`, `lib/quartermaster/gui/js/chat-main.js`, `lib/quartermaster/gui/js/terminal.js`, `lib/quartermaster/gui/js/history.js`, `lib/quartermaster/gui/css/chat.css`
-**Tests:** `test/chat_pane_test.rb`, `test/history_rotation_test.rb`
+**Code:** `src/tmux.rs`, `src/terminal_bridge.rs`, `src/drops.rs`, `src/chat_history.rs`, `src/transcripts.rs`, `src/pane_follows_session.rs`, `gui/js/chat.js`, `gui/js/chat-main.js`, `gui/js/terminal.js`, `gui/js/history.js`, `gui/css/chat.css`
+**Tests:** `tests/chats.rs`, `tests/gui.rs`, `tests/pane_follow.rs`
 **Depends on:** [gui-shell](gui-shell.md), [attention](attention.md), [linking](linking.md)
 
 ## What it does

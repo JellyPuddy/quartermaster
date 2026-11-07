@@ -155,9 +155,7 @@ _TODO_
 $ qm "new" "Trailing" "--pf-mode"
 exit 1
 --- stderr
-/home/user/quartermaster/lib/quartermaster/cli.rb:108:in `cmd_new': missing argument: --pf-mode (OptionParser::MissingArgument)
-	from /home/user/quartermaster/lib/quartermaster/cli.rb:61:in `run'
-	from /home/user/quartermaster/quartermaster:8:in `<main>'
+qm: missing argument: --pf-mode
 --- tunnel-work.md
 ---
 v: 1

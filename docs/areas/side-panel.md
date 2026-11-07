@@ -1,7 +1,7 @@
 # Side panel and header
 
-**Code:** `lib/quartermaster/workspace.rb`, `lib/quartermaster/ide.rb`, `lib/quartermaster/board_mirror.rb`, `lib/quartermaster/usage_ledger.rb`, `lib/quartermaster/transcript_usage.rb`, `lib/quartermaster/item_usage.rb`, `lib/quartermaster/price_table.rb`, `lib/quartermaster/rate_limits.rb`, `lib/quartermaster/caffeinate.rb`, `lib/quartermaster/build_progress.rb`, `lib/quartermaster/gui/js/chat-side.js`, `lib/quartermaster/gui/js/limits.js`, `lib/quartermaster/gui/css/side-panel.css`, `statusline/statusline.rb`, `skills/adopt-worktree/SKILL.md`
-**Tests:** `test/usage_test.rb`, `test/rate_limits_test.rb`, `test/statusline_test.rb`, `test/caffeinate_test.rb`, `test/build_progress_test.rb`, `test/board_mirror_test.rb`, `test/pf_test.rb`, `test/gui_test.rb`
+**Code:** `src/workspace.rs`, `src/board_mirror.rs`, `src/usage_ledger.rs`, `src/transcript_usage.rs`, `src/item_usage.rs`, `src/price_table.rs`, `src/caffeinate.rs`, `src/build_progress.rs`, `gui/js/chat-side.js`, `gui/js/limits.js`, `gui/css/side-panel.css`, `src/statusline.rs`, `skills/adopt-worktree/SKILL.md`, `src/price_defaults.rs`
+**Tests:** `tests/usage.rs`, `tests/statusline.rs`, `tests/gui.rs`, `tests/cli_board.rs`
 **Depends on:** [gui-shell](gui-shell.md), [worktrees](worktrees.md), [stacks](stacks.md), [capture](capture.md)
 
 ## What it does
@@ -122,8 +122,8 @@ row tooltip).
 (ISO times; a missing window is nil), or nil without a usable snapshot (no file, bad JSON, no
 `captured_at`, no window). It is `rateLimits` in `/api/state` and in `qm overview --json`.
 
-**Status line** (`statusline/statusline.rb`, symlinked as `~/.claude/statusline.rb`). Claude
-Code hands rate limits only to the status line command (stdin
+**Status line** (`qm statusline`, set as `"statusLine": {"type": "command", "command": "<path>/qm
+statusline"}` in settings.json). Claude Code hands rate limits only to the status line command (stdin
 `rate_limits.{five_hour,seven_day}.{used_percentage,resets_at}`, epoch seconds), so it is where
 qm gets them. Its second line is the linked item's title via `qm session-item`. Inside a qm chat
 (`$TMUX`'s socket path names `qm`, or `QM_TMUX_SOCKET`) it drops the 5h/wk segments and the
@@ -156,7 +156,7 @@ of the pulse so a server-side flip repaints. `qm caffeinate on|off|auto|status` 
 - Costs are API-equivalent estimates, never a bill; the cited defaults carry their date in `PriceTable`, `prices:` overrides.
 - A usage failure must never cost the whole state build (`usage` is nil then, or for an item without sessions).
 - `rateLimits` is not part of the pulse: the status line rewrites the file on every render, so the chip follows the next state build.
-- `statusline.rb` runs under `/usr/bin/ruby` 2.6, standalone: no `filter_map`, numbered params, pattern matching or endless methods, never loads `lib/`; `test/statusline_test.rb` runs it there (skipped where missing).
+- `qm statusline` is run on every refresh: it is never recorded in `feature-use.jsonl`, never creates the qm root, prints nothing for input that is not JSON, and reads the item title straight from the work items (no `qm session-item` child).
 - The status line replaces `<QM_ROOT>/rate-limits.json` atomically (tmp + rename, last writer wins — limits are per account) with `{v: 1, five_hour: {used_percentage, resets_at}, seven_day: {…}, captured_at}`, only when the qm root exists, and swallows every failure.
 - The ☕ child belongs to the GUI process (`-w <gui pid>`, pid in memory only, no pid file), so it dies with the GUI and a restarted GUI starts off with nothing to adopt.
 - Auto mode never touches the server's life — it only switches the child — and acts only in auto, so manual on/off always win. `blocked` doesn't count as busy: it waits on the user.

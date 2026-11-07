@@ -189,7 +189,7 @@ include Quartermaster
 args = JSON.parse(ARGV[2])
 puts JSON.generate(GhStack.chains(WorkItem.find(ARGV[1]), pr_states: args["states"], pr_links: args["links"]))"#;
     let out = Command::new("ruby")
-        .args(["-e", script, env!("CARGO_MANIFEST_DIR"), slug, &json!({"states": states, "links": links}).to_string()])
+        .args(["-e", script, common::oracle().unwrap().to_str().unwrap(), slug, &json!({"states": states, "links": links}).to_string()])
         .env_clear()
         .env("QM_ROOT", &w.root)
         .env("HOME", &w.home)
@@ -204,6 +204,9 @@ puts JSON.generate(GhStack.chains(WorkItem.find(ARGV[1]), pr_states: args["state
 
 #[test]
 fn chains_match_ruby_with_pr_states_and_links_merged_in() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = show_world(base.path(), SystemTime::now(), false);
     let states = json!({"a1": "MERGED", "a2": "OPEN", "b2": "MERGED", "feature-x": "OPEN", "loose-gone": "CLOSED"});

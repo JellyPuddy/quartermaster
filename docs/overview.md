@@ -57,11 +57,11 @@ Hooks and the global fallback instruction live at **user level** (`~/.claude/set
 `~/.claude/CLAUDE.md`), because capture must cover every project and no-project cwd.
 `qm install-hooks` prints the settings snippet; the user merges it themselves.
 
-The code is a git repo at `~/code/quartermaster`: the realpath-resolving launcher
-`./quartermaster` (symlinked from `~/bin/quartermaster` and `~/bin/qm` — never rename or move
-it), one intent-named file per class under `lib/quartermaster/`, the GUI page as real assets
-under `lib/quartermaster/gui/`, POSIX hooks under `hooks/`, and a minitest suite run with
-`ruby test/quartermaster_test.rb` (shared setup in `test/test_helper.rb`; one file per area).
+The code is a git repo at `~/code/quartermaster`: the launcher `./quartermaster`, a POSIX `sh`
+script that runs the release binary beside it through any symlink chain (symlinked from
+`~/bin/quartermaster` and `~/bin/qm`, which the hook registrations also name — never rename or
+move it), the Rust crate under `src/` (one intent-named module per concern), the GUI page as real
+assets under `gui/`, POSIX hooks under `hooks/`, and the tests under `tests/` ([testing](areas/testing.md)).
 
 ## config.yml
 
@@ -97,30 +97,29 @@ finishes with " answer my question about them: …" or " ask me what I want to k
 
 ## Tech decisions
 
-- **Ruby, `#!/usr/bin/env ruby`**, resolved through asdf shims to whatever the session's cwd
-  pins; a user-level asdf default (`~/.tool-versions`) must exist or capture dies outside pinned repos.
-  A Rust port is under way and serves the hooks first ([rust-port](areas/rust-port.md)).
-- **Stdlib only** (yaml, json, open3, optparse, socket, …), no gems: gems install per Ruby
-  version, so a hook firing in a repo pinned to another Ruby would not find them.
-- **Ruby 3.3 is the syntax floor** for the same reason — no 4.x-only features.
-- **`statusline/statusline.rb` is the exception:** standalone, macOS system Ruby 2.6, never loads `lib/`.
+- **Rust, one static binary** (`cargo build --release`, toolchain pinned in `.tool-versions`),
+  so a hook fires the same in any repo whatever its asdf pins, and starts fast. The only
+  dependencies are `serde_json`, `serde_yaml`, `regex`, `chrono` and `libc`; a new crate needs a
+  reason.
+- **The status line is `qm statusline`**, which Claude Code's `statusLine` setting runs: it needs no
+  system Ruby.
 - **The skills qm drives ship in `skills/`** (rotate, work-items, branch-stats, adopt-worktree,
   draft-issues), symlinked into `~/.claude/skills/`; qm's code reads these skills' files from
   its own checkout (`branch-stats.sh`, `page.html`), never through `~/.claude/skills/`.
 - `fzf` for the terminal viewer, `gh` for GitHub (always offline-tolerant), tmux for chats.
 - **Data formats are versioned**: a `v:` field in JSONL events and work-item frontmatter;
   bump on a breaking schema change, readers tolerate unknown fields.
-- One file per class, named by intent (`SessionLog`, `WorkItem`, `HookHandler`, `CLI`, …).
+- One module per concern, named by intent (`session_log`, `work_item`, `hook`, `cli`, …).
 - Rationale lives in commit messages, not code comments or these pages.
 
 ## Cross-area invariants
 
 - **Hooks never block or break a session**: rescue everything, log to `qm.log`, exit 0.
   SessionEnd and error paths print nothing — SessionStart stdout is context.
-- **Per-tool-call hooks are plain POSIX `sh`**, never Ruby: they never print, always exit 0,
+- **Per-tool-call hooks are plain POSIX `sh`**, never `qm`: they never print, always exit 0,
   honor `QM_SKIP`, and only append. All derivation happens in qm at read time.
-- **Append-only logs are read incrementally** from a persisted byte offset (`EventLog`,
-  `BoardMirror`, `TranscriptUsage`); rewriting earlier lines is invisible, only a shrink refolds.
+- **Append-only logs are read incrementally** from a persisted byte offset (`event_log`,
+  `board_mirror`, `transcript_usage`); rewriting earlier lines is invisible, only a shrink refolds.
 - **Work-item writes go through one global flock** (`WorkItem.with_lock`) spanning the whole
   read-modify-write, re-reading the file first; reentrant per thread.
 - **External tools that change state go through `CommandRunner`** (the dev server, the IDE, `git worktree
@@ -140,5 +139,5 @@ finishes with " answer my question about them: …" or " ask me what I want to k
 - **The GUI is loopback-only and runs until Ctrl-C**: no liveness timer, foreign `Origin`s refused.
 - **Tests never touch the user's live state**: `QM_ROOT`, `QM_TMUX_SOCKET=qm-test-…`, stub runners;
   throwaway test repos commit with `-c commit.gpgsign=false`, this repo's commits are signed.
-- **Big files only shrink** (`test/size_ratchet_test.rb`): code over 400 lines, tests over 800 and
-  `CLAUDE.md` (bytes) are pinned in `test/size_limits.json`; run it with `--lower` after a shrink.
+- **Big files only shrink** (`tests/size_ratchet.rs`): code over 400 lines, tests over 800 and
+  `CLAUDE.md` (bytes) are pinned in `tests/size_limits.json`; `QM_LOWER_LIMITS=1` locks in a shrink.

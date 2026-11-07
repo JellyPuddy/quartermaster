@@ -1,7 +1,7 @@
 # Worktrees
 
-**Code:** `lib/quartermaster/target_worktree.rb`, `lib/quartermaster/cleanup.rb`, `lib/quartermaster/git_repo.rb`, `lib/quartermaster/gui/js/cleanup.js`
-**Tests:** `test/worktrees_test.rb`, `test/cleanup_test.rb`, `test/issue_cleanup_test.rb`
+**Code:** `src/cleanup.rs`, `src/git_repo.rs`, `gui/js/cleanup.js`, `src/cleanup_run.rs`
+**Tests:** `tests/cleanup.rs`, `tests/issue_drafts.rs`
 **Depends on:** [stacks](stacks.md), [gui-shell](gui-shell.md), [work-items](work-items.md)
 
 ## What it does

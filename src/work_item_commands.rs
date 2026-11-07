@@ -154,8 +154,8 @@ fn retag(a: &[String]) -> Outcome {
     let [slug, position, kind, ..] = a else {
         return abort(&format!("usage: qm retag SLUG POSITION KIND ({}) — POSITION is the number qm show prints", NOTE_KINDS.join(" | ")));
     };
-    let plain = position == "0" || (position.starts_with(|c: char| ('1'..='9').contains(&c)) && position.bytes().all(|c| c.is_ascii_digit()));
-    let Some(position) = plain.then(|| position.parse::<usize>().ok()).flatten() else { return Outcome::Delegate };
+    // `String#to_i`: leading digits, anything else is 0 (and no note has that position)
+    let position: usize = position.trim_start().chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap_or(0);
     let mut item = tri!(WorkItem::find(slug));
     let note = tri!(item.update_note_kind(position, kind));
     done(format!("{}\n", note_line(&note)))

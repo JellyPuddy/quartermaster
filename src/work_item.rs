@@ -378,7 +378,7 @@ impl WorkItem {
         let slug = Self::slugify(title);
         let unemittable = |what: &str| QmError::new(UNEMITTABLE, format!("cannot write {what} like Ruby"));
         if slug.is_empty() {
-            return Err(unemittable("an empty slug"));
+            return Err(QmError::argument("the title needs a letter or digit (a-z, 0-9) to make its slug from"));
         }
         let mut lines = vec!["v: 1".to_string()];
         lines.extend(psych::pair("title", title).ok_or_else(|| unemittable("the title"))?);

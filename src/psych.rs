@@ -394,8 +394,14 @@ fn fold(out: &mut String, col: &mut usize) {
 }
 
 /// The scalar as it follows a `key: ` or `- ` prefix of `prefix_cols` characters; folds carry
-/// their own newline and indent. `None` leaves the string to Ruby.
+/// their own newline and indent. A string whose exact Psych spelling this port does not reproduce
+/// (line breaks, `<<`, marks and symbols, odd time-like shapes) is written double-quoted, which every
+/// YAML reader takes back as the same string.
 pub fn scalar(prefix_cols: usize, s: &str) -> Option<String> {
+    exact(prefix_cols, s).or_else(|| Some(serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into())))
+}
+
+fn exact(prefix_cols: usize, s: &str) -> Option<String> {
     if s.chars().any(is_break) || s == "<<" {
         return None;
     }
@@ -495,6 +501,13 @@ pub fn pair(key: &str, value: &str) -> Option<Vec<String>> {
     Some(format!("{key}: {text}").split('\n').map(String::from).collect())
 }
 
+/// `pair` for the strings whose Psych spelling this port reproduces exactly; `None` for the rest, which
+/// `pair` writes double-quoted instead.
+pub fn pair_exact(key: &str, value: &str) -> Option<Vec<String>> {
+    let text = exact(key.chars().count() + 2, value)?;
+    Some(format!("{key}: {text}").split('\n').map(String::from).collect())
+}
+
 /// `key:` with a block list of strings, or `key: []` when empty.
 pub fn list(key: &str, items: &[String]) -> Option<Vec<String>> {
     if items.is_empty() {
@@ -555,10 +568,10 @@ mod tests {
     }
 
     #[test]
-    fn what_ruby_would_handle_differently_is_left_to_it() {
-        assert!(pair("k", "two\nlines").is_none());
-        assert!(pair("k", "<<").is_none());
-        assert!(pair("k", "2026-13-02 10:11:12").is_none());
+    fn what_this_port_does_not_spell_like_psych_is_double_quoted() {
+        assert_eq!(one("two\nlines"), "k: \"two\\nlines\"");
+        assert_eq!(one("<<"), "k: \"<<\"");
+        assert_eq!(one("2026-13-02 10:11:12"), "k: \"2026-13-02 10:11:12\"");
         assert_eq!(one("2026-01-02 10:11:12"), "k: '2026-01-02 10:11:12'");
         assert_eq!(one("2026-11-05T18:00:00Z"), "k: '2026-11-05T18:00:00Z'");
     }

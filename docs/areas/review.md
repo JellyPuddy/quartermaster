@@ -1,7 +1,7 @@
 # Review
 
-**Code:** `lib/quartermaster/diff_comments.rb`, `lib/quartermaster/review_anchors.rb`, `lib/quartermaster/review_plan.rb`, `lib/quartermaster/pending_review.rb`, `lib/quartermaster/review_threads.rb`, `lib/quartermaster/chat_review_drafts.rb`, `lib/quartermaster/gui/js/review.js`, `lib/quartermaster/gui/js/diff-comments.js`, `lib/quartermaster/gui/js/pr-threads.js`, `lib/quartermaster/gui/css/pr-threads.css`
-**Tests:** `test/pr_threads_test.rb`, `test/pr_drafts_test.rb`, `test/pr_post_test.rb`, `test/chat_review_drafts_test.rb`
+**Code:** `src/draft_messages.rs`, `src/review_anchors.rs`, `src/review_plan.rs`, `src/pending_review.rs`, `src/review_threads.rs`, `src/chat_review_drafts.rs`, `gui/js/review.js`, `gui/js/diff-comments.js`, `gui/js/pr-threads.js`, `gui/css/pr-threads.css`, `src/gui_review_actions.rs`
+**Tests:** `tests/gui.rs`, `tests/cli_draft.rs`
 **Depends on:** [diff](diff.md), [drafts](drafts.md), [prs](prs.md)
 
 ## What it does

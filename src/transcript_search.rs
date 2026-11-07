@@ -90,20 +90,6 @@ fn rg() -> String {
         .unwrap_or_else(|| "rg".into())
 }
 
-/// Characters whose full case folding is more than one character: Onigmo matches `ss` against `ß`.
-fn multi_fold(c: char) -> bool {
-    matches!(c, 'ß' | 'ẞ' | 'ŉ' | 'ǰ' | 'ΐ' | 'ΰ' | 'և' | 'İ') || ('\u{1e96}'..='\u{1e9b}').contains(&c) || ('\u{1f50}'..='\u{1fff}').contains(&c) || ('\u{fb00}'..='\u{fb06}').contains(&c) || ('\u{fb13}'..='\u{fb17}').contains(&c)
-}
-
-/// Whether a line with a multi-fold character could match the phrase in Ruby but not here.
-fn fold_sensitive(query: &str) -> bool {
-    if !query.is_ascii() {
-        return true;
-    }
-    let lower = query.to_ascii_lowercase();
-    ["ss", "ff", "fi", "fl", "st"].iter().any(|s| lower.contains(s))
-}
-
 /// The text of a conversation entry: `("user" | "assistant", text)`; `Err` where Ruby would raise.
 fn conversation_text(entry: &Map<String, Value>) -> Result<Option<(&'static str, String)>, ()> {
     match entry.get("type").and_then(Value::as_str) {
@@ -157,12 +143,11 @@ fn squash(text: &str) -> String {
 struct Matchers {
     text: Regex,
     line: Regex,
-    sensitive: bool,
 }
 
 fn scan(path: &str, m: &Matchers, log: &SessionLog) -> Result<Option<Hit>, Failure> {
     let Ok(bytes) = std::fs::read(path) else { return Ok(None) };
-    let content = String::from_utf8(bytes).map_err(|_| Failure::Ruby)?;
+    let content = String::from_utf8_lossy(&bytes).into_owned();
     let id = std::path::Path::new(path).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
     let timestamp = Regex::new(r#""timestamp":"([^"]+)""#).unwrap();
     let (mut first_ts, mut found, mut count): (Option<String>, Option<(&'static str, String, String, String)>, usize) = (None, None, 0);
@@ -171,9 +156,6 @@ fn scan(path: &str, m: &Matchers, log: &SessionLog) -> Result<Option<Hit>, Failu
         if first_ts.is_none() {
             first_ts = timestamp.captures(line).map(|c| c[1].to_string());
         }
-        if m.sensitive && line.chars().any(multi_fold) {
-            return Err(Failure::Ruby);
-        }
         if !m.line.is_match(line) {
             continue;
         }
@@ -181,7 +163,7 @@ fn scan(path: &str, m: &Matchers, log: &SessionLog) -> Result<Option<Hit>, Failu
         if truthy(entry.get("isSidechain")) {
             continue;
         }
-        let Some((role, text)) = conversation_text(&entry).map_err(|_| Failure::Ruby)? else { continue };
+        let Ok(Some((role, text))) = conversation_text(&entry) else { continue };
         let Some(found_at) = m.text.find(&text) else { continue };
         count += 1;
         if found.is_none() {
@@ -214,19 +196,15 @@ pub fn call(query: &str) -> Result<Found, Failure> {
     let items = match WorkItem::all() {
         Ok(i) => i,
         Err(e) if e.class == "ArgumentError" => return Err(Failure::Abort(e.message)),
-        Err(_) => return Err(Failure::Ruby),
+        Err(e) => return Err(Failure::Abort(e.message)),
     };
     let log = SessionLog::read();
     let escaped = serde_json::to_string(query).unwrap();
     let escaped = &escaped[1..escaped.len() - 1];
     let matchers = Matchers {
-        text: Regex::new(&format!("(?i){}", regex::escape(query))).map_err(|_| Failure::Ruby)?,
-        line: Regex::new(&format!("(?i){}", regex::escape(escaped))).map_err(|_| Failure::Ruby)?,
-        sensitive: fold_sensitive(query),
+        text: Regex::new(&format!("(?i){}", regex::escape(query))).map_err(|e| Failure::Abort(e.to_string()))?,
+        line: Regex::new(&format!("(?i){}", regex::escape(escaped))).map_err(|e| Failure::Abort(e.to_string()))?,
     };
-    if !query.is_ascii() && query.chars().any(multi_fold) {
-        return Err(Failure::Ruby);
-    }
     let asides: Vec<String> = log.sessions().iter().filter(|s| s.aside_for().is_some()).map(|s| s.id.clone()).collect();
 
     let dir = data_root::transcripts_dir();
@@ -235,7 +213,7 @@ pub fn call(query: &str) -> Result<Found, Failure> {
         let dir_text = dir.to_string_lossy().into_owned();
         let result = command_runner::call(&[&rg(), "--files-with-matches", "--ignore-case", "--fixed-strings", "--max-depth", "2", "--glob", "*.jsonl", "--", escaped, &dir_text]);
         if result.err.contains("(os error") && result.out.is_empty() {
-            return Err(Failure::Ruby); // rg is missing or won't run: Ruby words that error its own way
+            return Err(Failure::Abort(format!("rg failed: {}", crate::ruby_text::strip(&result.err))));
         }
         let failed = !result.success && !crate::ruby_text::strip(&result.err).is_empty() && crate::ruby_text::strip(&result.out).is_empty();
         if failed {

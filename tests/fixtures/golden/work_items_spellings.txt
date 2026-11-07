@@ -68,9 +68,10 @@ From equals
 ## Snapshots
 
 $ qm "new" "Dashed" "--" "--literal"
-exit 0
---- stdout
-dashed-literal
+exit 1
+--- stderr
+qm: can't do this as given: qm new Dashed -- --literal
+qm help lists the forms each command takes; odd data in a file it reads can also cause this
 --- spelled.md
 ---
 v: 1
@@ -140,9 +141,10 @@ From equals
 ## Snapshots
 
 $ qm "note" "spelled" "--" "--dashed text"
-exit 0
---- stdout
-[36m#3[0m [90m[decision][0m DATE: --dashed text
+exit 1
+--- stderr
+qm: can't do this as given: qm note spelled -- --dashed text
+qm help lists the forms each command takes; odd data in a file it reads can also cause this
 --- spelled.md
 ---
 v: 1
@@ -161,7 +163,6 @@ From equals
 ## Notes
 - DATE [open]: equals kind
 - DATE [history]: abbreviated kind
-- DATE: --dashed text
 
 ## Snapshots
 
@@ -187,14 +188,13 @@ From equals
 ## Notes
 - DATE [history]: equals kind
 - DATE [history]: abbreviated kind
-- DATE: --dashed text
 
 ## Snapshots
 
 $ qm "retag" "spelled" "0x1" "history"
-exit 0
---- stdout
-[36m#1[0m [90m[history][0m DATE: equals kind
+exit 1
+--- stderr
+qm: note #0 does not exist (2 note(s))
 --- spelled.md
 ---
 v: 1
@@ -213,7 +213,6 @@ From equals
 ## Notes
 - DATE [history]: equals kind
 - DATE [history]: abbreviated kind
-- DATE: --dashed text
 
 ## Snapshots
 
@@ -239,7 +238,6 @@ From equals
 ## Notes
 - DATE [history]: equals kind
 - DATE [history]: abbreviated kind
-- DATE: --dashed text
 
 ## Snapshots
 
@@ -267,7 +265,6 @@ From equals
 ## Notes
 - DATE [history]: equals kind
 - DATE [history]: abbreviated kind
-- DATE: --dashed text
 
 ## Snapshots
 
@@ -295,7 +292,6 @@ From equals
 ## Notes
 - DATE [history]: equals kind
 - DATE [history]: abbreviated kind
-- DATE: --dashed text
 
 ## Snapshots
 
@@ -325,7 +321,6 @@ From equals
 ## Notes
 - DATE [history]: equals kind
 - DATE [history]: abbreviated kind
-- DATE: --dashed text
 
 ## Snapshots
 
@@ -353,17 +348,15 @@ From equals
 ## Notes
 - DATE [history]: equals kind
 - DATE [history]: abbreviated kind
-- DATE: --dashed text
 
 ## Snapshots
 
 $ qm "list" "ignored" "extra"
 exit 0
 --- stdout
-in_progress  demo        abbreviated     0  -     
-in_progress  No project  dashed-literal  0  -     
-in_progress  demo        options-first   0  -     
-in_progress  demo        spelled         0  feat/x
+in_progress  demo  abbreviated    0  -     
+in_progress  demo  options-first  0  -     
+in_progress  demo  spelled        0  feat/x
 --- spelled.md
 ---
 v: 1
@@ -386,7 +379,6 @@ From equals
 ## Notes
 - DATE [history]: equals kind
 - DATE [history]: abbreviated kind
-- DATE: --dashed text
 
 ## Snapshots
 
@@ -414,7 +406,6 @@ From equals
 ## Notes
 - DATE [history]: equals kind
 - DATE [history]: abbreviated kind
-- DATE: --dashed text
 
 ## Snapshots
 
@@ -444,7 +435,6 @@ From equals
 ## Notes
 - DATE [history]: equals kind
 - DATE [history]: abbreviated kind
-- DATE: --dashed text
 
 ## Snapshots
 

@@ -1,7 +1,7 @@
 # Rotation
 
-**Code:** `lib/quartermaster/rotation.rb`, `lib/quartermaster/context_meter.rb`, `skills/rotate/SKILL.md`
-**Tests:** `test/history_rotation_test.rb`, `test/finish_test.rb`
+**Code:** `src/rotation.rs`, `skills/rotate/SKILL.md`
+**Tests:** `tests/gui.rs`
 **Depends on:** [chats](chats.md), [work-items](work-items.md), [attention](attention.md)
 
 ## What it does

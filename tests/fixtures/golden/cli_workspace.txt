@@ -261,9 +261,7 @@ d
 $ qm "pf-switch" "w-item" "--bogus"
 exit 1
 --- stderr
-/home/user/quartermaster/lib/quartermaster/cli_workspace.rb:55:in `cmd_workspace': invalid option: --bogus (OptionParser::InvalidOption)
-	from /home/user/quartermaster/lib/quartermaster/cli.rb:62:in `run'
-	from /home/user/quartermaster/quartermaster:24:in `<main>'
+qm: invalid option: --bogus
 --- w-item.md
 ---
 v: 1
@@ -341,9 +339,7 @@ d
 $ qm "ide" "w-item" "--mode" "dev"
 exit 1
 --- stderr
-/home/user/quartermaster/lib/quartermaster/cli_workspace.rb:55:in `cmd_workspace': invalid option: --mode (OptionParser::InvalidOption)
-	from /home/user/quartermaster/lib/quartermaster/cli.rb:63:in `run'
-	from /home/user/quartermaster/quartermaster:24:in `<main>'
+qm: invalid option: --mode
 --- w-item.md
 ---
 v: 1
@@ -944,9 +940,7 @@ d
 $ qm "start" "w-item" "--bogus"
 exit 1
 --- stderr
-/home/user/quartermaster/lib/quartermaster/cli_workspace.rb:30:in `cmd_start': invalid option: --bogus (OptionParser::InvalidOption)
-	from /home/user/quartermaster/lib/quartermaster/cli.rb:61:in `run'
-	from /home/user/quartermaster/quartermaster:24:in `<main>'
+qm: invalid option: --bogus
 --- w-item.md
 ---
 v: 1

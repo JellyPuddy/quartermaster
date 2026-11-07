@@ -1,7 +1,7 @@
 # Phone page
 
-**Code:** `lib/quartermaster/overview.rb`, `skills/work-items/SKILL.md`, `skills/work-items/page.html`
-**Tests:** `test/overview_test.rb`
+**Code:** `skills/work-items/SKILL.md`, `skills/work-items/page.html`
+**Tests:** `tests/cli_overview.rs`, `tests/cli_board.rs`
 **Depends on:** [work-items](work-items.md), [attention](attention.md), [side-panel](side-panel.md)
 
 ## What it does

@@ -17,7 +17,7 @@ fn rust() -> &'static Path {
 }
 
 fn ruby() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("quartermaster")
+    common::ruby_launcher()
 }
 
 fn ago(now: SystemTime, secs: u64) -> SystemTime {
@@ -237,6 +237,9 @@ fn pair(now: SystemTime) -> (tempfile::TempDir, tempfile::TempDir, World, World)
 
 #[test]
 fn attention_prints_the_same_chats_and_leaves_the_same_fold() {
+    if common::skip() {
+        return;
+    }
     let now = SystemTime::now();
     let (_a, _b, ruby_world, rust_world) = pair(now);
     let (rc, rout, rerr) = run(&ruby(), &ruby_world, &["attention"]);
@@ -256,6 +259,9 @@ fn attention_prints_the_same_chats_and_leaves_the_same_fold() {
 
 #[test]
 fn a_second_run_reads_only_what_was_appended_and_a_truncated_log_refolds() {
+    if common::skip() {
+        return;
+    }
     let now = SystemTime::now();
     let (_a, _b, ruby_world, rust_world) = pair(now);
     for w in [&ruby_world, &rust_world] {
@@ -289,6 +295,9 @@ fn a_second_run_reads_only_what_was_appended_and_a_truncated_log_refolds() {
 
 #[test]
 fn nothing_needs_attention_in_an_empty_root() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = World { base: base.path().to_path_buf(), root: base.path().join("root"), home: base.path().join("home"), transcripts: base.path().join("t") };
     fs::create_dir_all(&w.home).unwrap();
@@ -302,7 +311,7 @@ fn nothing_needs_attention_in_an_empty_root() {
 
 fn ruby_json(script: &str, input: &Value) -> Value {
     let mut child = Command::new("ruby")
-        .args(["-e", &format!("require File.join(ARGV[0], 'lib', 'quartermaster'); include Quartermaster; puts JSON.generate(({script}).call(JSON.parse($stdin.read)))"), env!("CARGO_MANIFEST_DIR")])
+        .args(["-e", &format!("require File.join(ARGV[0], 'lib', 'quartermaster'); include Quartermaster; puts JSON.generate(({script}).call(JSON.parse($stdin.read)))"), common::oracle().unwrap().to_str().unwrap()])
         .env("LANG", "C.UTF-8")
         .env("QM_ROOT", tempfile::tempdir().unwrap().keep())
         .stdin(Stdio::piped())
@@ -321,6 +330,9 @@ fn job_json(j: &background_jobs::Job) -> Value {
 
 #[test]
 fn background_jobs_and_vitals_read_transcripts_like_ruby() {
+    if common::skip() {
+        return;
+    }
     let now = SystemTime::now();
     let dir = tempfile::tempdir().unwrap();
     let nowf = now.duration_since(UNIX_EPOCH).unwrap().as_secs_f64();
@@ -418,6 +430,9 @@ fn background_jobs_and_vitals_read_transcripts_like_ruby() {
 
 #[test]
 fn watchers_are_told_apart_like_ruby_does() {
+    if common::skip() {
+        return;
+    }
     let descriptions = [
         "Watch CI", "watching deploy", "monitor the queue", "Babysit PR 5", "stopwatch", "watch_x", "re-watch", "watché", "日 watch", "日watch", "éwatch", "WATCHER", "unwatch", "Monitoring: x", "", "no match here",
         "watch\u{a0}me", "foo-watch", "foo/watch", "_watch", "9watch",

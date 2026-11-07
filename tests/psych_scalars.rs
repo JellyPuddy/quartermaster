@@ -1,6 +1,7 @@
 //! The Rust YAML emitter against the real Psych: every generated string is dumped by Ruby in one
 //! run and must come out identical, or be one the emitter declines (left to the Ruby qm).
 
+mod common;
 use quartermaster::psych;
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -77,12 +78,15 @@ puts JSON.generate(JSON.parse($stdin.read).map { |s| Psych.dump({ key => s }) })
 
 #[test]
 fn every_generated_string_dumps_as_psych_dumps_it_or_is_declined() {
+    if common::skip() {
+        return;
+    }
     let strings = corpus();
     for key in ["title", "k"] {
         let expected = ruby_dumps(&strings, key);
         let (mut matched, mut declined, mut wrong) = (0, vec![], vec![]);
         for (s, want) in strings.iter().zip(&expected) {
-            match psych::pair(key, s) {
+            match psych::pair_exact(key, s) {
                 None => declined.push(s.clone()),
                 Some(lines) => {
                     let got = format!("---\n{}\n", lines.join("\n"));
@@ -110,6 +114,9 @@ fn every_generated_string_dumps_as_psych_dumps_it_or_is_declined() {
 
 #[test]
 fn list_items_fold_like_psychs_sequences() {
+    if common::skip() {
+        return;
+    }
     let strings: Vec<String> = (50..120)
         .map(|n| format!("{}", "word ".repeat(n / 5 + 1).trim_end()))
         .chain((50..120).map(|n| format!("[{}", "word ".repeat(n / 5 + 1).trim_end())))

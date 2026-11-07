@@ -1,5 +1,6 @@
 //! The Rust binary's hook edits against files the Ruby qm wrote and reads.
 
+mod common;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -33,7 +34,7 @@ fn rust() -> &'static Path {
 }
 
 fn ruby() -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("quartermaster")
+    common::ruby_launcher()
 }
 
 fn start(id: &str) -> String {
@@ -56,6 +57,9 @@ fn item_with_extra_keys(root: &Path) -> String {
 
 #[test]
 fn a_rust_attach_changes_only_the_sessions_key_and_ruby_reads_it_back() {
+    if common::skip() {
+        return;
+    }
     let root = tempfile::tempdir().unwrap();
     let before = item_with_extra_keys(root.path());
     let (code, _, _) = run(rust(), root.path(), &["hook-session-start"], &start("s1"), &[("QM_ITEM", "keeper")]);
@@ -69,6 +73,9 @@ fn a_rust_attach_changes_only_the_sessions_key_and_ruby_reads_it_back() {
 
 #[test]
 fn a_rust_detach_leaves_every_other_key_and_the_body_untouched() {
+    if common::skip() {
+        return;
+    }
     let root = tempfile::tempdir().unwrap();
     let before = item_with_extra_keys(root.path());
     run(rust(), root.path(), &["hook-session-start"], &start("s1"), &[("QM_ITEM", "keeper")]);
@@ -84,6 +91,9 @@ fn a_rust_detach_leaves_every_other_key_and_the_body_untouched() {
 
 #[test]
 fn ruby_and_rust_agree_on_the_session_log_each_wrote() {
+    if common::skip() {
+        return;
+    }
     let root = tempfile::tempdir().unwrap();
     run(&ruby(), root.path(), &["hook-session-start"], &start("from-ruby"), &[]);
     run(rust(), root.path(), &["hook-session-start"], &start("from-rust"), &[]);
@@ -95,6 +105,9 @@ fn ruby_and_rust_agree_on_the_session_log_each_wrote() {
 
 #[test]
 fn a_rust_hook_refuses_to_corrupt_a_flow_style_session_list() {
+    if common::skip() {
+        return;
+    }
     let root = tempfile::tempdir().unwrap();
     run(&ruby(), root.path(), &["new", "Flow"], "", &[]);
     let path = root.path().join("work-items/flow.md");
@@ -156,6 +169,9 @@ fn concurrent_rust_writers_lose_nothing_and_fail_nothing() {
 /// no Rust writer fails.
 #[test]
 fn in_a_mixed_run_every_successful_note_survives() {
+    if common::skip() {
+        return;
+    }
     for _ in 0..5 {
         let root = tempfile::tempdir().unwrap();
         run(rust(), root.path(), &["new", "Shared"], "", &[]);
@@ -175,6 +191,9 @@ fn in_a_mixed_run_every_successful_note_survives() {
 
 #[test]
 fn ruby_reads_and_edits_what_rust_wrote_and_the_other_way_round() {
+    if common::skip() {
+        return;
+    }
     let root = tempfile::tempdir().unwrap();
     run(rust(), root.path(), &["new", "Cross: [check]", "--project", "/srv/x", "--branch", "feat/a", "--description", "made by rust"], "", &[]);
     run(&ruby(), root.path(), &["note", "cross-check", "--kind", "open", "from ruby"], "", &[]);
@@ -194,10 +213,16 @@ fn ruby_reads_and_edits_what_rust_wrote_and_the_other_way_round() {
 
 #[test]
 fn static_outputs_and_usage_errors_are_identical_in_both_binaries() {
+    if common::skip() {
+        return;
+    }
     let root = tempfile::tempdir().unwrap();
     for args in [&["help"][..], &["--help"], &["-h"], &["install-hooks"], &["show-session"], &["show-session", "nope"], &["session-item"], &["session-item", "nope"]] {
         let (rc, rout, rerr) = run(&ruby(), root.path(), args, "", &[]);
         let (xc, xout, xerr) = run(rust(), root.path(), args, "", &[]);
+        // each prints the path of its own checkout
+        let oracle = common::oracle().unwrap().display().to_string();
+        let (rout, xout) = (rout.replace(&oracle, "REPO"), xout.replace(env!("CARGO_MANIFEST_DIR"), "REPO"));
         assert_eq!((xc, xout, xerr), (rc, rout, rerr), "qm {args:?}");
     }
 }

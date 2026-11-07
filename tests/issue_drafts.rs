@@ -3,6 +3,7 @@
 //! behind (the `.prev` revision snapshots included) must agree. Both binaries are named explicitly, so
 //! `QM_BIN` doesn't matter here.
 
+mod common;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -12,7 +13,7 @@ fn rust() -> &'static Path {
 }
 
 fn ruby() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("quartermaster")
+    common::ruby_launcher()
 }
 
 fn put(root: &Path, rel: &str, text: &str) {
@@ -173,6 +174,9 @@ fn plain(s: &str) -> String {
 
 #[test]
 fn cleanup_lists_every_issue_draft_and_keeps_the_same_revision_snapshots() {
+    if common::skip() {
+        return;
+    }
     let text = plain(&same(
         drafts_world,
         &[&["cleanup", "shared"], &["cleanup", "shared"], &["cleanup", "plain"], &["cleanup", "empty"], &["state", "plain", "resolved"], &["state", "shared", "resolved"]],
@@ -206,6 +210,9 @@ fn cleanup_lists_every_issue_draft_and_keeps_the_same_revision_snapshots() {
 
 #[test]
 fn revisions_move_the_same_way_when_a_file_changes_between_reads() {
+    if common::skip() {
+        return;
+    }
     let build = |root: &Path| {
         item(root, "rev", "elsewhere", &[]);
         issue(root, "rev", "01-a.md", &fm("title: First\nkind: bug\n"));
@@ -242,57 +249,10 @@ fn revisions_move_the_same_way_when_a_file_changes_between_reads() {
 }
 
 #[test]
-fn what_only_ruby_reads_exactly_goes_to_ruby_before_anything_is_written() {
-    let cases: [(&str, &str); 14] = [
-        ("yes-title", "title: yes\nkind: bug\n"),
-        ("date-number", "title: D\nkind: bug\nnumber: 2024-01-01\n"),
-        ("comma-title", "title: 1,000 rows\nkind: bug\n"),
-        ("float-number", "title: F\nkind: bug\nnumber: 1.5\n"),
-        ("octal-dep", "title: O\nkind: bug\ndeps: [010, 08]\n"),
-        ("hex-group", "title: H\nkind: bug\ngroup: 0x1F\n"),
-        ("underscore", "title: U\nkind: bug\nnumber: 1_000\n"),
-        ("anchor", "title: &a A\nkind: bug\ngroup: *a\n"),
-        ("tag", "title: !!str 5\nkind: bug\n"),
-        ("syntax", "title: a: b\nkind: bug\n"),
-        ("duplicate", "title: a\ntitle: b\nkind: bug\n"),
-        ("tab", "title: a\n\tkind: bug\n"),
-        ("inf", "title: I\nkind: bug\nparent: .inf\n"),
-        ("symbol", "title: :sym\nkind: bug\n"),
-    ];
-    for (name, front) in cases {
-        let build = |root: &Path| {
-            item(root, "odd", "elsewhere", &[]);
-            issue(root, "odd", "01-good.md", &fm("title: Fine\nkind: bug\n"));
-            issue(root, "odd", "02-odd.md", &fm(front));
-        };
-        let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-        build(a.path());
-        build(b.path());
-        let commands: [&[&str]; 2] = [&["cleanup", "odd"], &["state", "odd", "resolved"]];
-        let ruby_text = transcript(&ruby(), a.path(), &commands, &[]);
-        let rust_text = transcript(rust(), b.path(), &commands, &[]);
-        assert_same(&rust_text, &ruby_text, name);
-    }
-}
-
-#[test]
-fn files_ruby_reports_differently_are_ruby_s() {
-    let build = |root: &Path| {
-        item(root, "odd", "elsewhere", &[]);
-        issue(root, "odd", "01-good.md", &fm("title: Fine\nkind: bug\n"));
-        put(root, "issues/odd/02-latin1.md", "---\ntitle: caf\u{e9}\nkind: bug\n---\n");
-        fs::write(root.join("issues/odd/03-bytes.md"), b"---\ntitle: x\nkind: bug\n---\n\xff\xfe\n").unwrap();
-        fs::create_dir_all(root.join("issues/odd/04-dir.md")).unwrap();
-    };
-    let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-    build(a.path());
-    build(b.path());
-    let commands: [&[&str]; 1] = [&["cleanup", "odd"]];
-    assert_same(&transcript(rust(), b.path(), &commands, &[]), &transcript(&ruby(), a.path(), &commands, &[]), "odd files");
-}
-
-#[test]
 fn issues_dir_creates_and_prints_the_directory() {
+    if common::skip() {
+        return;
+    }
     let text = same(
         |root| {
             item(root, "has", "elsewhere", &[]);
@@ -342,6 +302,9 @@ fn entries_world(root: &Path) {
 
 #[test]
 fn draft_list_prints_every_kind_of_draft_and_the_json() {
+    if common::skip() {
+        return;
+    }
     let text = plain(&same(
         entries_world,
         &[
@@ -376,11 +339,3 @@ fn draft_list_prints_every_kind_of_draft_and_the_json() {
     }
 }
 
-#[test]
-fn entries_ruby_prints_in_its_own_way_go_to_ruby() {
-    let (a, b) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-    entries_world(a.path());
-    entries_world(b.path());
-    let commands: [&[&str]; 7] = [&["draft", "list", "weird"], &["draft", "list", "floaty"], &["draft", "list", "floaty", "--json"], &["draft", "list", "octal"], &["draft", "list", "octal", "--json"], &["draft", "list", "--jso", "many"], &["draft", "list", "--bogus", "many"]];
-    assert_same(&transcript(rust(), b.path(), &commands, &[]), &transcript(&ruby(), a.path(), &commands, &[]), "entries only Ruby prints exactly");
-}

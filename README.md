@@ -46,8 +46,8 @@ anywhere.
 ## Requirements
 
 - **macOS** (see [macOS-only pieces](#macos-only-pieces); other platforms are untested).
-- **Ruby ≥ 3.3** as `ruby` on `PATH` (stdlib only, no gems). Optionally a **Rust toolchain** to build
-  the Rust port ([migrating](#migrating-from-the-ruby-version-to-the-rust-version)).
+- **A Rust toolchain** to build it (`cargo build --release`; `.tool-versions` pins the version for asdf,
+  or use [rustup](https://rustup.rs)).
 - **Claude Code**, **git**, **tmux** (the GUI's chats) and **fzf** (the terminal viewer).
 - **gh**, logged in, for PRs, issues and reviews, plus the gh-stack extension (`gh stack`) for
   stacked branches. Everything GitHub works offline too, just without that data.
@@ -58,61 +58,46 @@ Everything else is optional: see [Optional features](#optional-features).
 
 ```sh
 git clone <this repo> ~/code/quartermaster
-ln -s ~/code/quartermaster/quartermaster ~/bin/qm   # any directory on PATH
-qm install-hooks                                     # prints the hooks snippet
+cd ~/code/quartermaster && cargo build --release       # target/release/qm
+ln -s ~/code/quartermaster/quartermaster ~/bin/qm       # any directory on PATH
+qm install-hooks                                        # prints the hooks snippet
 ```
+
+`quartermaster` is a small `sh` launcher that runs `target/release/qm` through any symlink; rebuild after
+every `git pull`, since the hooks run whatever binary is there.
 
 1. **Hooks.** `qm install-hooks` prints the `hooks` block for `~/.claude/settings.json`, with
    absolute paths into your checkout. qm never writes that file: merge the block in yourself.
    Keep the checkout where it is afterwards; the hooks point at it.
 2. **Skills.** Link the [bundled skills](#bundled-skills) you want into `~/.claude/skills/`.
-3. **Status line** (optional, but it is where qm learns your rate limits):
-   `ln -s ~/code/quartermaster/statusline/statusline.rb ~/.claude/statusline.rb` and set
-   `"statusLine": {"type": "command", "command": "/usr/bin/ruby ~/.claude/statusline.rb"}` in settings.json.
+3. **Status line** (optional, but it is where qm learns your rate limits): set
+   `"statusLine": {"type": "command", "command": "/path/to/qm statusline"}` in settings.json.
 4. Start a Claude Code session anywhere. qm creates `~/.claude/quartermaster/` (override with
    `QM_ROOT`) with a commented `config.yml`. Run `qm gui` and open the URL it prints.
 
-## Migrating from the Ruby version to the Rust version
+## Migrating from the Ruby version
 
-`qm` is being ported to Rust area by area (the rule: a port changes no behavior; details and what is
-ported in [`docs/areas/rust-port.md`](docs/areas/rust-port.md)). The Rust binary serves what it has
-ported and hands every other command to the Ruby launcher, so you can move over in steps and go back
-at any step. **Your data needs no migration:** both versions read and write the same
-`~/.claude/quartermaster/` (or `QM_ROOT`): work items, `sessions.jsonl`, drafts, caches. Neither
-version rewrites a file the other cannot read.
+qm was written in Ruby and is now Rust, with the same commands, the same files and the same GUI. **Your
+data needs no migration:** work items, `sessions.jsonl`, drafts, caches and `config.yml` in
+`~/.claude/quartermaster/` (or `QM_ROOT`) are read and written as before, byte for byte.
 
-1. **Build the binary** (needs a Rust toolchain: `asdf plugin add rust && asdf install` picks up the
-   version in `.tool-versions`, or use [rustup](https://rustup.rs)):
-   ```sh
-   cd ~/code/quartermaster && git pull && cargo build --release   # target/release/qm
-   ```
-2. **Try it, changing nothing.** Run `target/release/qm list`, `qm show SLUG`, `qm attention` next to
-   your usual `qm`: the output matches. A command that is not ported yet is passed on to Ruby.
-3. **Switch the command line** (reversible, no files to edit): `export QM_USE_RUST=1` in your shell
-   profile. `~/bin/qm` is still the Ruby launcher; with that variable it runs `target/release/qm`
-   first (`QM_RUST_BIN` names another binary) and the binary hands back what it has not ported. Unset
-   the variable to return to Ruby. The variable only reaches hooks if your Claude Code environment has
-   it, so this step does not move your hooks.
-4. **Switch the hooks** (optional; the capture hooks `hook-session-start` and `hook-session-end` are
-   ported and inject byte-identical context). In `~/.claude/settings.json`, change the two commands
-   `…/quartermaster hook-session-start` and `…/quartermaster hook-session-end` that
-   `qm install-hooks` printed to `…/quartermaster/target/release/qm hook-session-start` (and `-end`).
-   Leave the other entries, which run the `hooks/*.sh` scripts, as they are. Roll back by putting the
-   launcher path back. Rebuild after every `git pull`; the hooks run whatever binary is at that path.
-5. **The status line.** `qm statusline` is the Rust port of `statusline/statusline.rb`: set
-   `"statusLine": {"type": "command", "command": "/path/to/qm statusline"}` in settings.json to use it
-   (it needs no system Ruby; the Ruby script keeps working until you switch).
-6. **The GUI.** `qm gui` now runs the Rust server (`QM_RUST_GUI` no longer matters). To try it first, run it beside the Ruby one on a *copy* of your data, since it
-   writes real files when you click:
-   ```sh
-   cp -a ~/.claude/quartermaster /tmp/qm-try
-   QM_ROOT=/tmp/qm-try QM_GUI_PORT=7712 target/release/qm gui
-   ```
-   Every route and action is ported; `docs/areas/rust-port.md` lists what is pinned against Ruby.
+1. **Build the binary** in your checkout: `git pull && cargo build --release`. The launcher
+   `~/bin/qm` points at (`quartermaster`, now an `sh` script) runs `target/release/qm`, so the symlink
+   and the hooks `qm install-hooks` printed earlier keep working unchanged. Until the build exists
+   `qm` says to build it, and the hooks stay silent.
+2. **Drop the Ruby settings.** `QM_USE_RUST`, `QM_RUST_BIN` and `QM_RUBY_LAUNCHER` mean nothing any more,
+   and Ruby (and asdf's global ruby) is no longer needed.
+3. **Move the status line** (the one step that breaks if skipped): `statusline/statusline.rb` is gone, so
+   change the `statusLine` command in `~/.claude/settings.json` from
+   `/usr/bin/ruby ~/.claude/statusline.rb` to `/path/to/qm statusline` and remove the
+   `~/.claude/statusline.rb` symlink.
+4. **Restart `qm gui`.** It is the Rust server now.
 
-**Rolling back** is always the reverse: unset `QM_USE_RUST`, point the hooks at the launcher again
-(`qm install-hooks` prints them), keep using `qm gui` as before. Report anything that differs between
-the two versions as a bug: they are meant to be indistinguishable.
+A few things differ on purpose: an option qm cannot read says `qm: invalid option: --x` instead of a
+Ruby backtrace; a title with no letter or digit is refused instead of making an item with an empty
+slug; YAML qm writes for unusual titles (line breaks, `~`, `<<`) is double-quoted. **To go back**, check
+out commit `6c25480`, the last one with the Ruby code. Report anything else that differs as a bug: the
+port was checked against Ruby on every command and GUI route ([testing](docs/areas/testing.md)).
 
 ## Optional features
 
@@ -212,7 +197,6 @@ Control.
 - Notifications: `osascript` (or terminal-notifier).
 - Opening URLs, Warp tabs and the GUI: `open`; focusing the GUI tab in Arc: `osascript`.
 - Keeping the Mac awake while chats work (`qm caffeinate`): `/usr/bin/caffeinate`.
-- The status line runs under macOS's system Ruby, `/usr/bin/ruby`.
 
 ## config.yml
 
@@ -281,10 +265,13 @@ Know this before you install it:
 ## Development
 
 ```sh
-ruby test/quartermaster_test.rb                          # the Ruby suite
-cargo test                                                # pins Ruby's behavior (the Ruby launcher is the default)
-QM_BIN=$PWD/target/debug/qm cargo test                    # the same assertions against the Rust binary
+cargo test                                                # unit tests, goldens, the GUI server's tests
+QM_RUBY_ORACLE=$PWD/../qm-ruby cargo test                 # plus the Ruby-vs-Rust comparisons (see below)
 ```
+
+The comparisons against the old Ruby implementation need a checkout of the last commit that had it:
+`git worktree add ../qm-ruby 6c25480`; without `QM_RUBY_ORACLE` they skip
+([testing](docs/areas/testing.md)).
 
 Tests run against a temporary `QM_ROOT` and their own tmux socket, never your live data. Start
 with [`CLAUDE.md`](CLAUDE.md) (the hard constraints) and [`docs/README.md`](docs/README.md),

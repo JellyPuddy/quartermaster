@@ -124,15 +124,8 @@
   created: 'DATE'
   branches:
   - 'null'
-=== "~" / project "09" → exit 0
----
-  v: 1
-  title: "~"
-  state: in_progress
-  project: '09'
-  created: 'DATE'
-  branches:
-  - "~"
+=== "~" / project "09" → exit 1
+qm: the title needs a letter or digit (a-z, 0-9) to make its slug from
 === "'quoted'" / project "yes" → exit 0
 ---
   v: 1
@@ -197,15 +190,7 @@
   branches:
   - café ünï
 === "日本語 タイトル" / project "/srv/x" → exit 1
----
-  v: 1
-  title: "~"
-  state: in_progress
-  project: '09'
-  created: 'DATE'
-  branches:
-  - "~"
-qm: work item '' already exists
+qm: the title needs a letter or digit (a-z, 0-9) to make its slug from
 === "tab\there" / project "a: b" → exit 0
 ---
   v: 1
@@ -218,16 +203,12 @@ qm: work item '' already exists
 === "line\nbreak" / project "09" → exit 0
 ---
   v: 1
-  title: |-
-    line
-    break
+  title: "line\nbreak"
   state: in_progress
   project: '09'
   created: 'DATE'
   branches:
-  - |-
-    line
-    break
+  - "line\nbreak"
 === "09" / project "yes" → exit 0
 ---
   v: 1
@@ -346,20 +327,7 @@ qm: work item '' already exists
   branches:
   - "?question"
 === "-5" / project "#tagged" → exit 1
----
-  v: 1
-  title: "~"
-  state: in_progress
-  project: '09'
-  created: 'DATE'
-  branches:
-  - "~"
-/home/user/quartermaster/lib/quartermaster/cli.rb:108:in `cmd_new': invalid option: -5 (OptionParser::InvalidOption)
-	from /home/user/quartermaster/lib/quartermaster/cli.rb:61:in `run'
-	from /home/user/quartermaster/quartermaster:8:in `<main>'
-/home/user/quartermaster/lib/quartermaster/cli.rb:108:in `cmd_new': invalid option: 5 (OptionParser::InvalidOption)
-	from /home/user/quartermaster/lib/quartermaster/cli.rb:61:in `run'
-	from /home/user/quartermaster/quartermaster:8:in `<main>'
+qm: invalid option: -5
 === "+5" / project "" → exit 0
 ---
   v: 1
@@ -370,14 +338,6 @@ qm: work item '' already exists
   branches:
   - "+5"
 === ".5" / project "demo" → exit 1
----
-  v: 1
-  title: "~"
-  state: in_progress
-  project: '09'
-  created: 'DATE'
-  branches:
-  - "~"
 qm: work item '5' already exists
 === "1e3" / project "No project" → exit 0
 ---
@@ -398,14 +358,6 @@ qm: work item '5' already exists
   branches:
   - '12:30'
 === "1,000" / project "a: b" → exit 1
----
-  v: 1
-  title: "~"
-  state: in_progress
-  project: '09'
-  created: 'DATE'
-  branches:
-  - "~"
 qm: work item '1-000' already exists
 === "Truthy" / project "09" → exit 0
 ---
@@ -525,20 +477,7 @@ qm: work item '1-000' already exists
   branches:
   - '0b101'
 === "-.inf" / project "café" → exit 1
----
-  v: 1
-  title: "~"
-  state: in_progress
-  project: '09'
-  created: 'DATE'
-  branches:
-  - "~"
-/home/user/quartermaster/lib/quartermaster/cli.rb:108:in `cmd_new': invalid option: -.inf (OptionParser::InvalidOption)
-	from /home/user/quartermaster/lib/quartermaster/cli.rb:61:in `run'
-	from /home/user/quartermaster/quartermaster:8:in `<main>'
-/home/user/quartermaster/lib/quartermaster/cli.rb:108:in `cmd_new': invalid option: . (OptionParser::InvalidOption)
-	from /home/user/quartermaster/lib/quartermaster/cli.rb:61:in `run'
-	from /home/user/quartermaster/quartermaster:8:in `<main>'
+qm: invalid option: -.inf
 === ".NaN" / project "#tagged" → exit 0
 ---
   v: 1
@@ -549,15 +488,7 @@ qm: work item '1-000' already exists
   branches:
   - ".NaN"
 === "<<" / project "" → exit 1
----
-  v: 1
-  title: "~"
-  state: in_progress
-  project: '09'
-  created: 'DATE'
-  branches:
-  - "~"
-qm: work item '' already exists
+qm: the title needs a letter or digit (a-z, 0-9) to make its slug from
 === "= equals" / project "demo" → exit 0
 ---
   v: 1

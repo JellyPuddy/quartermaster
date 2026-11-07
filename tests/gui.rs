@@ -32,7 +32,7 @@ fn start(rust: bool, root: &Path, home: &Path) -> Server {
 
 fn start_env(rust: bool, root: &Path, home: &Path, extra: &[(&str, String)]) -> Server {
     let port = free_port();
-    let bin: PathBuf = if rust { Path::new(env!("CARGO_BIN_EXE_qm")).into() } else { Path::new(env!("CARGO_MANIFEST_DIR")).join("quartermaster") };
+    let bin: PathBuf = if rust { Path::new(env!("CARGO_BIN_EXE_qm")).into() } else { common::ruby_launcher() };
     let mut cmd = Command::new(bin);
     cmd.arg("gui").env("QM_ROOT", root).env("HOME", home).env("QM_GUI_PORT", port.to_string()).env("QM_GUI_NO_OPEN", "1").env("LANG", "C.UTF-8").env("LC_ALL", "C.UTF-8").env("QM_TMUX_SOCKET", "qm-test-gui").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     if rust {
@@ -121,6 +121,9 @@ fn world(base: &Path) -> (PathBuf, PathBuf, String) {
 
 #[test]
 fn the_rust_server_answers_the_ported_routes_as_ruby_does() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let (root, home, sha) = world(base.path());
     let ruby = start(false, &root, &home);
@@ -327,6 +330,9 @@ fn diff_world(base: &Path) -> (PathBuf, PathBuf, PathBuf) {
 
 #[test]
 fn the_diff_payload_matches_ruby_scope_by_scope() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let (root, home, _feat) = diff_world(base.path());
     let ruby = start(false, &root, &home);
@@ -577,6 +583,9 @@ fn prompt_world(base: &Path) -> (PathBuf, PathBuf) {
 
 #[test]
 fn the_prompt_scope_matches_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let (root, home) = prompt_world(base.path());
     let ruby = start(false, &root, &home);
@@ -709,6 +718,9 @@ fn pr_world(base: &Path) -> (PathBuf, PathBuf, PathBuf) {
 
 #[test]
 fn the_pr_scope_matches_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let (root, home, b) = pr_world(base.path());
     let env = |tag: &str| -> Vec<(&'static str, String)> {
@@ -792,6 +804,9 @@ fn copy_dir(from: &Path, to: &Path) {
 
 #[test]
 fn github_drafts_are_re_anchored_like_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let (root, home, b) = pr_world(base.path());
     let repo = base.path().join("repo");
@@ -905,6 +920,9 @@ fn compare_state(ruby: &Server, rust: &Server, label: &str) -> String {
 
 #[test]
 fn the_state_matches_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let env: Vec<(&str, String)> = vec![
@@ -1011,6 +1029,9 @@ fn richer_state_world(w: &common::AttentionWorld, base: &Path) {
 
 #[test]
 fn the_state_matches_ruby_over_a_richer_world() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     richer_state_world(&w, base.path());
@@ -1082,6 +1103,9 @@ fn action_traces(root: &Path, other: &Path) -> String {
 
 #[test]
 fn the_data_actions_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let env: Vec<(&str, String)> = vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string())];
@@ -1199,6 +1223,9 @@ fn normalize_drafts(text: &str, ids: &[String]) -> String {
 
 #[test]
 fn the_draft_actions_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let entries = serde_json::json!([
@@ -1348,6 +1375,9 @@ fn viewed_traces(root: &Path, other: &Path) -> String {
 
 #[test]
 fn diff_viewed_and_pf_mode_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     fs::write(w.root.join("config.yml"), format!("projects:\n  demo:\n    root: {}\n    dev_server:\n      command: devsrv\n      modes: [dev, tunnel]\n      default_mode: dev\n", w.repo.display())).unwrap();
@@ -1446,6 +1476,9 @@ fn issue_traces(root: &Path, other: &Path) -> String {
 
 #[test]
 fn the_issue_draft_actions_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let issue = |slug: &str, name: &str, front: &str, body: &str| {
@@ -1535,6 +1568,9 @@ fn the_issue_draft_actions_match_ruby() {
 
 #[test]
 fn resolving_offers_the_cleanup_plan_as_ruby_does() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let repo = &w.repo;
@@ -1646,6 +1682,9 @@ fn records(dir: &Path) -> Vec<String> {
 
 #[test]
 fn the_pane_actions_open_the_same_chats_as_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let me = std::process::id();
@@ -1769,6 +1808,9 @@ fn session_traces(root: &Path, other: &Path) -> String {
 
 #[test]
 fn the_item_and_session_actions_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let stamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
@@ -1883,6 +1925,9 @@ fn the_item_and_session_actions_match_ruby() {
 
 #[test]
 fn the_aside_actions_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let me = std::process::id();
@@ -2027,6 +2072,9 @@ fn rust_dir(p: &Path) -> PathBuf {
 
 #[test]
 fn the_loose_chat_actions_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let config = fs::read_to_string(w.root.join("config.yml")).unwrap();
@@ -2151,6 +2199,9 @@ fn the_loose_chat_actions_match_ruby() {
 
 #[test]
 fn closing_a_loose_chat_runs_as_a_job_like_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let chat = base.path().join("fake-chat");
@@ -2291,6 +2342,9 @@ fn cleanup_world(base: &Path) -> common::AttentionWorld {
 
 #[test]
 fn the_cleanup_dialog_and_job_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let (base_a, base_b) = (base.path().join("a"), base.path().join("b"));
     let (wa, wb) = (cleanup_world(&base_a), cleanup_world(&base_b));
@@ -2431,6 +2485,9 @@ fn workspace_world(base: &Path, live: bool) -> common::AttentionWorld {
 
 #[test]
 fn the_workspace_jobs_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let (base_a, base_b) = (base.path().join("a"), base.path().join("b"));
     let (wa, wb) = (workspace_world(&base_a, true), workspace_world(&base_b, true));
@@ -2535,6 +2592,9 @@ fn the_workspace_jobs_match_ruby() {
 
 #[test]
 fn a_gui_on_a_throwaway_root_is_fenced_off_the_dev_server_and_runs_updates() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let (base_a, base_b) = (base.path().join("a"), base.path().join("b"));
     let (wa, wb) = (workspace_world(&base_a, false), workspace_world(&base_b, false));
@@ -2602,6 +2662,9 @@ fn a_gui_on_a_throwaway_root_is_fenced_off_the_dev_server_and_runs_updates() {
 
 #[test]
 fn adopt_and_restack_start_or_type_into_chats_like_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let (base_a, base_b) = (base.path().join("a"), base.path().join("b"));
     let (wa, wb) = (workspace_world(&base_a, false), workspace_world(&base_b, false));
@@ -2725,6 +2788,9 @@ fn adopt_and_restack_start_or_type_into_chats_like_ruby() {
 
 #[test]
 fn caffeinate_answers_as_ruby_does_without_the_program() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let env: Vec<(&str, String)> = vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string())];
@@ -2783,6 +2849,9 @@ fn caffeinate_holds_one_child_of_the_gui_and_ends_it() {
 
 #[test]
 fn the_warp_tab_actions_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let (base_a, base_b) = (base.path().join("a"), base.path().join("b"));
     let (wa, wb) = (workspace_world(&base_a, false), workspace_world(&base_b, false));
@@ -2872,6 +2941,9 @@ fn the_warp_tab_actions_match_ruby() {
 
 #[test]
 fn the_transcript_search_route_matches_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let (root, home, tr) = (base.path().join("root"), base.path().join("home"), base.path().join("transcripts"));
     fs::create_dir_all(root.join("work-items")).unwrap();
@@ -2923,6 +2995,9 @@ fn the_transcript_search_route_matches_ruby() {
 
 #[test]
 fn the_ask_route_matches_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let (root, home, bin, rec) = (base.path().join("root"), base.path().join("home"), base.path().join("bin"), base.path().join("rec"));
     fs::create_dir_all(root.join("work-items")).unwrap();
@@ -2979,6 +3054,9 @@ fn the_ask_route_matches_ruby() {
 
 #[test]
 fn the_asides_route_matches_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let stamp = |secs: i64| (chrono::Utc::now() - chrono::Duration::seconds(secs)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
@@ -3026,6 +3104,9 @@ fn the_asides_route_matches_ruby() {
 
 #[test]
 fn the_session_route_matches_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let j = |v: serde_json::Value| format!("{v}\n");
@@ -3095,6 +3176,9 @@ fn the_session_route_matches_ruby() {
 
 #[test]
 fn the_issues_routes_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     git(&w.repo, &["remote", "add", "origin", "git@github.com:acme/widgets.git"]);
@@ -3159,6 +3243,9 @@ fn the_issues_routes_match_ruby() {
 
 #[test]
 fn the_workspace_route_matches_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let (base_a, base_b) = (base.path().join("a"), base.path().join("b"));
     let (wa, wb) = (workspace_world(&base_a, false), workspace_world(&base_b, false));
@@ -3213,6 +3300,9 @@ fn the_workspace_route_matches_ruby() {
 
 #[test]
 fn the_history_route_matches_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let me = std::process::id();
@@ -3284,6 +3374,9 @@ fn the_history_route_matches_ruby() {
 
 #[test]
 fn turn_notifications_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let (base_a, base_b) = (base.path().join("a"), base.path().join("b"));
     let (wa, wb) = (attention_world(&base_a, std::time::SystemTime::now(), None), attention_world(&base_b, std::time::SystemTime::now(), None));
@@ -3406,6 +3499,9 @@ fn turn_notifications_match_ruby() {
 
 #[test]
 fn dropped_files_are_saved_as_ruby_saves_them() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let root2 = base.path().join("root2");
@@ -3559,6 +3655,9 @@ fn plain_text(bytes: &[u8]) -> String {
 
 #[test]
 fn the_terminal_websocket_matches_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let socks = ["qm-test-ws-term-0", "qm-test-ws-term-1"];
@@ -3691,6 +3790,9 @@ fn run_node(name: &str, conclusion: &str, started: &str, suite_id: u64, suite_at
 
 #[test]
 fn the_prs_view_and_its_actions_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let (base_a, base_b) = (base.path().join("a"), base.path().join("b"));
     let (wa, wb) = (workspace_world(&base_a, false), workspace_world(&base_b, false));
@@ -3883,6 +3985,9 @@ fn the_prs_view_and_its_actions_match_ruby() {
 
 #[test]
 fn the_pr_threads_route_matches_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let dirs = [base.path().join("a"), base.path().join("b")];
     let page1 = serde_json::json!({"data": {"viewer": {"login": "me"}, "repository": {"pullRequest": {"id": "PR_1",
@@ -3943,6 +4048,9 @@ fn the_pr_threads_route_matches_ruby() {
 
 #[test]
 fn drafts_send_and_issues_create_paste_the_same_messages_as_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let issue = |slug: &str, name: &str, front: &str, body: &str| {
@@ -4065,6 +4173,9 @@ fn drafts_send_and_issues_create_paste_the_same_messages_as_ruby() {
 
 #[test]
 fn page_annotations_and_clipboard_loads_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let bases = [base.path().join("a"), base.path().join("b")];
     let worlds = [workspace_world(&bases[0], false), workspace_world(&bases[1], false)];
@@ -4297,6 +4408,9 @@ fn write_pr(w: &ReviewWorld, node: serde_json::Value) {
 
 #[test]
 fn the_review_actions_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let bases = [base.path().join("a"), base.path().join("b")];
     let worlds = [review_world(&bases[0]), review_world(&bases[1])];
@@ -4566,6 +4680,9 @@ fn the_review_actions_match_ruby() {
 
 #[test]
 fn issue_preview_and_start_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let bases = [base.path().join("a"), base.path().join("b")];
     let chat = base.path().join("fake-chat");
@@ -4718,6 +4835,9 @@ fn issue_preview_and_start_match_ruby() {
 
 #[test]
 fn branch_stats_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let bases = [base.path().join("a"), base.path().join("b")];
     let worlds = [workspace_world(&bases[0], false), workspace_world(&bases[1], false)];
@@ -4848,6 +4968,9 @@ fn branch_stats_match_ruby() {
 
 #[test]
 fn build_progress_matches_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let session_dir = w.transcripts.join("p/d-live");
@@ -4976,6 +5099,9 @@ fn build_progress_matches_ruby() {
 
 #[test]
 fn the_status_board_mirror_and_answers_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let url = "https://claude.ai/artifact/abc123?x=1";
@@ -5199,6 +5325,9 @@ exit 0
 
 #[test]
 fn benchmark_runs_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let bases = [base.path().join("a"), base.path().join("b")];
     let worlds = [workspace_world(&bases[0], false), workspace_world(&bases[1], false)];
@@ -5502,6 +5631,9 @@ fn benchmark_runs_match_ruby() {
 
 #[test]
 fn distilling_matches_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let transcripts = w.transcripts.join("p");
@@ -5630,6 +5762,9 @@ done
 
 #[test]
 fn rotations_match_ruby() {
+    if common::skip() {
+        return;
+    }
     let base = tempfile::tempdir().unwrap();
     let w = attention_world(base.path(), std::time::SystemTime::now(), None);
     let chat = base.path().join("rot-chat");

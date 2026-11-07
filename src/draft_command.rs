@@ -10,6 +10,7 @@ use crate::outcome::{abort, done, Outcome};
 use crate::ruby_text::strip;
 use crate::work_item::WorkItem;
 
+const ADD_HELP: &str = include_str!("draft_add_help.txt");
 const USAGE: &str = "usage: qm draft add SLUG --path P --line N [options] (--body TEXT | --body-file F) | qm draft list SLUG [--json]";
 
 pub fn run(a: &[String]) -> Outcome {
@@ -26,6 +27,8 @@ fn add(a: &[String]) -> Outcome {
     use crate::chat_review_drafts::{add as record, Fail, Options};
     let mut o = Options { side: "new".into(), ..Default::default() };
     let (mut slug, mut body, mut body_file) = (None::<&String>, None::<String>, None::<String>);
+    let mut extra = false;
+    let bad = |m: &str| abort(&format!("qm draft add: {m}\n{USAGE}"));
     let mut i = 0;
     while i < a.len() {
         let (name, inline) = match a[i].split_once('=') {
@@ -34,27 +37,27 @@ fn add(a: &[String]) -> Outcome {
         };
         if !name.starts_with('-') || name == "-" {
             if slug.replace(&a[i]).is_some() {
-                return Outcome::Delegate;
+                extra = true;
             }
             i += 1;
             continue;
         }
         if name == "--file" {
             if inline.is_some() {
-                return Outcome::Delegate;
+                return bad(&format!("needless argument: {name}"));
             }
             o.file = true;
             i += 1;
             continue;
         }
         if !["--path", "--line", "--start-line", "--side", "--commit", "--reply-to", "--pr", "--branch", "--body", "--body-file"].contains(&name) {
-            return Outcome::Delegate;
+            return bad(&format!("invalid option: {}", a[i]));
         }
         let value = match inline {
             Some(v) => v,
             None => {
                 i += 1;
-                let Some(v) = a.get(i) else { return Outcome::Delegate };
+                let Some(v) = a.get(i) else { return bad(&format!("missing argument: {name}")) };
                 v.clone()
             }
         };
@@ -62,9 +65,10 @@ fn add(a: &[String]) -> Outcome {
         let int = |v: &str| if !v.is_empty() && v.len() < 18 && v.bytes().all(|b| b.is_ascii_digit()) && (v == "0" || !v.starts_with('0')) { v.parse::<i64>().ok() } else { None };
         match name {
             "--path" => o.path = Some(value),
-            "--line" => match int(&value) { Some(n) => o.line = Some(n), None => return Outcome::Delegate },
-            "--start-line" => match int(&value) { Some(n) => o.start_line = Some(n), None => return Outcome::Delegate },
+            "--line" => match int(&value) { Some(n) => o.line = Some(n), None => return bad(&format!("invalid argument: --line {value}")) },
+            "--start-line" => match int(&value) { Some(n) => o.start_line = Some(n), None => return bad(&format!("invalid argument: --start-line {value}")) },
             "--side" if value == "old" || value == "new" => o.side = value,
+            "--side" => return bad(&format!("invalid argument: --side {value}")),
             "--commit" => o.commit = Some(value),
             "--reply-to" => o.reply_to = Some(value),
             "--pr" => o.pr = Some(value),
@@ -74,7 +78,7 @@ fn add(a: &[String]) -> Outcome {
             _ => return Outcome::Delegate,
         }
     }
-    let Some(slug) = slug else { return Outcome::Delegate };
+    let Some(slug) = slug.filter(|_| !extra) else { return Outcome::Done { code: 1, stdout: String::new(), stderr: ADD_HELP.to_string() } };
     if body_file.is_some() && body.is_some() {
         return abort("qm draft add: give the comment with --body or --body-file, not both");
     }
