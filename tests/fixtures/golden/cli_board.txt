@@ -1,0 +1,672 @@
+$ qm "board-rows"
+exit 1
+--- stderr
+usage: qm board-rows SLUG [--json]
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board-rows" "board-item"
+exit 1
+--- stderr
+qm: 'board-item' has no status board
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board" "board-item" "https://claude.ai/artifact/abc" "--answers-dir" "/tmp/qm-cli-board-answers"
+exit 0
+--- stdout
+board-item → https://claude.ai/artifact/abc (answers: /tmp/qm-cli-board-answers)
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board-rows" "board-item"
+exit 0
+--- stdout
+noted            blocked   Éclair
+short            RUNNING   A title
+a-longer-row-id  BLOCKED   Waiting — needs an answer
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board-rows" "board-item" "--json"
+exit 0
+--- stdout
+[
+  {
+    "doc_id": "noted",
+    "status": "blocked",
+    "title": "Éclair",
+    "note": "",
+    "order": null,
+    "dependsOn": null,
+    "batch": "DATE-b",
+    "batchLabel": null,
+    "updatedAt": null
+  },
+  {
+    "doc_id": "short",
+    "status": "RUNNING",
+    "title": "A title",
+    "note": null,
+    "order": 1,
+    "dependsOn": null,
+    "batch": "DATE-a",
+    "batchLabel": null,
+    "updatedAt": null
+  },
+  {
+    "doc_id": "a-longer-row-id",
+    "status": "BLOCKED",
+    "title": "Waiting",
+    "note": "needs an answer",
+    "order": 2,
+    "dependsOn": null,
+    "batch": "DATE-a",
+    "batchLabel": null,
+    "updatedAt": null
+  }
+]
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board-rows" "--json" "board-item"
+exit 0
+--- stdout
+[
+  {
+    "doc_id": "noted",
+    "status": "blocked",
+    "title": "Éclair",
+    "note": "",
+    "order": null,
+    "dependsOn": null,
+    "batch": "DATE-b",
+    "batchLabel": null,
+    "updatedAt": null
+  },
+  {
+    "doc_id": "short",
+    "status": "RUNNING",
+    "title": "A title",
+    "note": null,
+    "order": 1,
+    "dependsOn": null,
+    "batch": "DATE-a",
+    "batchLabel": null,
+    "updatedAt": null
+  },
+  {
+    "doc_id": "a-longer-row-id",
+    "status": "BLOCKED",
+    "title": "Waiting",
+    "note": "needs an answer",
+    "order": 2,
+    "dependsOn": null,
+    "batch": "DATE-a",
+    "batchLabel": null,
+    "updatedAt": null
+  }
+]
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board-rows" "plain-item"
+exit 1
+--- stderr
+qm: 'plain-item' has no status board
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board-rows" "nowhere"
+exit 1
+--- stderr
+qm: no work item 'nowhere'
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board-answer"
+exit 1
+--- stderr
+usage: qm board-answer SLUG ROW_ID TEXT  ('-' or no TEXT reads stdin)
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board-answer" "board-item"
+exit 1
+--- stderr
+usage: qm board-answer SLUG ROW_ID TEXT  ('-' or no TEXT reads stdin)
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board-answer" "board-item" "short" "no"
+exit 1
+--- stderr
+qm: row 'short' is RUNNING, not blocked
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board-answer" "board-item" "a-longer-row-id" "Go" "ahead"
+exit 0
+--- stdout
+/tmp/qm-cli-board-answers/a-longer-row-id.md
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board-answer" "board-item" "noted" "-"
+exit 0
+--- stdout
+/tmp/qm-cli-board-answers/noted.md
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board-answer" "board-item" "noted"
+exit 1
+--- stderr
+qm: an empty answer
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board-answer" "board-item" "missing" "x"
+exit 1
+--- stderr
+qm: no row 'missing' on the board
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board-answer" "board-item" "../bad" "x"
+exit 1
+--- stderr
+qm: invalid row id '../bad'
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board-answer" "plain-item" "short" "x"
+exit 1
+--- stderr
+qm: 'plain-item' has no status board
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "board-answer" "nowhere" "short" "x"
+exit 1
+--- stderr
+qm: no work item 'nowhere'
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-mode"
+exit 1
+--- stderr
+usage: qm pf-mode SLUG [MODE]
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-mode" "board-item"
+exit 0
+--- stdout
+dev
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-mode" "board-item" "tunnel"
+exit 0
+--- stdout
+board-item → devsrv tunnel
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+pf_mode: tunnel
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-mode" "board-item"
+exit 0
+--- stdout
+tunnel
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+pf_mode: tunnel
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-mode" "board-item" "bogus"
+exit 1
+--- stderr
+qm: devsrv mode must be one of: dev, tunnel
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+pf_mode: tunnel
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-mode" "plain-item"
+exit 1
+--- stderr
+qm: 'plain-item' is elsewhere, which has no dev_server in config.yml
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+pf_mode: tunnel
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-mode" "plain-item" "dev"
+exit 1
+--- stderr
+qm: elsewhere has no dev server: set projects.elsewhere.dev_server in config.yml
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+pf_mode: tunnel
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "pf-mode" "nowhere"
+exit 1
+--- stderr
+qm: no work item 'nowhere'
+--- board-item.md
+---
+v: 1
+title: Board item
+state: in_progress
+project: demo
+created: 'DATE'
+board: https://claude.ai/artifact/abc
+board_answers_dir: "/tmp/qm-cli-board-answers"
+pf_mode: tunnel
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+a-longer-row-id.md: Some("Go ahead\n")
+noted.md: Some("from stdin\n")

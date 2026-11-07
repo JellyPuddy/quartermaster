@@ -41,6 +41,9 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
         "link-branch" => link_branch(args),
         "unlink-branch" => unlink_branch(args),
         "board" => board(args),
+        "board-rows" => board_rows(args),
+        "board-answer" => board_answer(args),
+        "pf-mode" => pf_mode(args),
         "move" => move_to(args),
         "retitle" => retitle(args),
         "describe" => describe(args),
@@ -377,4 +380,73 @@ fn snooze(a: &[String]) -> Outcome {
         Err(e) if e.class == "ArgumentError" => usage(),
         Err(e) => failed(e),
     }
+}
+
+/// The item's board as mirrored from board-writes.jsonl, a row per line (`--json`: full rows).
+fn board_rows(a: &[String]) -> Outcome {
+    let json = a.iter().any(|x| x == "--json");
+    let rest: Vec<&String> = a.iter().filter(|x| *x != "--json").collect();
+    let Some(slug) = rest.first() else { return abort("usage: qm board-rows SLUG [--json]") };
+    let item = tri!(WorkItem::find(slug));
+    if item.board().is_none() {
+        return abort(&format!("qm: '{slug}' has no status board"));
+    }
+    let Ok(rows) = crate::board_mirror::rows_for(&item) else { return Outcome::Delegate };
+    if json {
+        return done(format!("{}\n", crate::drafts::pretty(&serde_json::Value::Array(rows))));
+    }
+    if rows.is_empty() {
+        return done(format!("(no rows mirrored for {})\n", item.board().unwrap_or_default()));
+    }
+    let text = |v: &serde_json::Value| match v {
+        serde_json::Value::Null => Some(String::new()),
+        serde_json::Value::String(t) => Some(t.clone()),
+        serde_json::Value::Bool(b) => Some(b.to_string()),
+        serde_json::Value::Number(n) if n.is_i64() || n.is_u64() => Some(n.to_string()),
+        _ => None,
+    };
+    let mut out = String::new();
+    let width = rows.iter().map(|r| r["doc_id"].as_str().unwrap_or("").chars().count()).max().unwrap_or(0);
+    for r in &rows {
+        let (Some(status), Some(title), Some(note)) = (text(&r["status"]), text(&r["title"]), text(&r["note"])) else { return Outcome::Delegate };
+        let mut line = format!("{}  {}  {title}", ljust(r["doc_id"].as_str().unwrap_or(""), width), ljust(&status, 8));
+        if !note.is_empty() {
+            line += &format!(" — {note}");
+        }
+        out += &format!("{line}\n");
+    }
+    done(out)
+}
+
+fn board_answer(a: &[String]) -> Outcome {
+    let (Some(slug), Some(doc_id)) = (a.first(), a.get(1)) else { return abort("usage: qm board-answer SLUG ROW_ID TEXT  ('-' or no TEXT reads stdin)") };
+    let words = &a[2..];
+    let text = if words.is_empty() || words == ["-"] {
+        let mut piped = String::new();
+        let _ = std::io::stdin().read_to_string(&mut piped);
+        piped
+    } else {
+        words.join(" ")
+    };
+    let item = tri!(WorkItem::find(slug));
+    match crate::board_mirror::answer(&item, doc_id, &text) {
+        Ok(path) => done(format!("{}\n", path.display())),
+        Err(Ok(m)) => abort(&format!("qm: {m}")),
+        Err(Err(_)) => Outcome::Delegate,
+    }
+}
+
+/// Bare `qm pf-mode SLUG` prints the mode, like `qm board SLUG`.
+fn pf_mode(a: &[String]) -> Outcome {
+    let Some(slug) = a.first() else { return abort("usage: qm pf-mode SLUG [MODE]") };
+    let mut item = tri!(WorkItem::find(slug));
+    let command = crate::project_config::ProjectConfig::current().settings(item.project().as_deref()).and_then(|s| s.dev_server.as_ref().map(|d| d.command.clone()));
+    let Some(mode) = a.get(1) else {
+        return match item.pf_mode() {
+            Some(m) => done(format!("{m}\n")),
+            None => abort(&format!("qm: '{slug}' is {}, which has no dev_server in config.yml", item.project().unwrap_or_default())),
+        };
+    };
+    tri!(item.update_pf_mode(mode));
+    done(format!("{slug} → {} {mode}\n", command.unwrap_or_default()))
 }
