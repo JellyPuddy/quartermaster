@@ -205,3 +205,8 @@ pub fn page(item: &WorkItem, session_id: &str, before: Option<i64>) -> Result<Va
     let start = stop.saturating_sub(PAGE_SIZE);
     Ok(json!({"entries": entries[start..stop], "before": if start > 0 { json!(start) } else { Value::Null }, "total": total}))
 }
+
+/// `TranscriptHistory.tool_line` for the other modules; `None` for a block only Ruby prints exactly.
+pub(crate) fn tool_line_of(block: &Map<String, Value>) -> Option<String> {
+    tool_line(block).ok()
+}

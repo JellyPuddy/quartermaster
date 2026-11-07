@@ -74,6 +74,10 @@ pub fn run(raw: Vec<OsString>) -> i32 {
         }
     }
     match command {
+        Some("bench-run") => match rest.first() {
+            Some(dir) => crate::benchmark_pipeline::main(dir),
+            None => abort("usage: qm bench-run RUN_DIR"),
+        },
         Some("hook-session-start") => {
             guard_hook("hook-session-start", || hook::session_started(&read_input()?));
             0

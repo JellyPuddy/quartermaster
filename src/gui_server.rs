@@ -417,6 +417,13 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
                 None => text_reply("501 Not Implemented", "not ported yet: these branch stats"),
             };
         }
+        if route.starts_with("/api/benchmark/") || route.starts_with("/api/benchmark-plan/") || route.starts_with("/api/benchmark-log/") {
+            let given: std::collections::HashMap<String, String> = params(query).into_iter().filter_map(|(k, v)| v.as_str().map(|t| (k, t.to_string()))).collect();
+            return match crate::benchmark_report::respond(route, &given) {
+                Some(reply) => reply,
+                None => text_reply("501 Not Implemented", "not ported yet: this benchmark answer"),
+            };
+        }
         if let Some(slug) = route.strip_prefix("/api/diff-file/") {
             return json_reply(diff_file_payload(slug, query));
         }

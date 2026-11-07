@@ -109,7 +109,7 @@ fn quiet_turn(session: Option<&Session>, item: Option<&WorkItem>, turn: &Value) 
     crate::chat_attention::ChatAttention::new().turn_for(session).state != "your_turn"
 }
 
-fn announce(title: &str, body: &str, group: &str, click: Option<Vec<String>>, sound: bool) {
+pub(crate) fn announce(title: &str, body: &str, group: &str, click: Option<Vec<String>>, sound: bool) {
     let Some(notifier) = find_terminal_notifier() else {
         let sound = if sound { format!(" sound name \"{SOUND}\"") } else { String::new() };
         command_runner::call(&["osascript", "-e", "on run argv", "-e", &format!("display notification (item 2 of argv) with title (item 1 of argv){sound}"), "-e", "end run", title, body]);

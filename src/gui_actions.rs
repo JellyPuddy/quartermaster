@@ -99,7 +99,9 @@ pub(crate) fn find(slug: &str) -> R<WorkItem> {
 
 /// `Some(reply)`, or `None` when the command is not ported (or not as this input).
 pub fn dispatch(payload: &Value) -> Option<Value> {
-    let _guard = ACTION_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    // the benchmark actions never hold the action mutex: a run has its own start lock and meta.json flock
+    let unlocked = payload.get("cmd").and_then(Value::as_str).is_some_and(|c| c.starts_with("benchmark-"));
+    let _guard = (!unlocked).then(|| ACTION_LOCK.lock().unwrap_or_else(|p| p.into_inner()));
     match run(payload) {
         Ok(v) => Some(v),
         Err(Stop::Reply(v)) => Some(v),
@@ -266,6 +268,7 @@ fn run(payload: &Value) -> R<Value> {
             item.update_pf_mode(&args.text("mode")?).map_err(error)?;
             Ok(ok())
         }
+        "benchmark-start" | "benchmark-cancel" | "benchmark-rerun" => benchmark_action(&cmd, &slug, &args),
         "board-answer" => board_answer(&slug, &args),
         "build-progress" => build_progress_action(&slug),
         "branch-stats-commentary" => branch_stats_commentary(&slug, &args),
@@ -1237,5 +1240,73 @@ fn board_answer(slug: &str, args: &Args) -> R<Value> {
         Ok(_) => Ok(ok()),
         Err(Ok(m)) => Err(fail(m)),
         Err(Err(_)) => Err(Stop::Unported),
+    }
+}
+
+fn benchmark_fail(f: crate::benchmark_run::Fail) -> Stop {
+    match f {
+        crate::benchmark_run::Fail::Arg(m) => fail(m),
+        crate::benchmark_run::Fail::Unported => Stop::Unported,
+    }
+}
+
+/// Refused before the pipeline is touched: the modal links to the busy run.
+fn benchmark_busy() -> Option<Value> {
+    let busy = crate::benchmark_run::busy(&crate::benchmark_run::all());
+    let o = busy.as_object()?;
+    let text = |k: &str| match o.get(k) {
+        Some(Value::String(t)) => t.clone(),
+        Some(Value::Null) | None => String::new(),
+        Some(other) => other.to_string(),
+    };
+    Some(json!({"ok": false, "busy": busy, "error": format!("a benchmark is already running: {} ({}, run {})", text("branch"), text("slug"), text("id"))}))
+}
+
+fn benchmark_launched(meta: Value) -> Value {
+    json!({"ok": true, "run": meta["id"]})
+}
+
+/// `benchmark-start`, `benchmark-cancel` and `benchmark-rerun` (`GuiBenchmarkActions`).
+fn benchmark_action(cmd: &str, slug: &str, args: &Args) -> R<Value> {
+    use crate::benchmark_run as b;
+    match cmd {
+        "benchmark-start" => {
+            let mut item = find(slug)?;
+            b::settings_checked(&item.project().unwrap_or_default()).map_err(benchmark_fail)?;
+            let model = match args.get("model")? {
+                Value::Null => "opus".to_string(),
+                Value::String(m) if m.is_empty() => "opus".to_string(),
+                Value::String(m) => m.clone(),
+                _ => "\0not a model".to_string(), // no model of that type: the run refuses it by name
+            };
+            if let Some(busy) = benchmark_busy() {
+                return Ok(busy);
+            }
+            let (branch, request) = (args.text("branch")?, args.text("request")?);
+            b::start(&mut item, &branch, &request, &model).map(benchmark_launched).map_err(benchmark_fail)
+        }
+        "benchmark-rerun" => {
+            let id = args.text("run")?;
+            if let Some(busy) = benchmark_busy() {
+                return Ok(busy);
+            }
+            b::rerun(&id).map(benchmark_launched).map_err(benchmark_fail)
+        }
+        _ => {
+            let id = args.text("run")?;
+            let meta = b::read(&id).map_err(benchmark_fail)?;
+            if b::is_final(&meta) {
+                let state = meta.get("state").and_then(Value::as_str).unwrap_or("");
+                return Err(fail(format!("run {id} already {state}")));
+            }
+            let key = format!("benchmark-{id}");
+            Ok(crate::gui_jobs::background(&key, "cancelling the benchmark…", false, move || {
+                crate::benchmark_run::cancel(&id).map_err(|f| match f {
+                    crate::benchmark_run::Fail::Arg(m) => crate::gui_jobs::Failure::Argument(m),
+                    crate::benchmark_run::Fail::Unported => crate::gui_jobs::Failure::Other("a run folder this port can't update yet".into(), "NotImplementedError"),
+                })?;
+                Ok(json!({"ok": true, "message": format!("benchmark {id} cancelled")}))
+            }))
+        }
     }
 }

@@ -271,6 +271,8 @@ struct Context<'a> {
     panes: &'a [String],
     prices: &'a PriceTable,
     aside_counts: Vec<(String, usize)>,
+    /// every benchmark run, newest first, read once per build
+    bench: Vec<Value>,
 }
 
 fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R<Value> {
@@ -330,6 +332,7 @@ fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R
         _ => None,
     };
     let aside = crate::chats_commands::aside_name(&item.slug);
+    let benchmarkable = crate::benchmark_run::enabled(item);
     let entries = drafts::entries(&item.slug).ok_or(Unported)?;
     let mut out = Map::new();
     // WorkItem#to_h
@@ -357,8 +360,8 @@ fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R
         ("worktrees", Value::Object(worktrees)),
         ("chains", Value::Array(chains)),
         ("prStates", Value::Object(pr_states)),
-        ("benchmarkable", json!(false)),
-        ("benchmarked", json!({})),
+        ("benchmarkable", json!(benchmarkable)),
+        ("benchmarked", if benchmarkable { crate::benchmark_run::finished_by_branch(&c.bench, &item.slug) } else { json!({}) }),
         ("served", json!(served)),
         ("servedBranch", json!(served_branch)),
         ("pane", json!(c.panes.contains(&item.slug))),
@@ -375,21 +378,6 @@ fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R
     }
     let _ = config;
     Ok(Value::Object(out))
-}
-
-/// What a state build can't reproduce from the data alone: gates for the parts not ported.
-fn gates(_items: &[WorkItem], _log: &SessionLog) -> R<()> {
-    let raw = config_raw();
-    if let Some(Value::Object(projects)) = raw.get("projects") {
-        if projects.values().any(|p| p.as_object().is_some_and(|m| m.contains_key("benchmark"))) {
-            return Err(Unported);
-        }
-    }
-    let runs = std::fs::read_dir(data_root::root().join("benchmarks")).map(|d| d.filter_map(|e| e.ok()).any(|e| e.path().join("meta.json").exists())).unwrap_or(false);
-    if runs {
-        return Err(Unported);
-    }
-    Ok(())
 }
 
 /// `TurnNotifier.unlinked_title`: the first prompt, shortened, else the fallback.
@@ -483,8 +471,7 @@ pub fn build(token: &str) -> R<Value> {
         }
     }
     let mut work_items = WorkItem::all().map_err(|_| Unported)?;
-    gates(&work_items, &log)?;
-    let context = Context { log: &log, attention: &attention, live_ids, pf: &status, panes: &panes, prices: &prices, aside_counts };
+    let context = Context { log: &log, attention: &attention, live_ids, pf: &status, panes: &panes, prices: &prices, aside_counts, bench: crate::benchmark_run::all() };
     let mut guard = LEDGER.lock().unwrap();
     let ledger = guard.get_or_insert_with(UsageLedger::new);
     let mut items = vec![];
@@ -538,7 +525,7 @@ pub fn build(token: &str) -> R<Value> {
         ("terminalToken", json!(token)),
         ("asideModels", json!(["sonnet", "opus", "haiku"])),
         ("caffeinate", crate::caffeinate::status()),
-        ("benchmark", Value::Null),
+        ("benchmark", crate::benchmark_run::busy(&context.bench)),
         ("notifications", Value::Array(crate::turn_notifier::recent())),
         ("rateLimits", rate_limits()),
         ("finished", Value::Array(crate::gui_jobs::take_finished())),

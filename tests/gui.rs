@@ -1171,7 +1171,7 @@ fn the_data_actions_match_ruby() {
     }
     // what is not ported answers 501 before anything happens, with the files untouched
     let before = action_traces(&root2, &w.root);
-    for body in [act("benchmark-start", "stale", "{}"), act("distill", "stale", "{}"), act("rotate", "stale", "{}")] {
+    for body in [act("distill", "stale", "{}"), act("rotate", "stale", "{}")] {
         let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
         assert!(a.status.starts_with("501"), "{body}: {}", a.status);
     }
@@ -5130,4 +5130,356 @@ fn the_status_board_mirror_and_answers_match_ruby() {
     }
     let rotated = compare_state(&ruby, &rust, "the file shrank");
     assert!(rows_of(&rotated, "board-item").contains("after rotation") && !rows_of(&rotated, "board-item").contains("First"), "{}", rows_of(&rotated, "board-item"));
+}
+
+const BENCH_CLAUDE: &str = r##"#!/bin/sh
+# the stand-in agent and verdict model of a benchmark run
+for a in "$@"; do [ ${#a} -lt 120 ] && echo "arg: $a" >> "$FAKE_DIR/claude.log"; done
+echo "prompt starts: $(echo "$2" | head -1)" >> "$FAKE_DIR/claude.log"
+case "$*" in
+  *--allowedTools*)
+    mode=$(cat "$FAKE_DIR/plan-mode" 2>/dev/null)
+    cwd=$(cat "$FAKE_DIR/cwd")
+    echo '{"type":"assistant","message":{"content":[{"type":"text","text":"thinking"},{"type":"tool_use","name":"Bash","input":{"command":"ls   -la"}}]}}'
+    echo 'a stream line that is no JSON'
+    echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/x/y.rb"}},{"type":"tool_use","name":"Odd"}]}}'
+    case "$mode" in
+      slow) sleep 6;;
+    esac
+    case "$mode" in
+      fail) printf 'Traceback (most recent call last)\nRuntimeError: planner exploded in a very long way %s\n' "$(printf 'x%.0s' $(seq 1 400))" >&2; exit 1;;
+      failwarn) printf 'warning: an old thing\nsomething with ArgumentError: bad\nlast line\n' >&2; exit 1;;
+      failsilent) exit 1;;
+      nobench) exit 0;;
+    esac
+    cp "$FAKE_DIR/bench.rb" "$QM_BENCH_DIR/bench.rb"
+    echo '{"t":"plan","stages":["main","#5"],"cases":[{"subject":"S1","case":"c1","why":"first because"},{"subject":"S1","case":"c2","why":"second because"},"junk"]}' >> "$QM_BENCH_DIR/events.jsonl"
+    echo '{"t":"subject","subject":"S1","about":"the first subject"}' >> "$QM_BENCH_DIR/events.jsonl"
+    echo 'not json' >> "$QM_BENCH_DIR/events.jsonl"
+    case "$mode" in
+      norun) exit 0;;
+      badrun) echo '{nope' > "$QM_BENCH_DIR/run.json"; exit 0;;
+      nocwd) echo '{"cwd": "/nonexistent/place", "clone": false}' > "$QM_BENCH_DIR/run.json"; exit 0;;
+      cwdnum) echo '{"cwd": 5}' > "$QM_BENCH_DIR/run.json"; exit 0;;
+      clone) echo "{\"cwd\": \"$cwd\", \"clone\": true}" > "$QM_BENCH_DIR/run.json"; exit 0;;
+    esac
+    echo "{\"cwd\": \"$cwd\", \"clone\": false}" > "$QM_BENCH_DIR/run.json"
+    exit 0;;
+  *)
+    mode=$(cat "$FAKE_DIR/verdict-mode" 2>/dev/null)
+    case "$mode" in
+      fail) echo "verdict model down" >&2; exit 2;;
+      failout) echo "only stdout"; exit 2;;
+      empty) exit 0;;
+    esac
+    echo "main to #5 is about 2x faster; no id differences."
+    exit 0;;
+esac
+"##;
+
+const BENCH_RAILS: &str = r##"#!/bin/sh
+# the stand-in `bin/rails runner bench.rb`
+mode=$(cat "$FAKE_DIR/rails-mode" 2>/dev/null)
+echo "rails $* url=$DATABASE_URL run=$QM_BENCH_RUN" >> "$FAKE_DIR/rails.log"
+case "$mode" in
+  fail) printf 'warning: unused\nbench.rb:3:in `go'"'"': ArgumentError: boom in the bench\nnext line\n' >&2; exit 1;;
+  failsilent) echo "only stdout"; exit 1;;
+  empty) exit 0;;
+  slow) sleep 6;;
+  chatty) for n in $(seq 1 1400); do echo "log line $n ----------------------------------------------" >&2; done;;
+  slowfail) sleep 3; echo "late failure" >&2; exit 1;;
+esac
+echo '{"t":"case","subject":"S1","case":"c1","stage":"main","ms":120.5,"queries":4,"plan":"p1.txt"}' >> "$QM_BENCH_DIR/events.jsonl"
+echo '{"t":"case","subject":"S1","case":"c1","stage":"#5","ms":60,"queries":3}' >> "$QM_BENCH_DIR/events.jsonl"
+echo '{"t":"ids","subject":"S1","case":"c1","stage":"#5","ids":"same","vs":"main"}' >> "$QM_BENCH_DIR/events.jsonl"
+echo '{"t":"case","subject":"S1","case":"c2","stage":"main","timeout":true}' >> "$QM_BENCH_DIR/events.jsonl"
+echo '{"t":"case","subject":"S2","case":"extra","stage":"main","ms":1}' >> "$QM_BENCH_DIR/events.jsonl"
+mkdir -p "$QM_BENCH_DIR/plans"; echo "Seq Scan on things" > "$QM_BENCH_DIR/plans/p1.txt"
+echo "| subject | case | main | #5 |"
+echo "| S1 | c1 | 120.5 | 60 |"
+exit 0
+"##;
+
+#[test]
+fn benchmark_runs_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let bases = [base.path().join("a"), base.path().join("b")];
+    let worlds = [workspace_world(&bases[0], false), workspace_world(&bases[1], false)];
+    for (i, w) in worlds.iter().enumerate() {
+        let b = &bases[i];
+        let skill = b.join("skill");
+        fs::create_dir_all(skill.join("bin")).unwrap();
+        fs::write(skill.join("SKILL.md"), "skill").unwrap();
+        let config = fs::read_to_string(w.root.join("config.yml")).unwrap();
+        let root_line = format!("    root: {}\n", w.repo.display());
+        assert!(config.contains(&root_line), "{config}");
+        fs::write(w.root.join("config.yml"), config.replace(&root_line, &format!("{root_line}    benchmark:\n      database: bench_db\n      skill: {}\n      notes: |-\n        first note\n        second note\n", skill.display()))).unwrap();
+        let wt = b.join("wt-w");
+        fs::create_dir_all(wt.join("bin")).unwrap();
+        executable(&wt.join("bin/rails"), BENCH_RAILS);
+        fs::create_dir_all(b.join("fake")).unwrap();
+        fs::write(b.join("fake/bench.rb"), "# a bench\n").unwrap();
+        fs::write(b.join("fake/cwd"), wt.display().to_string()).unwrap();
+        executable(&b.join("bin/claude"), BENCH_CLAUDE);
+        executable(&b.join("bin/createdb"), "#!/bin/sh\necho \"createdb $*\" >> \"$FAKE_DIR/db.log\"\n[ -f \"$FAKE_DIR/createdb-fails\" ] && { echo \"database already exists\" >&2; exit 1; }\nexit 0\n");
+        executable(&b.join("bin/dropdb"), "#!/bin/sh\necho \"dropdb $*\" >> \"$FAKE_DIR/db.log\"\n[ -f \"$FAKE_DIR/dropdb-fails\" ] && { echo \"ERROR: database is being accessed\" >&2; exit 1; }\nexit 0\n");
+        executable(&b.join("bin/df"), "#!/bin/sh\necho 'Filesystem 1024-blocks Used Available Capacity Mounted'\nif [ -f \"$FAKE_DIR/small-disk\" ]; then echo '/dev/x 100 50 1048576 50% /'; else echo '/dev/x 100 50 104857600 50% /'; fi\n");
+        executable(&b.join("bin/terminal-notifier"), "#!/bin/sh\nout=\"\"\nwhile [ $# -gt 0 ]; do case \"$1\" in -execute) shift;; *) out=\"$out|$1\";; esac; shift; done\necho \"$out\" >> \"$FAKE_DIR/notify.log\"\n");
+    }
+    let env = |i: usize| -> Vec<(&'static str, String)> {
+        let w = &worlds[i];
+        vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("PATH", format!("{}:{}:{}", bases[i].join("bin").display(), bases[i].join("tools").display(), std::env::var("PATH").unwrap())), ("FAKE_DIR", bases[i].join("fake").display().to_string()), ("FAKE_TOOL_LOG", bases[i].join("tool.log").display().to_string()), ("QM_TMUX_SOCKET", format!("qm-test-bench-{i}"))]
+    };
+    let ruby = start_env(false, &worlds[0].root, &worlds[0].home, &env(0));
+    let rust = start_env(true, &worlds[1].root, &worlds[1].home, &env(1));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let norm = |text: String, i: usize| -> String {
+        let t = text.replace(&bases[i].display().to_string(), "BASE");
+        let t = regex::Regex::new(r"20\d\d\d\d\d\d_\d\d\d\d\d\d(_\d+)?").unwrap().replace_all(&t, "RUNID").into_owned();
+        let t = regex::Regex::new(r"20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|[+-]\d\d:\d\d)").unwrap().replace_all(&t, "STAMP").into_owned();
+        let t = regex::Regex::new(r#""pid":\s*\d+"#).unwrap().replace_all(&t, "\"pid\":PID").into_owned();
+        let t = regex::Regex::new(r#""durationS":\d+"#).unwrap().replace_all(&t, "\"durationS\":N").into_owned();
+        let shas: Vec<String> = git(&worlds[i].repo, &["rev-list", "--all"]).lines().map(String::from).collect();
+        shas.iter().fold(t, |t, sha| t.replace(sha.as_str(), "SHA"))
+    };
+    let tree = |i: usize| -> String {
+        let mut out = String::new();
+        let mut dirs: Vec<PathBuf> = fs::read_dir(worlds[i].root.join("benchmarks")).map(|d| d.filter_map(|e| e.ok()).map(|e| e.path()).collect()).unwrap_or_default();
+        dirs.sort();
+        for d in dirs {
+            for f in ["meta.json", "events.jsonl", "bench.rb", "run.json", "bench.out", "bench.log", "verdict.md", "pipeline.log", "agent.jsonl"] {
+                if let Ok(t) = fs::read_to_string(d.join(f)) {
+                    out += &format!("== {}/{f}\n{t}\n", d.file_name().unwrap().to_string_lossy());
+                }
+            }
+            if let Ok(plans) = fs::read_dir(d.join("plans")) {
+                let mut names: Vec<_> = plans.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+                names.sort();
+                out += &format!("== plans: {names:?}\n");
+            }
+        }
+        out += &fs::read_to_string(bases[i].join("fake/db.log")).unwrap_or_default();
+        out += &fs::read_to_string(bases[i].join("fake/notify.log")).unwrap_or_default();
+        out += &fs::read_to_string(bases[i].join("fake/claude.log")).unwrap_or_default();
+        out += &fs::read_to_string(bases[i].join("fake/rails.log")).unwrap_or_default();
+        let mut notes = String::new();
+        tree_text(&worlds[i].root.join("work-items"), "work-items", &mut notes);
+        out += notes.split("== ").filter(|b| b.starts_with("work-items/w-exist.md")).collect::<String>().as_str();
+        let log = fs::read_to_string(worlds[i].root.join("qm.log")).unwrap_or_default();
+        out += &regex::Regex::new(r"(?m)^\S+ \[").unwrap().replace_all(&log, "[");
+        norm(out, i)
+    };
+    let set = |file: &str, value: &str| {
+        for b in &bases {
+            fs::write(b.join("fake").join(file), value).unwrap();
+        }
+    };
+    let unset = |file: &str| {
+        for b in &bases {
+            let _ = fs::remove_file(b.join("fake").join(file));
+        }
+    };
+    let act = |cmd: &str, slug: &str, args: serde_json::Value| serde_json::json!({"cmd": cmd, "slug": slug, "args": args}).to_string();
+    let latest = |i: usize| -> Option<String> {
+        let mut ids: Vec<String> = fs::read_dir(worlds[i].root.join("benchmarks")).map(|d| d.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| !n.starts_with("2099")).collect()).unwrap_or_default();
+        ids.sort();
+        ids.pop()
+    };
+    let wait_final = |what: &str| {
+        for _ in 0..400 {
+            let done = |i: usize| latest(i).is_some_and(|id| fs::read_to_string(worlds[i].root.join("benchmarks").join(&id).join("meta.json")).map(|t| ["\"done\"", "\"failed\"", "\"cancelled\""].iter().any(|s| t.contains(&format!("\"state\": {s}")))).unwrap_or(false));
+            if done(0) && done(1) {
+                std::thread::sleep(std::time::Duration::from_millis(250));
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        panic!("{what}: the runs did not end: {} / {}", tree(0), tree(1));
+    };
+    let post = |label: &str, body: &str| -> String {
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, body, true), request(rust.port, "POST", "/api/action", &origin, body, true));
+        let (sa, sb) = (norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1));
+        assert_eq!(sa, sb, "{label}: reply to {body}");
+        sa
+    };
+    let compare = |label: &str| {
+        let (ta, tb) = (tree(0), tree(1));
+        if ta != tb {
+            let at = ta.bytes().zip(tb.bytes()).position(|(x, y)| x != y).unwrap_or(ta.len().min(tb.len()));
+            let from = ta[..at].rfind('\n').map(|n| n.saturating_sub(200)).unwrap_or(0);
+            let _ = (fs::write("/tmp/claude-0/-home-user-quartermaster/12fbb9d9-0a41-588c-9a2f-a40933a68cd9/scratchpad/ruby-tree.txt", &ta), fs::write("/tmp/claude-0/-home-user-quartermaster/12fbb9d9-0a41-588c-9a2f-a40933a68cd9/scratchpad/rust-tree.txt", &tb));
+            panic!("{label}: first difference at byte {at} (trees in {})\nRuby: …{}\nRust: …{}", base.path().display(), &ta[from.min(ta.len())..(at + 200).min(ta.len())], &tb[from.min(tb.len())..(at + 200).min(tb.len())]);
+        }
+    };
+    let get = |path: &str| {
+        let (a, b) = (request(ruby.port, "GET", path, &[], "", true), request(rust.port, "GET", path, &[], "", true));
+        let (sa, sb) = (norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1));
+        assert_eq!(sa, sb, "GET {path}");
+        sa
+    };
+    let run_of = |i: usize| latest(i).unwrap_or_default();
+    let flow = |label: &str, plan: &str, rails: &str, verdict: &str, args: serde_json::Value| {
+        set("plan-mode", plan);
+        set("rails-mode", rails);
+        set("verdict-mode", verdict);
+        let reply = post(label, &act("benchmark-start", "w-exist", args));
+        if reply.contains("\"ok\":true") {
+            wait_final(label);
+        }
+        compare(label);
+        reply
+    };
+    // disabled, enabled without runs
+    let first = get("/api/benchmark/w-exist");
+    assert!(first.contains("\"enabled\":true") && first.contains("\"runs\":[]") && first.contains("\"run\":null"), "{first}");
+    assert!(get("/api/benchmark/pr-no-project").contains("\"enabled\":false"));
+    post("an item without benchmarks", &act("benchmark-start", "pr-no-project", serde_json::json!({})));
+    post("a missing item", &act("benchmark-start", "nowhere", serde_json::json!({})));
+    post("a bad model", &act("benchmark-start", "w-exist", serde_json::json!({"model": "gpt"})));
+    post("a model that is no string", &act("benchmark-start", "w-exist", serde_json::json!({"model": 5})));
+    post("an unknown branch", &act("benchmark-start", "w-exist", serde_json::json!({"branch": "nowhere"})));
+    // a run that works
+    let ok = flow("a run that works", "", "", "", serde_json::json!({"branch": "feat-w", "request": "  look at the thing  ", "model": "sonnet"}));
+    assert!(ok.contains("\"run\":\"RUNID\""), "{ok}");
+    let report = get("/api/benchmark/w-exist?branch=feat-w");
+    for needle in ["\"state\":\"done\"", "\"verdict\":\"main to #5", "\"subjects\":[{\"subject\":\"S1\"", "\"timeout\":true", "\"ids\":\"same\"", "\"logs\":[", "\"canRerun\":true", "\"S2\""] {
+        assert!(report.contains(needle), "{needle} in {report}");
+    }
+    let (ida, idb) = (run_of(0), run_of(1));
+    for (file, route) in [("p1.txt", "benchmark-plan"), ("../meta.json", "benchmark-plan"), ("nothere", "benchmark-plan"), ("", "benchmark-plan")] {
+        let (a, b) = (request(ruby.port, "GET", &format!("/api/{route}/{ida}/{file}"), &[], "", true), request(rust.port, "GET", &format!("/api/{route}/{idb}/{file}"), &[], "", true));
+        assert_eq!(norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1), "plan {file}");
+    }
+    for name in ["bench.log", "pipeline.log", "bench.out", "run.json", "bench.rb", "agent.jsonl", "nothere", ""] {
+        let (a, b) = (request(ruby.port, "GET", &format!("/api/benchmark-log/{ida}/{name}"), &[], "", true), request(rust.port, "GET", &format!("/api/benchmark-log/{idb}/{name}"), &[], "", true));
+        assert_eq!(norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1), "log {name}");
+    }
+    for path in ["/api/benchmark-plan/bad/p1.txt", "/api/benchmark-plan/", "/api/benchmark-log/20990101_000000/bench.log", "/api/benchmark/w-exist?branch=feat-w&run=nope", "/api/benchmark/w-exist?branch=feat-w&run=20990101_000000", "/api/benchmark/nowhere", "/api/benchmark/w-exist?branch=other"] {
+        get(path);
+    }
+    // the state's benchmark fields
+    let state = |i: usize, port: u16| norm(String::from_utf8_lossy(&request(port, "GET", "/api/state", &[], "", true).body).into_owned(), i);
+    for srv in [(0usize, &ruby), (1, &rust)] {
+        let s = state(srv.0, srv.1.port);
+        assert!(s.contains("\"benchmark\":null") && s.contains("\"benchmarkable\":true") && s.contains("\"benchmarked\":{\"feat-w\":{\"id\":\"RUNID\""), "{s}");
+    }
+    // a re-run of its script
+    post("a re-run", &act("benchmark-rerun", "w-exist", serde_json::json!({"run": ida.clone()})));
+    wait_final("the re-run");
+    compare("the re-run");
+    post("a re-run of nothing", &act("benchmark-rerun", "w-exist", serde_json::json!({"run": "20990101_000000"})));
+    post("a re-run of a bad id", &act("benchmark-rerun", "w-exist", serde_json::json!({"run": "../x"})));
+    // failures at every step
+    for (label, plan, rails, verdict) in [
+        ("the planner fails", "fail", "", ""), ("the planner fails with a warning first", "failwarn", "", ""), ("the planner fails silently", "failsilent", "", ""),
+        ("no bench.rb", "nobench", "", ""), ("no run.json", "norun", "", ""), ("run.json that does not parse", "badrun", "", ""), ("a cwd that is gone", "nocwd", "", ""), ("a cwd that is a number", "cwdnum", "", ""),
+        ("rails fails", "", "fail", ""), ("rails fails silently", "", "failsilent", ""), ("rails prints nothing", "", "empty", ""),
+        ("the verdict fails", "", "", "fail"), ("the verdict fails on stdout", "", "", "failout"), ("the verdict is empty", "", "", "empty"),
+    ] {
+        flow(label, plan, rails, verdict, serde_json::json!({"branch": "feat-w"}));
+    }
+    flow("a chatty script", "", "chatty", "", serde_json::json!({"branch": "feat-w"}));
+    for name in ["bench.log"] {
+        let (a, b) = (request(ruby.port, "GET", &format!("/api/benchmark-log/{}/{name}", run_of(0)), &[], "", true), request(rust.port, "GET", &format!("/api/benchmark-log/{}/{name}", run_of(1)), &[], "", true));
+        assert_eq!(norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1), "the tail of a long log");
+        assert!(shown(&b, rust.port).len() > 60_000 && !shown(&b, rust.port).contains("log line 1 "), "only the last 64 KB");
+    }
+    // a clone: room check, createdb, dropdb
+    set("small-disk", "");
+    flow("a clone without room", "clone", "", "", serde_json::json!({}));
+    unset("small-disk");
+    set("createdb-fails", "");
+    flow("createdb fails", "clone", "", "", serde_json::json!({}));
+    unset("createdb-fails");
+    flow("a clone that is dropped", "clone", "", "", serde_json::json!({}));
+    set("dropdb-fails", "");
+    flow("a clone that cannot be dropped", "clone", "", "", serde_json::json!({}));
+    flow("a clone that cannot be dropped, and rails fails", "clone", "fail", "", serde_json::json!({}));
+    unset("dropdb-fails");
+    // runs whose pipeline is not what meta.json says
+    let by_hand = |i: usize, id: &str, state: &str, pid: &str, started: &str| {
+        let dir = worlds[i].root.join("benchmarks").join(id);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("meta.json"), format!("{{\n  \"v\": 1,\n  \"id\": \"{id}\",\n  \"slug\": \"w-exist\",\n  \"project\": \"demo\",\n  \"database\": \"bench_db\",\n  \"root\": \"{}\",\n  \"checkout\": \"{}\",\n  \"branch\": \"hand\",\n  \"request\": \"\",\n  \"model\": \"opus\",\n  \"stages\": [],\n  \"head\": \"abc\",\n  \"startedAt\": \"{started}\",\n  \"finishedAt\": null,\n  \"state\": \"{state}\",\n  \"error\": null,\n  \"pid\": {pid}\n}}", worlds[i].repo.display(), worlds[i].repo.display())).unwrap();
+    };
+    let old_start = (chrono::Utc::now() - chrono::Duration::seconds(3600)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    for i in 0..2 {
+        by_hand(i, "20990101_000001", "planning", "999999", &old_start);
+        by_hand(i, "20990101_000002", "measuring", &std::process::id().to_string(), &old_start);
+        by_hand(i, "20990101_000003", "planning", "null", &old_start);
+    }
+    let hand = get("/api/benchmark/w-exist?branch=hand");
+    for needle in ["\"busy\":null", "pipeline died"] {
+        assert!(hand.contains(needle), "{needle} in {hand}");
+    }
+    let hand_state = |i: usize, port: u16| norm(String::from_utf8_lossy(&request(port, "GET", "/api/state", &[], "", true).body).into_owned(), i);
+    assert!(hand_state(0, ruby.port).contains("\"benchmark\":null") && hand_state(1, rust.port).contains("\"benchmark\":null"));
+    // one at a time, machine-wide; a cancel
+    set("plan-mode", "slow");
+    set("rails-mode", "");
+    set("verdict-mode", "");
+    post("a slow run starts", &act("benchmark-start", "w-exist", serde_json::json!({})));
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    let busy = get("/api/benchmark/w-exist?branch=feat-w");
+    assert!(busy.contains("\"state\":\"planning\"") && busy.contains("\"activity\":\"Odd\""), "{busy}");
+    let busy_reply = post("a second start while busy", &act("benchmark-start", "w-exist", serde_json::json!({})));
+    assert!(busy_reply.contains("\"busy\":{"), "{busy_reply}");
+    post("a re-run while busy", &act("benchmark-rerun", "w-exist", serde_json::json!({"run": ida.clone()})));
+    let s = state(1, rust.port);
+    assert!(s.contains("\"benchmark\":{\"id\":\"RUNID\""), "{s}");
+    set("dropdb-fails", "");
+    post("a cancel while planning, dropdb failing", &act("benchmark-cancel", "w-exist", serde_json::json!({"run": run_of(0)})));
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    compare("a run cancelled while planning");
+    unset("dropdb-fails");
+    set("plan-mode", "");
+    set("rails-mode", "slowfail");
+    post("a run to cancel while measuring", &act("benchmark-start", "w-exist", serde_json::json!({})));
+    for _ in 0..80 {
+        if fs::read_to_string(bases[0].join("root/benchmarks").join(run_of(0)).join("meta.json")).is_ok_and(|t| t.contains("\"measuring\"")) && fs::read_to_string(bases[1].join("root/benchmarks").join(run_of(1)).join("meta.json")).is_ok_and(|t| t.contains("\"measuring\"")) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    set("dropdb-fails", "");
+    post("a cancel while measuring, dropdb failing", &act("benchmark-cancel", "w-exist", serde_json::json!({"run": run_of(0)})));
+    std::thread::sleep(std::time::Duration::from_millis(4500));
+    compare("a run cancelled while measuring");
+    unset("dropdb-fails");
+    set("plan-mode", "slow");
+    set("rails-mode", "");
+    post("a slow run for the plain cancel", &act("benchmark-start", "w-exist", serde_json::json!({})));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    post("a cancel", &act("benchmark-cancel", "w-exist", serde_json::json!({"run": run_of(0)})));
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    compare("a cancelled run");
+    post("a cancel of a cancelled run", &act("benchmark-cancel", "w-exist", serde_json::json!({"run": run_of(0)})));
+    post("a cancel of nothing", &act("benchmark-cancel", "w-exist", serde_json::json!({"run": "20990101_000000"})));
+    // a branch that moved: the report says so and a re-run is refused
+    for (i, _) in worlds.iter().enumerate() {
+        let wt = bases[i].join("wt-w");
+        fs::write(wt.join("moved.txt"), "moved\n").unwrap();
+        git(&wt, &["add", "moved.txt"]);
+        git(&wt, &["commit", "-q", "-m", "moved"]);
+    }
+    set("plan-mode", "");
+    let moved = get("/api/benchmark/w-exist?branch=feat-w&run={FIRST}".replace("{FIRST}", &ida).as_str());
+    assert!(moved.contains("\"moved\":true") && moved.contains("\"canRerun\":false"), "{moved}");
+    let refused = post("a re-run after the branch moved", &act("benchmark-rerun", "w-exist", serde_json::json!({"run": ida.clone()})));
+    assert!(refused.contains("moved since it ran"), "{refused}");
+    // two runs that both look live: the report and the state name different ones
+    for i in 0..2 {
+        by_hand(i, "20990101_000004", "planning", "null", &chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
+        by_hand(i, "20990101_000005", "planning", "null", &chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
+    }
+    let two = get("/api/benchmark/w-exist?branch=hand");
+    assert!(two.contains("\"busy\":{\"id\":\"RUNID\""), "{two}");
+    post("a start while two look live", &act("benchmark-start", "w-exist", serde_json::json!({})));
+    let both = hand_state(1, rust.port);
+    assert!(both.contains("\"benchmark\":{\"id\":\"RUNID\""), "{both}");
+    let busy_of = |t: &str| regex::Regex::new(r#""benchmark":(\{[^}]*\}|null)"#).unwrap().captures(t).map(|c| c[1].to_string());
+    assert_eq!(busy_of(&hand_state(0, ruby.port)), busy_of(&both), "the state with two live runs");
+    for i in 0..2 {
+        tmux_on(&format!("qm-test-bench-{i}"), &["kill-server"]);
+    }
 }

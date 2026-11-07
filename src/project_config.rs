@@ -45,6 +45,21 @@ pub struct DevServer {
     pub state_file: Option<String>,
 }
 
+/// Benchmark runs (docs/areas/benchmarks.md): the Postgres template a run reads (or clones), the skill
+/// folder the planner follows, and extra prompt lines.
+#[derive(Clone)]
+pub struct Benchmark {
+    pub database: String,
+    pub skill: String,
+    pub notes: Option<String>,
+}
+
+impl Benchmark {
+    pub fn read_only_url(&self) -> String {
+        format!("postgres:///{}?options=-c%20default_transaction_read_only%3Don", self.database)
+    }
+}
+
 pub struct ProjectSettings {
     pub name: String,
     pub root: String,
@@ -54,6 +69,7 @@ pub struct ProjectSettings {
     pub test_db: Option<String>,
     /// The PRs view's Review button runs this skill (default `/code-review`).
     pub review_skill: String,
+    pub benchmark: Option<Benchmark>,
 }
 
 /// config.yml's project side; an unreadable or malformed file reads as no projects.
@@ -125,7 +141,19 @@ fn parse_project(name: String, value: &Value) -> Option<ProjectSettings> {
         pr_prerequisites: matches!(get_raw("pr_prerequisites"), Some(Value::Bool(true))),
         test_db: string(get_raw("test_db")),
         review_skill: string(get_raw("review_skill")).unwrap_or_else(|| "/code-review".to_string()),
+        benchmark: parse_benchmark(get_raw("benchmark")),
     })
+}
+
+/// Both database and skill, or no benchmarks.
+fn parse_benchmark(value: Option<&Value>) -> Option<Benchmark> {
+    let Some(Value::Mapping(m)) = value else { return None };
+    let database = string(get(m, "database"))?;
+    let skill = expand(string(get(m, "skill")))?;
+    if database.is_empty() || !database.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+        return None;
+    }
+    Some(Benchmark { database, skill, notes: string(get(m, "notes")) })
 }
 
 impl ProjectConfig {

@@ -14,6 +14,10 @@ pub struct CmdResult {
 
 /// The user's personal tools live in ~/bin, which a GUI started from a launcher (or a hook) may
 /// not have on PATH.
+pub(crate) fn resolve_program(name: &str) -> String {
+    resolve(name)
+}
+
 fn resolve(name: &str) -> String {
     if name.contains('/') {
         return name.to_string();
