@@ -891,6 +891,8 @@ fn compare_state(ruby: &Server, rust: &Server, label: &str) -> String {
     assert!(!b.status.starts_with("501"), "{label}: the state should be served: {}", String::from_utf8_lossy(&b.body));
     let (sa, sb) = (shown(&a, ruby.port), shown(&b, rust.port));
     let (sa, sb) = (regex::Regex::new(r#""terminalToken":"[0-9a-f]{48}""#).unwrap().replace_all(&sa, "\"terminalToken\":\"T\"").into_owned(), regex::Regex::new(r#""terminalToken":"[0-9a-f]{48}""#).unwrap().replace_all(&sb, "\"terminalToken\":\"T\"").into_owned());
+    // a job's estimate is stamped when it ran: seconds apart between the two servers
+    let (sa, sb) = (regex::Regex::new(r#""taken_at":"[^"]*""#).unwrap().replace_all(&sa, "\"taken_at\":\"T\"").into_owned(), regex::Regex::new(r#""taken_at":"[^"]*""#).unwrap().replace_all(&sb, "\"taken_at\":\"T\"").into_owned());
     let sb = sb.replace("/root2", "/root");
     if sa != sb {
         let at = sa.bytes().zip(sb.bytes()).position(|(x, y)| x != y).unwrap_or(sa.len().min(sb.len()));
@@ -1167,7 +1169,7 @@ fn the_data_actions_match_ruby() {
     }
     // what is not ported answers 501 before anything happens, with the files untouched
     let before = action_traces(&root2, &w.root);
-    for body in [act("build-progress", "stale", "{}"), act("distill", "stale", "{}"), act("rotate", "stale", "{}")] {
+    for body in [act("board-answer", "stale", "{}"), act("distill", "stale", "{}"), act("rotate", "stale", "{}")] {
         let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
         assert!(a.status.starts_with("501"), "{body}: {}", a.status);
     }
@@ -4553,7 +4555,6 @@ fn issue_preview_and_start_match_ruby() {
     let mut baseline: Vec<Vec<String>> = vec![];
     for (i, b) in bases.iter().enumerate() {
         let w = attention_world(b, std::time::SystemTime::now(), None);
-        baseline.push(fs::read_dir(w.root.join("work-items")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect::<Vec<String>>());
         let origin = b.join("acme/widgets.git");
         fs::create_dir_all(&origin).unwrap();
         git(&origin, &["init", "-q", "--bare", "-b", "main"]);
@@ -4579,6 +4580,8 @@ fn issue_preview_and_start_match_ruby() {
         item("a-resolved", "demo", "resolved", "branches:\n- issue/17-old\n", "d");
         item("both", "demo", "in_progress", "branches:\n- issue/17-newer\n", "d");
         item("drafting", "demo", "in_progress", "", "where issues are drafted");
+        // what the state builds may touch on their own is not compared; what an action touches or makes is
+        baseline.push(fs::read_dir(w.root.join("work-items")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).filter(|n| !["a-resolved.md", "both.md", "drafting.md", "by-branch.md"].contains(&n.as_str())).collect::<Vec<String>>());
         let gh = b.join("gh");
         fs::create_dir_all(&gh).unwrap();
         let issue = |n: i64, title: &str, state: &str| fs::write(gh.join(format!("issue-{n}.json")), serde_json::json!({"number": n, "title": title, "state": state, "url": format!("https://github.com/acme/widgets/issues/{n}")}).to_string()).unwrap();
@@ -4822,4 +4825,132 @@ fn branch_stats_match_ruby() {
     for i in 0..2 {
         tmux_on(&format!("qm-test-stats-{i}"), &["kill-server"]);
     }
+}
+
+#[test]
+fn build_progress_matches_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let w = attention_world(base.path(), std::time::SystemTime::now(), None);
+    let session_dir = w.transcripts.join("p/d-live");
+    let workflows = session_dir.join("subagents/workflows");
+    let j = |v: serde_json::Value| format!("{v}\n");
+    let user = |text: serde_json::Value, ts: &str| j(serde_json::json!({"type": "user", "timestamp": ts, "message": {"role": "user", "content": text}}));
+    let asst = |blocks: serde_json::Value| j(serde_json::json!({"type": "assistant", "timestamp": "2026-03-01T10:05:00Z", "message": {"content": blocks}}));
+    let write = |path: &Path, text: &str| {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    };
+    // a long activity: more than twenty entries, long texts, every kind of tool input
+    let mut busy = user(serde_json::json!("relayed request"), "2026-03-01T09:00:00Z");
+    busy += &user(serde_json::json!("[Workflow harness: you are agent 3]\nand more framing here. Your task text follows:\n\nBuild the alpha feature:\n  - do   this\n  - do that"), "2026-03-01T09:01:00.500Z");
+    busy += &user(serde_json::json!([{"type": "text", "text": "ignored? no: the last one counts"}, {"type": "image"}, "junk"]), "2026-03-01T09:02:00Z");
+    for i in 0..14 {
+        busy += &asst(serde_json::json!([{"type": "text", "text": format!("step {i}: {}", "word ".repeat(60))}, {"type": "tool_use", "name": "Bash", "input": {"command": format!("cargo test {i}"), "description": ""}}]));
+    }
+    busy += &asst(serde_json::json!([{"type": "tool_use", "name": "Read", "input": {"file_path": "src/a.rs"}}, {"type": "tool_use", "name": "Odd", "input": {"zzz": [1, 2], "n": 5}}, {"type": "tool_use", "name": "Str", "input": "plain text input"}, {"type": "tool_use", "name": "None"}, {"type": "text", "text": "  "}, "junk", {"type": "thinking"}]));
+    busy += &j(serde_json::json!({"type": "user", "message": {"content": "tool result"}}));
+    busy += "not json at all\n";
+    let simple = |task: &str| user(serde_json::json!(task), "2026-03-01T09:00:00Z") + &asst(serde_json::json!([{"type": "text", "text": "working"}]));
+    let handed = user(serde_json::json!("done soon"), "2026-03-01T09:00:00Z") + &asst(serde_json::json!([{"type": "tool_use", "name": "StructuredOutput", "input": {"ok": true}}]));
+    // run r1: a journal says who launched and who ended
+    let r1 = workflows.join("r1");
+    let journal = [
+        serde_json::json!({"type": "started", "key": "k1", "agentId": "a1", "label": "build:alpha", "phase": "build"}),
+        serde_json::json!({"type": "started", "key": "k2", "agentId": "a2", "label": "review:alpha", "phase": "review"}),
+        serde_json::json!({"type": "started", "key": "k3", "agentId": "a3", "label": "queue#1"}),
+        serde_json::json!({"type": "started", "key": "k4", "agentId": "a4", "label": "Spec CHECKER"}),
+        serde_json::json!({"type": "started", "key": "k5", "agentId": "a5", "label": "custom label"}),
+        serde_json::json!({"type": "started", "key": "k6", "agentId": "a6", "label": "integrate"}),
+        serde_json::json!({"type": "started", "key": "k7", "agentId": "", "label": "no agent"}),
+        serde_json::json!({"type": "started", "key": "k8", "agentId": "a8"}),
+        serde_json::json!({"type": "started", "key": "k9", "agentId": "a9", "label": "missing transcript"}),
+        serde_json::json!({"type": "started", "key": "k10", "agentId": "a10", "label": "build:gamma"}),
+        serde_json::json!({"type": "failed", "key": "k10"}),
+        serde_json::json!({"type": "started", "key": "k11", "agentId": "a11", "label": "queueing up"}),
+        serde_json::json!({"type": "started", "key": "k1", "agentId": "a1", "label": "build:alpha", "phase": "build again"}),
+        serde_json::json!({"type": "result", "key": "k2"}),
+        serde_json::json!({"type": "mystery", "key": "k3"}),
+    ];
+    write(&r1.join("journal.jsonl"), &(journal.iter().map(|e| format!("{e}\n")).collect::<String>() + "garbage line\n"));
+    write(&r1.join("agent-a1.jsonl"), &busy);
+    for id in ["a2", "a3", "a4", "a5", "a6", "a8", "a10", "a11"] {
+        write(&r1.join(format!("agent-{id}.jsonl")), &simple(&format!("task of {id}")));
+    }
+    let big = user(serde_json::json!("big agent"), "2026-03-01T09:00:00Z") + &asst(serde_json::json!([{"type": "text", "text": "early words"}])) + &j(serde_json::json!({"type": "user", "message": {"content": "x".repeat(120_000)}})) + &asst(serde_json::json!([{"type": "text", "text": "middle words"}])) + &j(serde_json::json!({"type": "user", "message": {"content": "y".repeat(120_000)}}));
+    write(&r1.join("agent-a5.jsonl"), &big);
+    write(&r1.join("agent-a8.meta.json"), "{\"description\": \"from the meta\", \"workflowPhase\": \"meta phase\"}");
+    // run r2: no journal — an agent whose transcript ends in its hand-back is done
+    let r2 = workflows.join("r2");
+    write(&r2.join("agent-b1.jsonl"), &simple("beta work"));
+    write(&r2.join("agent-b1.meta.json"), "{\"description\": \"build:beta\", \"workflowPhase\": \"building\"}");
+    write(&r2.join("agent-b2.jsonl"), &handed);
+    write(&r2.join("agent-b3.jsonl"), &simple("no meta at all"));
+    // runs that ended, are ending, or wait
+    for (run, result) in [("r3", "{\"status\": \"completed\"}"), ("r4", "{half"), ("r5", "{\"status\": \"pending\"}"), ("r6", "{\"status\": \"\"}"), ("r7", "{}"), ("r8", "{\"status\": \"failed\"}")] {
+        write(&workflows.join(run).join("agent-c1.jsonl"), &simple(&format!("run {run}")));
+        write(&session_dir.join("workflows").join(format!("{run}.json")), result);
+    }
+    write(&workflows.join("not-a-run.txt"), "x");
+    let wf2 = w.transcripts.join("p/wf2-live");
+    write(&wf2.join("subagents/workflows/w1/agent-z1.jsonl"), &simple("second item's task"));
+    write(&wf2.join("subagents/workflows/w1/agent-z1.meta.json"), "{\"description\": \"build:zeta\"}");
+    write(&w.transcripts.join("p/wf2-live.jsonl"), "{}\n");
+    let log = fs::read_to_string(w.root.join("sessions.jsonl")).unwrap();
+    fs::write(w.root.join("sessions.jsonl"), log + &format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"wf2-live\",\"cwd\":\"/srv/app\",\"pid\":{},\"transcript_path\":\"{}\",\"ts\":\"2026-03-01T00:00:00+00:00\"}}\n", std::process::id(), w.transcripts.join("p/wf2-live.jsonl").display())).unwrap();
+    fs::write(w.root.join("work-items/wf2.md"), "---\nv: 1\ntitle: wf2\nstate: in_progress\nproject: demo\ncreated: '2026-01-01'\nsessions:\n- id: wf2-live\n---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n").unwrap();
+    let bin = base.path().join("bin2");
+    executable(&bin.join("claude"), "#!/bin/sh\necho \"$*\" | cut -c1-120 >> \"$FAKE_CLAUDE_LOG\"\ncat >> \"$FAKE_CLAUDE_LOG\"\nmode=$(cat \"$FAKE_MODE\" 2>/dev/null)\ncase \"$mode\" in\n  plain) echo '{\"result\": \"  all going fine  \", \"structured_output\": {\"agents\": \"nope\"}}';;\n  plainblank) echo '{\"result\": \" \"}';;\n  garbage) echo 'just words';;\n  array) echo '[1]';;\n  badagents) echo '{\"structured_output\": {\"agents\": [{\"label\": \"x\"}, 5]}}';;\n  fail) echo 'quota exceeded' >&2; exit 3;;\n  failout) echo 'only on stdout'; exit 3;;\n  *) echo '{\"structured_output\": {\"agents\": [{\"label\": \"build:alpha\", \"percent\": 45.5, \"doing\": \"  writing tests \"}, {\"label\": \"build:beta\", \"percent\": 150, \"doing\": \"x\"}, {\"label\": \"review:beta\", \"percent\": \"7\", \"doing\": \"\"}, {\"label\": \"invented\", \"percent\": 1, \"doing\": \"nope\"}, {\"label\": \"custom label\", \"percent\": -5}, {\"label\": \"integrate\", \"percent\": 12, \"doing\": 7}]}, \"result\": \"x\"}';;\nesac\n");
+    let root2 = base.path().join("root2");
+    copy_dir(&w.root, &root2);
+    let env = |i: usize| -> Vec<(&'static str, String)> { vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("PATH", format!("{}:{}:{}", bin.display(), w.bin.display(), std::env::var("PATH").unwrap())), ("FAKE_GH_DATA", w.gh_data.display().to_string()), ("FAKE_GH_LOG", base.path().join(format!("gh{i}.log")).display().to_string()), ("FAKE_CLAUDE_LOG", base.path().join(format!("claude{i}.log")).display().to_string()), ("FAKE_MODE", base.path().join(format!("mode{i}")).display().to_string()), ("QM_TMUX_SOCKET", format!("qm-test-build-{i}"))] };
+    let ruby = start_env(false, &w.root, &w.home, &env(0));
+    let rust = start_env(true, &root2, &w.home, &env(1));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    for srv in [&ruby, &rust] {
+        request(srv.port, "GET", "/api/state", &[], "", true);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(900));
+    let first = compare_state(&ruby, &rust, "the first state");
+    for needle in ["\"buildActive\":[\"degrade\",\"wf2\"]", "\"buildProgress\":{}"] {
+        assert!(first.contains(needle), "{needle} missing");
+    }
+    let norm = |t: String| regex::Regex::new(r"working for \d+ min").unwrap().replace_all(&regex::Regex::new(r#"20\d\d-\d\d-\d\dT[0-9:.]+(Z|[+-]\d\d:\d\d)"#).unwrap().replace_all(&t, "STAMP"), "working for N min").into_owned();
+    let act = |cmd: &str, slug: &str| serde_json::json!({"cmd": cmd, "slug": slug, "args": {}}).to_string();
+    let step = |label: &str, mode: &str, slug: &str| {
+        fs::write(base.path().join("mode0"), mode).unwrap();
+        fs::write(base.path().join("mode1"), mode).unwrap();
+        let body = act("build-progress", slug);
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, &body, true), request(rust.port, "POST", "/api/action", &origin, &body, true));
+        assert_eq!(norm(shown(&a, ruby.port)), norm(shown(&b, rust.port)), "{label}: reply");
+        std::thread::sleep(std::time::Duration::from_millis(1200));
+        let state = compare_state(&ruby, &rust, label);
+        let fin = |port: u16| -> String {
+            let v: serde_json::Value = serde_json::from_slice(&request(port, "GET", "/api/state", &[], "", true).body).unwrap_or_default();
+            norm(v["finished"].to_string())
+        };
+        assert_eq!(fin(ruby.port), fin(rust.port), "{label}: finished");
+        let log = |i: usize| norm(fs::read_to_string(base.path().join(format!("claude{i}.log"))).unwrap_or_default());
+        assert_eq!(log(0), log(1), "{label}: what the model was asked");
+        norm(state)
+    };
+    step("the second item first", "", "wf2");
+    let s1 = step("estimates", "", "degrade");
+    for needle in ["\"percent\":46", "\"percent\":100", "no estimate", "\"percent\":0", "writing tests"] {
+        assert!(s1.contains(needle), "{needle} in {s1}");
+    }
+    for (label, mode) in [("a plain answer", "plain"), ("a blank answer", "plainblank"), ("garbage", "garbage"), ("an array", "array"), ("bad agents", "badagents"), ("claude fails", "fail"), ("claude fails on stdout", "failout")] {
+        step(label, mode, "degrade");
+    }
+    step("an item with nothing running", "", "fridge-old");
+    step("the second item again", "", "wf2");
+    step("a missing item", "", "nowhere");
+    // a task that ended drops its line, the whole estimate once nothing it covered is going
+    step("estimates again", "", "degrade");
+    for p in [&r1, &r2] {
+        let _ = p;
+    }
+    fs::write(r1.join("journal.jsonl"), journal.iter().filter(|e| e["agentId"] != "a1").map(|e| format!("{e}\n")).collect::<String>()).unwrap();
+    compare_state(&ruby, &rust, "a task ended");
+    tmux_on("qm-test-build-0", &["kill-server"]);
+    tmux_on("qm-test-build-1", &["kill-server"]);
 }

@@ -179,6 +179,38 @@ pub fn items_checked_out_at(path: &str) -> Vec<WorkItem> {
     out
 }
 
+/// slug → the "run/agent" keys of its build's active tasks, only for items with a live session.
+fn active_build_agents(items: &[WorkItem], log: &SessionLog) -> R<Vec<(String, Vec<String>)>> {
+    let mut building = vec![];
+    for item in items {
+        let keys: Vec<String> = crate::build_progress::active_agents(item, log).map_err(|_| Unported)?.iter().map(|a| a.key()).collect();
+        if !keys.is_empty() {
+            building.push((item.slug.clone(), keys));
+        }
+    }
+    Ok(building)
+}
+
+/// A finished task's line goes, and the whole estimate once nothing it covered is still going.
+fn live_progress(building: &[(String, Vec<String>)]) -> Value {
+    let mut live = Map::new();
+    for (slug, estimate) in crate::gui_jobs::progress() {
+        let Some((_, active)) = building.iter().find(|(s, _)| *s == slug) else { continue };
+        let mut estimate = estimate;
+        if let Some(Value::Array(agents)) = estimate.get("agents").cloned() {
+            if !agents.is_empty() {
+                let kept: Vec<Value> = agents.into_iter().filter(|a| a.get("agent").and_then(Value::as_str).is_some_and(|k| active.iter().any(|x| x == k))).collect();
+                if kept.is_empty() {
+                    continue;
+                }
+                estimate["agents"] = Value::Array(kept);
+            }
+        }
+        live.insert(slug, estimate);
+    }
+    Value::Object(live)
+}
+
 fn note_json(n: &crate::note::Note) -> Value {
     json!({"stamp": n.stamp, "kind": n.kind, "text": n.text, "position": n.position})
 }
@@ -349,7 +381,7 @@ fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R
 }
 
 /// What a state build can't reproduce from the data alone: gates for the parts not ported.
-fn gates(items: &[WorkItem], log: &SessionLog) -> R<()> {
+fn gates(_items: &[WorkItem], _log: &SessionLog) -> R<()> {
     let raw = config_raw();
     if raw.get("loose_starters").is_some_and(|v| !matches!(v, Value::Null)) {
         return Err(Unported);
@@ -362,19 +394,6 @@ fn gates(items: &[WorkItem], log: &SessionLog) -> R<()> {
     let runs = std::fs::read_dir(data_root::root().join("benchmarks")).map(|d| d.filter_map(|e| e.ok()).any(|e| e.path().join("meta.json").exists())).unwrap_or(false);
     if runs {
         return Err(Unported);
-    }
-    // build progress: a live session's sub-agent workflow runs
-    for item in items {
-        for id in item.session_ids() {
-            if let Some(s) = log.session_for(&id).filter(|s| s.live) {
-                if let Some(t) = s.transcript() {
-                    let dir = t.to_string_lossy().trim_end_matches(".jsonl").to_string();
-                    if std::fs::read_dir(format!("{dir}/subagents/workflows")).map(|mut d| d.next().is_some()).unwrap_or(false) {
-                        return Err(Unported);
-                    }
-                }
-            }
-        }
     }
     Ok(())
 }
@@ -481,6 +500,7 @@ pub fn build(token: &str) -> R<Value> {
     ledger.save();
     drop(guard);
 
+    let building = active_build_agents(&work_items, &log)?;
     let raw = config_raw();
     let names: Vec<&str> = config.roots().into_iter().map(|(n, _)| n).collect();
     let mut projects: Vec<String> = names.iter().map(|s| s.to_string()).collect();
@@ -518,8 +538,8 @@ pub fn build(token: &str) -> R<Value> {
         ("distilled", json!([])),
         ("pf", pf_payload(&status, config.dev_server())),
         ("jobs", Value::Array(crate::gui_jobs::running())),
-        ("buildActive", json!([])),
-        ("buildProgress", json!({})),
+        ("buildActive", json!(building.iter().map(|(slug, _)| slug.clone()).collect::<Vec<_>>())),
+        ("buildProgress", live_progress(&building)),
         ("panes", json!(panes)),
         ("terminalToken", json!(token)),
         ("asideModels", json!(["sonnet", "opus", "haiku"])),

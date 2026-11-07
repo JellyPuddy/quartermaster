@@ -266,6 +266,7 @@ fn run(payload: &Value) -> R<Value> {
             item.update_pf_mode(&args.text("mode")?).map_err(error)?;
             Ok(ok())
         }
+        "build-progress" => build_progress_action(&slug),
         "branch-stats-commentary" => branch_stats_commentary(&slug, &args),
         "issue-preview" => issue_preview(&args),
         "issue-start" => issue_start(&args),
@@ -1178,5 +1179,22 @@ fn branch_stats_commentary(slug: &str, args: &Args) -> R<Value> {
             Fail::Arg(m) => Failure::Argument(m),
             Fail::Unported => Failure::Other("the branch stats cache holds a value this port can't update yet".into(), "NotImplementedError"),
         })
+    }))
+}
+
+/// `build-progress`: one headless haiku call over every active sub-agent of the item's running Workflow
+/// runs, a background job under its own key; its outcome, failures included, replaces the old estimate.
+fn build_progress_action(slug: &str) -> R<Value> {
+    let item = find(slug)?;
+    let key = crate::build_progress::job_key(&item.slug);
+    Ok(crate::gui_jobs::background(&key, "estimating build progress…", false, move || {
+        use crate::build_progress::Fail;
+        let result = match crate::build_progress::call(&item) {
+            Ok(v) => v,
+            Err(Fail::Arg(m)) => json!({"ok": false, "taken_at": crate::clock::now_iso(), "error": m}),
+            Err(Fail::Unported) => return Err(crate::gui_jobs::Failure::Other("a build transcript holds a value this port can't read yet".into(), "NotImplementedError")),
+        };
+        crate::gui_jobs::store_progress(&item.slug, result.clone());
+        Ok(if result["ok"] == Value::Bool(true) { json!({"ok": true, "message": format!("{}: build progress updated", item.slug)}) } else { result })
     }))
 }

@@ -90,3 +90,19 @@ pub fn running() -> Vec<Value> {
 pub fn take_finished() -> Vec<Value> {
     std::mem::take(&mut lock().finished)
 }
+
+
+static PROGRESS: Mutex<Vec<(String, Value)>> = Mutex::new(Vec::new());
+
+/// The newest build-progress estimate per slug (`BuildProgress`), kept for the state builds.
+pub fn store_progress(slug: &str, result: Value) {
+    let mut all = PROGRESS.lock().unwrap_or_else(|p| p.into_inner());
+    match all.iter_mut().find(|(k, _)| k == slug) {
+        Some((_, v)) => *v = result,
+        None => all.push((slug.to_string(), result)),
+    }
+}
+
+pub fn progress() -> Vec<(String, Value)> {
+    PROGRESS.lock().unwrap_or_else(|p| p.into_inner()).clone()
+}
