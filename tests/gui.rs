@@ -3738,7 +3738,7 @@ fn the_prs_view_and_its_actions_match_ruby() {
     let ruby = start_env(false, &wa.root, &wa.home, &env_for(&wa, 0));
     let rust = start_env(true, &wb.root, &wb.home, &env_for(&wb, 1));
     let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
-    let norm = |text: String, side: usize| text.replace("\"prerequisitesRefreshing\":true", "\"prerequisitesRefreshing\":false").replace(&(if side == 0 { &base_a } else { &base_b }).display().to_string(), "BASE");
+    let norm = |text: String, side: usize| regex::Regex::new(r#""fetchedAt":"[^"]*""#).unwrap().replace_all(&text, "\"fetchedAt\":\"T\"").into_owned().replace("\"prerequisitesRefreshing\":true", "\"prerequisitesRefreshing\":false").replace(&(if side == 0 { &base_a } else { &base_b }).display().to_string(), "BASE");
     let get = |path: &str| -> (String, String) {
         let (a, b) = (request(ruby.port, "GET", path, &[], "", true), request(rust.port, "GET", path, &[], "", true));
         (norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1))
@@ -4550,8 +4550,10 @@ fn issue_preview_and_start_match_ruby() {
     let chat = base.path().join("fake-chat");
     executable(&chat, "#!/bin/sh\nexec sleep 300\n");
     let mut worlds = vec![];
+    let mut baseline: Vec<Vec<String>> = vec![];
     for (i, b) in bases.iter().enumerate() {
         let w = attention_world(b, std::time::SystemTime::now(), None);
+        baseline.push(fs::read_dir(w.root.join("work-items")).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect::<Vec<String>>());
         let origin = b.join("acme/widgets.git");
         fs::create_dir_all(&origin).unwrap();
         git(&origin, &["init", "-q", "--bare", "-b", "main"]);
@@ -4611,7 +4613,15 @@ fn issue_preview_and_start_match_ruby() {
     let norm = |text: String, i: usize| -> String { text.replace(&bases[i].display().to_string(), "BASE").replace(&worlds[i].home.display().to_string(), "HOME") };
     let state = |i: usize| -> String {
         let mut out = String::new();
-        tree_text(&worlds[i].root.join("work-items"), "work-items", &mut out);
+        // the world's own items are the state builds' business (their clocks); the issue items are compared
+        let mut all = String::new();
+        tree_text(&worlds[i].root.join("work-items"), "work-items", &mut all);
+        for block in all.split("== ").filter(|b| !b.is_empty()) {
+            let name = block.lines().next().unwrap_or("").trim_start_matches("work-items/");
+            if !baseline[i].iter().any(|n| n == name) {
+                out += &format!("== {block}");
+            }
+        }
         out += &git(&worlds[i].repo, &["worktree", "list"]);
         out += &git(&worlds[i].repo, &["branch", "--list", "--format=%(refname:short) %(objectname:short)"]);
         // the state builds ask gh for each linked branch's PR in the background: not what is compared
@@ -4681,5 +4691,135 @@ fn issue_preview_and_start_match_ruby() {
     step("start with no number", &act("issue-start", "", serde_json::json!({})));
     for i in 0..2 {
         tmux_on(&format!("qm-test-issue-{i}"), &["kill-server"]);
+    }
+}
+
+#[test]
+fn branch_stats_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let bases = [base.path().join("a"), base.path().join("b")];
+    let worlds = [workspace_world(&bases[0], false), workspace_world(&bases[1], false)];
+    for (i, w) in worlds.iter().enumerate() {
+        let wt = bases[i].join("wt-w");
+        let write = |path: &str, text: &str| {
+            let p = wt.join(path);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, text).unwrap();
+        };
+        write("app/models/thing.rb", "a\nb\nc\n");
+        write("app/javascript/widget.tsx", "x\ny\n");
+        write("spec/thing_spec.rb", "t\n");
+        git(&wt, &["add", "."]);
+        git(&wt, &["commit", "-q", "-m", "Add the thing | with a pipe in its subject"]);
+        write("docs/guide.md", "doc\ndoc\n");
+        write("config/locales/en.yml", "en: 1\n");
+        write("db/schema.rb", "schema\n");
+        write("db/migrate/001_x.rb", "m\n");
+        write("app/javascript/api/client.ts", "g\n");
+        git(&wt, &["add", "."]);
+        git(&wt, &["commit", "-q", "-m", "Docs, locales, a migration and generated code"]);
+        write("config/application.rb", "c\n");
+        write("openapi.yml", "o\n");
+        git(&wt, &["add", "."]);
+        git(&wt, &["commit", "-q", "-m", "Config and openapi"]);
+        let bin = bases[i].join("bin");
+        executable(&bin.join("claude"), "#!/bin/sh\necho \"$*\" | cut -c1-80 >> \"$FAKE_CLAUDE_LOG\"\nsleep 1\n[ -f \"$FAKE_FAIL/claude\" ] && { echo \"model unavailable\" >&2; exit 2; }\n[ -f \"$FAKE_FAIL/long\" ] && { printf 'y%.0s' $(seq 1 300) >&2; exit 2; }\n[ -f \"$FAKE_FAIL/empty\" ] && exit 0\necho \"The first commit carries the change. Mostly hand-written.\"\n");
+        fs::create_dir_all(bases[i].join("fail")).unwrap();
+        let _ = w;
+    }
+    let env = |i: usize| -> Vec<(&'static str, String)> {
+        let w = &worlds[i];
+        vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("PATH", format!("{}:{}:{}", bases[i].join("bin").display(), bases[i].join("tools").display(), std::env::var("PATH").unwrap())), ("FAKE_CLAUDE_LOG", bases[i].join("claude.log").display().to_string()), ("FAKE_FAIL", bases[i].join("fail").display().to_string()), ("FAKE_TOOL_LOG", bases[i].join("tool.log").display().to_string()), ("QM_TMUX_SOCKET", format!("qm-test-stats-{i}"))]
+    };
+    let ruby = start_env(false, &worlds[0].root, &worlds[0].home, &env(0));
+    let rust = start_env(true, &worlds[1].root, &worlds[1].home, &env(1));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let norm = |text: String, i: usize| -> String {
+        let t = text.replace(&bases[i].display().to_string(), "BASE");
+        let t = regex::Regex::new(r#"20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d[+-Z0-9:]*"#).unwrap().replace_all(&t, "STAMP").into_owned();
+        let shas: Vec<String> = git(&worlds[i].repo, &["rev-list", "--all"]).lines().map(String::from).collect();
+        shas.iter().fold(t, |t, sha| t.replace(sha.as_str(), "SHA").replace(&sha[..10], "SHA10").replace(&sha[..7], "SHA7"))
+    };
+    let cache = |i: usize| norm(fs::read_to_string(worlds[i].root.join("branch-stats.json")).unwrap_or_default(), i);
+    let get = |path: &str| {
+        let (a, b) = (request(ruby.port, "GET", path, &[], "", true), request(rust.port, "GET", path, &[], "", true));
+        let (sa, sb) = (norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1));
+        assert_eq!(sa, sb, "GET {path}");
+        assert_eq!(cache(0), cache(1), "the cache after GET {path}");
+        sa
+    };
+    let act = |cmd: &str, slug: &str, args: serde_json::Value| serde_json::json!({"cmd": cmd, "slug": slug, "args": args}).to_string();
+    let finished = |i: usize, port: u16| -> String {
+        let a = request(port, "GET", "/api/state", &[], "", true);
+        let v: serde_json::Value = serde_json::from_slice(&a.body).unwrap_or_default();
+        norm(v["finished"].to_string(), i)
+    };
+    let post = |label: &str, body: &str| {
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, body, true), request(rust.port, "POST", "/api/action", &origin, body, true));
+        let (sa, sb) = (norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1));
+        assert_eq!(sa, sb, "{label}: reply to {body}");
+        if sa.contains("\"background\":true") {
+            let running = get("/api/branch-stats/w-exist");
+            if label == "commentary" {
+                assert!(running.contains("\"commentaryRunning\":true"), "{label}: should be running: {running}");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2200));
+            assert_eq!(finished(0, ruby.port), finished(1, rust.port), "{label}: the job's result");
+        }
+        let log = |i: usize| norm(fs::read_to_string(bases[i].join("claude.log")).unwrap_or_default(), i);
+        assert_eq!(log(0), log(1), "{label}: what the model was asked");
+        assert_eq!(cache(0), cache(1), "{label}: the cache");
+    };
+    let first = get("/api/branch-stats/w-exist");
+    for needle in ["\"stats\":{", "\"mergeBase\"", "with a pipe in its subject", "\"generated\":", "\"largest\":[{", "\"commentaryRunning\":false"] {
+        assert!(first.contains(needle), "{needle} in {first}");
+    }
+    get("/api/branch-stats/w-exist");
+    let computed = |i: usize| -> String { fs::read_to_string(worlds[i].root.join("branch-stats.json")).unwrap().lines().find(|l| l.contains("computedAt")).unwrap_or("").to_string() };
+    let before = computed(1);
+    std::thread::sleep(std::time::Duration::from_millis(1200));
+    get("/api/branch-stats/w-exist?refresh=1");
+    assert_ne!(before, computed(1), "a refresh computes the stats again");
+    get("/api/branch-stats/w-exist?branch=feat-w");
+    get("/api/branch-stats/w-feat");
+    get("/api/branch-stats/w-feat?branch=feat-a");
+    get("/api/branch-stats/w-exist?branch=nowhere");
+    get("/api/branch-stats/w-exist?branch=");
+    get("/api/branch-stats/w-stack");
+    get("/api/branch-stats/w-main");
+    get("/api/branch-stats/missing-item");
+    get("/api/branch-stats/orphan");
+    post("commentary", &act("branch-stats-commentary", "w-exist", serde_json::json!({})));
+    get("/api/branch-stats/w-exist");
+    post("commentary again", &act("branch-stats-commentary", "w-exist", serde_json::json!({"branch": "feat-w"})));
+    std::fs::write(bases[0].join("fail/claude"), "").unwrap();
+    std::fs::write(bases[1].join("fail/claude"), "").unwrap();
+    post("commentary when claude fails", &act("branch-stats-commentary", "w-exist", serde_json::json!({})));
+    std::fs::remove_file(bases[0].join("fail/claude")).unwrap();
+    std::fs::remove_file(bases[1].join("fail/claude")).unwrap();
+    std::fs::write(bases[0].join("fail/long"), "").unwrap();
+    std::fs::write(bases[1].join("fail/long"), "").unwrap();
+    post("commentary when claude fails at length", &act("branch-stats-commentary", "w-exist", serde_json::json!({})));
+    std::fs::remove_file(bases[0].join("fail/long")).unwrap();
+    std::fs::remove_file(bases[1].join("fail/long")).unwrap();
+    std::fs::write(bases[0].join("fail/empty"), "").unwrap();
+    std::fs::write(bases[1].join("fail/empty"), "").unwrap();
+    post("commentary when claude says nothing", &act("branch-stats-commentary", "w-exist", serde_json::json!({})));
+    std::fs::remove_file(bases[0].join("fail/empty")).unwrap();
+    std::fs::remove_file(bases[1].join("fail/empty")).unwrap();
+    post("commentary before any stats", &act("branch-stats-commentary", "w-feat", serde_json::json!({"branch": "feat-a"})));
+    post("commentary on a missing item", &act("branch-stats-commentary", "nowhere", serde_json::json!({})));
+    post("commentary on an unknown branch", &act("branch-stats-commentary", "w-exist", serde_json::json!({"branch": "nowhere"})));
+    // a new commit moves the head: the entry no longer matches and is replaced
+    for (i, _) in worlds.iter().enumerate() {
+        let wt = bases[i].join("wt-w");
+        fs::write(wt.join("app/models/more.rb"), "z\n").unwrap();
+        git(&wt, &["add", "."]);
+        git(&wt, &["commit", "-q", "-m", "A fourth commit"]);
+    }
+    let moved = get("/api/branch-stats/w-exist");
+    assert!(moved.contains("A fourth commit") && moved.contains("\"commentary\":null"), "{moved}");
+    for i in 0..2 {
+        tmux_on(&format!("qm-test-stats-{i}"), &["kill-server"]);
     }
 }

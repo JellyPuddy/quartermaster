@@ -713,3 +713,26 @@ pub fn require_checkout(item: &WorkItem, branch: Option<&str>) -> R<()> {
         _ => Ok(()),
     }
 }
+
+/// `BranchDiff#tip`: the branch and base the item's stats are measured on —
+/// `{root, path, branch, ref, head, base}`.
+pub fn tip(item: &mut WorkItem, branch: Option<&str>) -> R<Value> {
+    let project = item.project();
+    let root = crate::project_map::root_for(project.as_deref()).filter(|r| std::path::Path::new(r).is_dir());
+    let Some(root) = root else { return arg(format!("no repo root configured for project '{}'", project.unwrap_or_default())) };
+    let _ = gh_stack::for_root(&root).link_into(item);
+    let choice = pick(&choices_for(item, &root), branch.filter(|b| !b.is_empty()), item)?;
+    let Some(name) = choice.branch.clone() else { return arg(format!("no branch to measure: {} is detached", short_path(Some(&choice.path)))) };
+    let path = choice.path.clone();
+    let head = if choice.checkout {
+        match g(&path, &["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]) {
+            Some(h) => h,
+            None => return arg(format!("{name} has no commits yet")),
+        }
+    } else {
+        ref_head(&root, &choice)?
+    };
+    let reference = choice.reference.clone().unwrap_or_else(|| name.clone());
+    let base = base_for(&root, &path, Some(&name), &head)?;
+    Ok(json!({"root": root, "path": path, "branch": name, "ref": reference, "head": head, "base": base}))
+}

@@ -183,6 +183,34 @@ fn diff_file_payload(slug: &str, query: Option<&str>) -> Value {
 }
 
 /// `Gui#diff_payload` for the scopes ported; `None` for the rest.
+fn branch_stats_payload(slug: &str, query: Option<&str>) -> Option<Value> {
+    use crate::branch_diff::Failure;
+    let p = params(query);
+    let fail = |m: String| Some(json!({"ok": false, "error": m}));
+    let mut item = match WorkItem::find(&decode(slug)) {
+        Ok(i) => i,
+        Err(e) => {
+            if e.class != "ArgumentError" {
+                data_root::log_error("gui-branch-stats", e.class, &e.message);
+            }
+            return fail(e.message);
+        }
+    };
+    let branch = p.get("branch").and_then(Value::as_str).map(String::from);
+    let running: Vec<String> = crate::gui_jobs::running().iter().filter_map(|j| j["key"].as_str().map(String::from)).collect();
+    match crate::branch_stats::call(&mut item, branch.as_deref(), p.get("refresh").and_then(Value::as_str) == Some("1"), &running) {
+        Ok(Value::Object(m)) => {
+            let mut out = Map::new();
+            out.insert("ok".into(), json!(true));
+            out.extend(m);
+            Some(Value::Object(out))
+        }
+        Ok(_) => None,
+        Err(Failure::Arg(m)) => fail(m),
+        Err(Failure::Unported) => None,
+    }
+}
+
 fn diff_payload(slug: &str, query: Option<&str>) -> Option<Value> {
     use crate::branch_diff::{call, Failure, Params};
     let p = params(query);
@@ -381,6 +409,12 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
             return match diff_payload(slug, query) {
                 Some(v) => json_reply(v),
                 None => text_reply("501 Not Implemented", "not ported yet: this diff scope (pr, prompt) or a Review item"),
+            };
+        }
+        if let Some(slug) = route.strip_prefix("/api/branch-stats/") {
+            return match branch_stats_payload(slug, query) {
+                Some(v) => json_reply(v),
+                None => text_reply("501 Not Implemented", "not ported yet: these branch stats"),
             };
         }
         if let Some(slug) = route.strip_prefix("/api/diff-file/") {

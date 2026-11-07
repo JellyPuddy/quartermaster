@@ -266,6 +266,7 @@ fn run(payload: &Value) -> R<Value> {
             item.update_pf_mode(&args.text("mode")?).map_err(error)?;
             Ok(ok())
         }
+        "branch-stats-commentary" => branch_stats_commentary(&slug, &args),
         "issue-preview" => issue_preview(&args),
         "issue-start" => issue_start(&args),
         "pr-thread-resolve" => match args.0 {
@@ -1153,4 +1154,29 @@ fn issue_start(args: &Args) -> R<Value> {
     reply["slug"] = json!(slug);
     reply["issue"] = preview;
     Ok(reply)
+}
+
+/// `branch-stats-commentary`: one headless haiku call over the branch's stats, a background job per branch.
+fn branch_stats_commentary(slug: &str, args: &Args) -> R<Value> {
+    use crate::branch_diff::Failure as Fail;
+    let mut item = find(slug)?;
+    let branch = match args.get("branch")? {
+        Value::Null => None,
+        Value::String(b) => Some(b.clone()),
+        _ => return Err(Stop::Unported),
+    };
+    let target = match crate::branch_stats::target(&mut item, branch.as_deref()) {
+        Ok(t) => t,
+        Err(Fail::Arg(m)) => return Err(fail(m)),
+        Err(Fail::Unported) => return Err(Stop::Unported),
+    };
+    let key = crate::branch_stats::job_key(&target);
+    let label = format!("reading {}'s stats…", target["branch"].as_str().unwrap_or(""));
+    Ok(crate::gui_jobs::background(&key, &label, false, move || {
+        use crate::gui_jobs::Failure;
+        crate::branch_stats::comment(&target).map_err(|f| match f {
+            Fail::Arg(m) => Failure::Argument(m),
+            Fail::Unported => Failure::Other("the branch stats cache holds a value this port can't update yet".into(), "NotImplementedError"),
+        })
+    }))
 }
