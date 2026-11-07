@@ -55,7 +55,7 @@ fn state_index(state: &str) -> f64 {
 
 impl Entry {
     /// A snoozed your-turn sinks below working, above chats with no turn at all.
-    fn rank(&self) -> f64 {
+    pub fn rank(&self) -> f64 {
         if self.snoozed { 2.5 } else { state_index(&self.state) }
     }
 

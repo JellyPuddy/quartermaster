@@ -127,6 +127,17 @@ pub fn run(raw: Vec<OsString>) -> i32 {
             }
             _ => delegate::exec_ruby(&raw),
         },
+        None if crate::viewer::fzf_available() => {
+            feature_use::command(command);
+            match crate::viewer::open() {
+                Outcome::Done { code, stdout, stderr } => {
+                    out(&stdout);
+                    let _ = std::io::stderr().write_all(stderr.as_bytes());
+                    code
+                }
+                Outcome::Delegate => delegate::exec_ruby(&raw),
+            }
+        }
         _ => delegate::exec_ruby(&raw),
     }
 }

@@ -269,10 +269,18 @@ fn move_to(a: &[String]) -> Outcome {
 fn pr(a: &[String]) -> Outcome {
     let Some(slug) = a.first() else { return abort("usage: qm pr SLUG") };
     let item = tri!(WorkItem::find(slug));
-    if item.branches().len() > 1 {
-        return Outcome::Delegate;
+    let branches = item.branches();
+    let mut chosen = None;
+    if branches.len() > 1 {
+        if !crate::viewer::fzf_available() {
+            return abort("qm: the viewer needs fzf (brew install fzf)");
+        }
+        match crate::viewer::pick(&branches, &format!("PR of {} >", item.slug)).filter(|b| !b.is_empty()) {
+            Some(b) => chosen = Some(b),
+            None => return done(String::new()),
+        }
     }
-    match crate::pr_status::PrStatus::new(crate::clock::now_f64() as i64).open_web(&item, None) {
+    match crate::pr_status::PrStatus::new(crate::clock::now_f64() as i64).open_web(&item, chosen.as_deref()) {
         Ok(_) => done(String::new()),
         Err(Some(m)) => abort(&format!("qm: {m}")),
         Err(None) => Outcome::Delegate,
@@ -305,7 +313,7 @@ fn describe(a: &[String]) -> Outcome {
 }
 
 /// "detached from 'other'" for each item the session left, then the chat pane follows it.
-fn report_claim(vacated: &[String], session_id: &str, slug: &str, stdout: &mut String, stderr: &mut String) {
+pub(crate) fn report_claim(vacated: &[String], session_id: &str, slug: &str, stdout: &mut String, stderr: &mut String) {
     for other in vacated {
         stdout.push_str(&format!("detached from '{other}'\n"));
     }
@@ -384,7 +392,7 @@ fn ack(a: &[String]) -> Outcome {
     }
 }
 
-fn snooze(a: &[String]) -> Outcome {
+pub(crate) fn snooze(a: &[String]) -> Outcome {
     let usage = || abort("usage: qm snooze SLUG (1d | 7d | Nd | turn | clear)");
     let [slug, duration, ..] = a else { return usage() };
     let mut item = tri!(WorkItem::find(slug));

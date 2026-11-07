@@ -363,7 +363,7 @@ fn new_item(args: &Args) -> R<Value> {
 
 /// `WorkItem.from_session`: an item for a session, on its start event's project and branch, the
 /// session claimed from every other item. Returns the item and the slugs it left.
-fn from_session(session: &str, title: &str) -> R<(WorkItem, Vec<String>)> {
+pub(crate) fn from_session(session: &str, title: &str) -> R<(WorkItem, Vec<String>)> {
     let log = crate::session_log::SessionLog::read();
     let Some(start) = log.last_start_for(Some(session)) else { return Err(fail(format!("unknown session {session}"))) };
     let text_of = |key: &str| match start.get(key) {
@@ -437,7 +437,7 @@ fn presence_of(args: &Args, key: &str) -> R<Option<String>> {
 
 /// `LooseChat.kickoff`: a starter's prompt, which has the chat load something before the first question,
 /// ending in the typed question (or asking for one); else the question alone.
-fn loose_kickoff(starter: Option<&str>, question: Option<&str>) -> R<Option<String>> {
+pub(crate) fn loose_kickoff(starter: Option<&str>, question: Option<&str>) -> R<Option<String>> {
     let question = question.map(|q| strip(q).to_string()).filter(|q| !q.is_empty());
     let Some(starter) = starter else { return Ok(question) };
     let config = crate::project_config::ProjectConfig::current();

@@ -40,6 +40,15 @@ fn decode_chunked(mut body: &[u8]) -> Option<Vec<u8>> {
 
 /// Posts one action and returns the reply; a refusal (`ok` false) aborts with its error.
 pub fn call(name: &str, cmd: &str, slug: Option<&str>, args: Value) -> Result<Map<String, Value>, Failed> {
+    post(name, cmd, slug, args, false).map(|r| r.unwrap_or_default())
+}
+
+/// As `call`, but no GUI answering is `None` rather than an abort.
+pub fn call_optional(name: &str, cmd: &str, slug: Option<&str>, args: Value) -> Result<Option<Map<String, Value>>, Failed> {
+    post(name, cmd, slug, args, true)
+}
+
+fn post(name: &str, cmd: &str, slug: Option<&str>, args: Value, optional: bool) -> Result<Option<Map<String, Value>>, Failed> {
     let port = port()?;
     let abort = |m: String| Failed::Abort(m);
     let mut payload = Map::new();
@@ -54,10 +63,16 @@ pub fn call(name: &str, cmd: &str, slug: Option<&str>, args: Value) -> Result<Ma
     let no_gui = || abort(format!("qm {name}: no qm gui running on 127.0.0.1:{port} — nothing done (it starts with `qm gui`)"));
     let slow = || abort(format!("qm {name}: the qm gui on 127.0.0.1:{port} did not answer in time — try again"));
     let odd = || abort(format!("qm {name}: 127.0.0.1:{port} did not answer like a qm gui"));
-    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(2)).map_err(|_| no_gui())?;
+    let mut stream = match TcpStream::connect_timeout(&addr, Duration::from_secs(2)) {
+        Ok(s) => s,
+        Err(_) if optional => return Ok(None),
+        Err(_) => return Err(no_gui()),
+    };
     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
     let request = format!("POST /api/action HTTP/1.1\r\nContent-Type: application/json\r\nConnection: close\r\nHost: 127.0.0.1:{port}\r\nContent-Length: {}\r\n\r\n{body}", body.len());
-    stream.write_all(request.as_bytes()).map_err(|_| no_gui())?;
+    if stream.write_all(request.as_bytes()).is_err() {
+        return if optional { Ok(None) } else { Err(no_gui()) };
+    }
     let mut raw = vec![];
     if let Err(e) = stream.read_to_end(&mut raw) {
         return Err(if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) { slow() } else { odd() });
@@ -79,7 +94,7 @@ pub fn call(name: &str, cmd: &str, slug: Option<&str>, args: Value) -> Result<Ma
         };
         return Err(abort(format!("qm {name}: {error}")));
     }
-    Ok(reply)
+    Ok(Some(reply))
 }
 
 pub fn truthy(v: Option<&Value>) -> bool {

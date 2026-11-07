@@ -1,0 +1,333 @@
+$ qm "choose-state" "v-two"
+exit 0
+
+$ qm "choose-state" "v-two"
+exit 0
+
+$ qm "choose-state"
+exit 1
+--- stderr
+usage: qm choose-state SLUG
+
+$ qm "choose-state" "nowhere"
+exit 1
+--- stderr
+qm: no work item 'nowhere'
+
+$ qm "choose-project" "v-two"
+exit 0
+
+$ qm "choose-snooze" "v-two"
+exit 0
+--- stdout
+v-two: snoozed until DATE
+
+$ qm "choose-snooze"
+exit 1
+--- stderr
+usage: qm choose-snooze SLUG
+
+$ qm "attach-session" "s-newone-1"
+exit 0
+
+$ qm "attach-session"
+exit 1
+--- stderr
+usage: qm attach-session SESSION_ID
+
+$ qm "pr" "v-one"
+exit 0
+
+$ qm "pr" "v-one"
+exit 0
+
+$ qm "viewer"
+exit 0
+--- stdout
+v-res
+
+$ qm "sessions-view" "v-one"
+exit 0
+--- stdout
+v-res
+
+$ qm "sessions-view"
+exit 1
+--- stderr
+usage: qm sessions-view SLUG
+
+$ qm "inbox-view"
+exit 0
+--- stdout
+v-res
+
+$ qm "item-from-session" "nope"
+exit 1
+--- stderr
+qm: unknown session nope
+
+$ qm "item-from-session" "s-newone-1"
+exit 0
+--- stdout
+Title for the new work item: detached from 'v-two'
+Created a-fresh-item
+
+$ qm "item-from-session" "s-newone-1"
+exit 0
+--- stdout
+Title for the new work item: 
+
+$ qm "item-from-session"
+exit 1
+--- stderr
+usage: qm item-from-session SESSION_ID
+
+$ qm "open-chat"
+exit 1
+--- stderr
+usage: qm open-chat SLUG [--benchmark BRANCH]
+
+$ qm "open-chat" "v-one"
+exit 0
+
+$ qm "open-chat" "v-one" "--benchmark" "feat a/b"
+exit 0
+
+$ qm "open-chat" "--benchmark=x" "v-one"
+exit 0
+
+$ qm "start-issue"
+exit 1
+--- stderr
+usage: qm start-issue NUMBER [--project P]
+
+$ qm "start-issue" "abc"
+exit 1
+--- stderr
+qm start-issue: an issue number is required, not 'abc'
+
+$ qm "start-issue" "99"
+exit 1
+--- stderr
+qm start-issue: no issue #99 in acme/widgets: no such thing
+
+$ qm "start-issue" "15"
+exit 0
+--- stdout
+#15 Old (closed) — https://github.com/acme/widgets/issues/15
+  ⚠ the issue is closed
+  project demo, branch issue/15-old
+old-15: created, worktree ROOT/repo/.claude/worktrees/issue-15-old on issue/15-old
+no qm gui running — start its chat with:
+  cd ROOT/repo/.claude/worktrees/issue-15-old && QM_ITEM=old-15 claude Read\ issue\ \#15\ \(\`gh\ issue\ view\ 15\ --comments\`\),\ summarise\ the\ problem,\ then\ run\ a\ grilling\ session\ \(the\ grilling\ skill\)\ with\ me\ on\ how\ to\ solve\ it.\ Don\'t\ change\ code\ yet.
+
+$ qm "start-issue" "12"
+exit 0
+--- stdout
+#12 Fix the thing (open) — https://github.com/acme/widgets/issues/12
+  already tracked: fix-12 (in_progress)
+fix-12: its chat is open in the qm gui
+
+$ qm "start-issue" "#13" "--project" "demo"
+exit 0
+--- stdout
+#13 Fix the thing (open) — https://github.com/acme/widgets/issues/13
+  project demo, branch issue/13-fix-the-thing
+fix-the-thing-13: starting in the qm gui — its chat opens in the item's pane once the worktree is ready
+
+$ qm "start-issue" "13"
+exit 1
+--- stdout
+#13 Fix the thing (open) — https://github.com/acme/widgets/issues/13
+  project demo, branch issue/13-fix-the-thing
+--- stderr
+qm start-issue: nope
+
+$ qm "start-issue" "13" "--project" "nowhere"
+exit 1
+--- stderr
+qm start-issue: no repo root configured for project 'nowhere'
+
+$ qm "start-issue" "14"
+exit 0
+--- stdout
+#14 Fix the thing (open) — https://github.com/acme/widgets/issues/14
+  project demo, branch issue/14-fix-the-thing
+fix-the-thing-14: created, worktree ROOT/repo/.claude/worktrees/issue-14-fix-the-thing on issue/14-fix-the-thing
+no qm gui running — start its chat with:
+  cd ROOT/repo/.claude/worktrees/issue-14-fix-the-thing && QM_ITEM=fix-the-thing-14 claude Read\ issue\ \#14\ \(\`gh\ issue\ view\ 14\ --comments\`\),\ summarise\ the\ problem,\ then\ run\ a\ grilling\ session\ \(the\ grilling\ skill\)\ with\ me\ on\ how\ to\ solve\ it.\ Don\'t\ change\ code\ yet.
+
+$ qm "start-issue" "14"
+exit 0
+--- stdout
+#14 Fix the thing (open) — https://github.com/acme/widgets/issues/14
+  already tracked: fix-the-thing-14 (in_progress)
+fix-the-thing-14 already holds #14 — continue there: qm resume fix-the-thing-14
+
+$ qm "loose"
+exit 0
+--- stdout
+no qm gui running — start the loose chat with:
+  cd ROOT/home && QM_LOOSE=ID QM_ITEM= claude
+
+$ qm "loose" "what is this?"
+exit 0
+--- stdout
+no qm gui running — start the loose chat with:
+  cd ROOT/home && QM_LOOSE=ID QM_ITEM= claude what\ is\ this\?
+
+$ qm "loose" "--model" "opus" "--project" "demo" "a question"
+exit 0
+--- stdout
+no qm gui running — start the loose chat with:
+  cd ROOT/repo && QM_LOOSE=ID QM_ITEM= claude --model opus a\ question
+
+$ qm "loose" "--starter" "dev" "a question"
+exit 0
+--- stdout
+no qm gui running — start the loose chat with:
+  cd ROOT/home && QM_LOOSE=ID QM_ITEM= claude Load\ the\ dev\ docs.\ answer\ my\ question\ about\ them:'
+''
+'a\ question
+
+$ qm "loose" "--starter" "nope"
+exit 1
+--- stderr
+qm loose: unknown starter "nope" (config.yml loose_starters: dev)
+
+$ qm "loose" "--model" "gpt"
+exit 1
+--- stderr
+qm loose: unknown model "gpt" (sonnet, opus, haiku)
+
+$ qm "loose" "a" "b"
+exit 1
+--- stderr
+usage: qm loose [--project P] [--model sonnet|opus|haiku] [--starter NAME] ["first prompt"]
+
+$ qm "loose" "--starter" "dev" "--model" "haiku" "q"
+exit 0
+--- stdout
+loose chat ab12cd34 started in the qm gui (No project) — under Loose in its chats list
+
+$ qm "loose" "q"
+exit 1
+--- stderr
+qm loose: nope
+
+tool log:
+--prompt=state for v-two > 
+--height=40%
+--reverse
+--prompt=state for v-two > 
+--height=40%
+--reverse
+--prompt=project for v-two > 
+--height=40%
+--reverse
+--prompt=snooze v-two > 
+--height=40%
+--reverse
+--prompt=attach s-newone to > 
+--height=40%
+--reverse
+--prompt=PR of v-one > 
+--height=40%
+--reverse
+gh pr view feat-b --web
+--prompt=PR of v-one > 
+--height=40%
+--reverse
+--ansi
+--reverse
+--delimiter=	
+--with-nth=2..
+--prompt=open >  
+--header=enter or double-click resume · ^N new session · ^X sessions · ^B inbox · ^R refresh
+^S state · ^P project · ^O pr · ^F filter: open→in_progress→fridge→resolved→all
+^T distill · ^A ack degradation · ^Z snooze
+--preview=QM show {1}
+--preview-window=right:55%:wrap
+--bind=ctrl-r:reload(QM viewer-rows)
+--bind=enter:execute-silent(QM resume {1})
+--bind=double-click:execute-silent(QM resume {1})
+--bind=ctrl-n:execute-silent(QM start {1})
+--bind=ctrl-x:execute(QM sessions-view {1})
+--bind=ctrl-s:execute(QM choose-state {1})+reload(QM viewer-rows)
+--bind=ctrl-p:execute(QM choose-project {1})+reload(QM viewer-rows)
+--bind=ctrl-o:execute-silent(QM pr {1})
+--bind=ctrl-b:execute(QM inbox-view)+reload(QM viewer-rows)
+--bind=ctrl-f:execute-silent(QM cycle-filter)+transform-prompt(echo "$(cat ROOT/viewer-filter) > ")+reload(QM viewer-rows)
+--bind=ctrl-t:execute(QM distill {1} && printf '\n[press enter] ' && read -r _)+reload(QM viewer-rows)
+--bind=ctrl-a:execute-silent(QM ack {1})+reload(QM viewer-rows)
+--bind=ctrl-z:execute(QM choose-snooze {1})+reload(QM viewer-rows)
+gh pr view feat-a --json state,number,url
+gh pr view feat-b --json state,number,url
+--ansi
+--reverse
+--delimiter=	
+--with-nth=2..
+--prompt=v-one sessions >  
+--header=enter resume this session · ^R refresh · esc back
+--preview=QM show-session {1}
+--preview-window=right:55%:wrap
+--bind=enter:execute-silent(QM resume v-one --session {1})
+--bind=ctrl-r:reload(QM session-rows v-one)
+--ansi
+--reverse
+--delimiter=	
+--with-nth=2..
+--prompt=inbox >  
+--header=enter attach to a work item · ^D dismiss · ^R refresh
+^W new item from session · esc back
+--preview=QM show-session {1}
+--preview-window=right:55%:wrap
+--bind=enter:execute(QM attach-session {1})+reload(QM inbox-rows)
+--bind=ctrl-w:execute(QM item-from-session {1})+reload(QM inbox-rows)
+--bind=ctrl-d:execute-silent(QM dismiss {1})+reload(QM inbox-rows)
+--bind=ctrl-r:reload(QM inbox-rows)
+osascript    end tell   return "none" end run  http://127.0.0.1:DEADPORT/#chat=v-one http://127.0.0.1:DEADPORT/ http://localhost:DEADPORT/ 
+open http://127.0.0.1:DEADPORT/#chat=v-one
+osascript "none" end run  http://127.0.0.1:LIVEPORT/#chat=v-one&benchmark=feat+a%2Fb http://127.0.0.1:LIVEPORT/ http://localhost:LIVEPORT/ 
+open http://127.0.0.1:LIVEPORT/#chat=v-one&benchmark=feat+a%2Fb
+osascript   return "none" end run  http://127.0.0.1:LIVEPORT/#chat=v-one&benchmark=x http://127.0.0.1:LIVEPORT/ http://localhost:LIVEPORT/ 
+gh issue view 99 --repo acme/widgets --json number,title,state,url
+gh issue view 15 --repo acme/widgets --json number,title,state,url
+gh issue view 12 --repo acme/widgets --json number,title,state,url
+gh issue view 13 --repo acme/widgets --json number,title,state,url
+gh issue view 13 --repo acme/widgets --json number,title,state,url
+gh issue view 14 --repo acme/widgets --json number,title,state,url
+gh issue view 14 --repo acme/widgets --json number,title,state,url
+fzf stdin:
+in_progress
+fridge
+resolved
+in_progress
+fridge
+resolved
+demo
+No project
+1d
+7d
+clear
+fix-12	fix-12 title
+v-one	v-one title
+v-two	v-two title
+feat-a
+feat-b
+feat-a
+feat-b
+v-two	[36m❄ fridge       [0m	No project  	v-two title                                 	-	
+fix-12	[32m● in_progress  [0m	demo        	fix-12 title                                	-	
+v-one	[32m● in_progress  [0m	demo        	v-one title                                 	feat-a feat-b	
+
+
+
+gui log:
+{"cmd":"issue-start","args":{"number":12,"project":"demo"}}
+{"cmd":"issue-start","args":{"number":13,"project":"demo"}}
+{"cmd":"issue-start","args":{"number":13,"project":"demo"}}
+{"cmd":"loose-start","args":{"project":"No project","model":"haiku","prompt":"q","starter":"dev"}}
+{"cmd":"loose-start","args":{"project":"No project","prompt":"q"}}
+view filter:
+open

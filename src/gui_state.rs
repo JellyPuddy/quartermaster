@@ -57,7 +57,7 @@ pub fn relative_when(ts: Option<&str>) -> R<Option<String>> {
 }
 
 /// `Time.at(seconds).utc.iso8601`.
-fn iso(seconds: f64) -> String {
+pub(crate) fn iso(seconds: f64) -> String {
     chrono::DateTime::<chrono::Utc>::from_timestamp(seconds.floor() as i64, 0).map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)).unwrap_or_default()
 }
 
@@ -113,7 +113,7 @@ fn config_raw() -> Map<String, Value> {
 }
 
 /// `RateLimits#payload`: the account's limits as the status line last wrote them.
-fn rate_limits() -> Value {
+pub(crate) fn rate_limits() -> Value {
     let Ok(raw) = std::fs::read_to_string(data_root::root().join("rate-limits.json")) else { return Value::Null };
     let Ok(Value::Object(doc)) = serde_json::from_str::<Value>(&raw) else { return Value::Null };
     let when = |v: Option<&Value>| -> Option<String> {

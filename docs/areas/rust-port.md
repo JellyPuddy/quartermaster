@@ -112,7 +112,7 @@ a file that is not UTF-8 or not a regular file. A command that gets "not mine" g
 anything is written (`state … resolved` checks first, since it changes the item); `Loaded::record`
 is the step that writes snapshots, and repeating it changes nothing. `qm draft list` prints the
 drafts file's entries (`--json` in the json 2.7 gem's layout, where an empty array is `[` blank line
-`]`); `qm draft add` is Rust (`chat_review_drafts.rs`: the PR through the PRs cache or `gh`, the anchor check, a guard under the drafts lock that keeps the user's drafts; `tests/cli_draft.rs` pins it against a local origin holding `refs/pull/7/head`), and so is `qm pr` for an item with one branch (`pr_status::open_web`, shared with the GUI's `pr` action); several branches go to the fzf picker, which stays Ruby.
+`]`); `qm draft add` is Rust (`chat_review_drafts.rs`: the PR through the PRs cache or `gh`, the anchor check, a guard under the drafts lock that keeps the user's drafts; `tests/cli_draft.rs` pins it against a local origin holding `refs/pull/7/head`), and so is `qm pr` (`pr_status::open_web`, shared with the GUI's `pr` action; several branches go through the fzf picker). The fzf viewer, `sessions-view`, `inbox-view` and the pickers (`choose-state|project|snooze`, `attach-session`, `item-from-session`) are `viewer.rs`, `open-chat`, `start-issue` and `loose` are `chat_launch_commands.rs`, `overview` is `overview.rs`; `tests/cli_launch.rs` and `tests/cli_overview.rs` pin them with a fake `fzf` that logs its argv and stdin, a stand-in GUI server and fake `gh`/`open`/`osascript`.
 
 Still Ruby, even for these words: `draft add` with an option in a spelling OptionParser reads its own way (abbreviations, `0x10`), `state … resolved` and `cleanup SLUG`
 for an item whose issue drafts `load` declines, and every argument shape the
@@ -194,5 +194,5 @@ covers it and passes on both.
 - **Known Ruby race, not fixed here**: Ruby reads an item before taking the lock and saves with a
   plain `File.write`, so concurrent Ruby writers often fail with "malformed work item file". Rust
   writers cannot produce that state; the mixed-writer test allows only that failure, from Ruby.
-- **Not ported yet** (still Ruby): the fzf viewer itself and its pickers, every other command, `qm gui`, chats, worktrees,
-  PRs, diffs, rotation, benchmarks and `statusline/statusline.rb`.
+- **Not ported yet** (still Ruby): `feature-use`, the default `qm gui` (Rust's is opt-in), unknown-command handling and
+  `statusline/statusline.rb`.

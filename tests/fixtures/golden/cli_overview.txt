@@ -1,0 +1,54 @@
+$ qm "overview"
+exit 1
+--- stderr
+usage: qm overview --json [PATH] | --url | --page | --page-published
+
+$ qm "overview" "--bogus"
+exit 1
+--- stderr
+usage: qm overview --json [PATH] | --url | --page | --page-published
+
+$ qm "overview" "--json"
+exit 0
+--- stdout
+{"v":1,"generatedAt":"TS","counts":{"states":{"in_progress":17,"fridge":1,"resolved":2},"chats":{"blocked":0,"your_turn":0,"working":0,"waiting":0,"none":18},"shown":18,"omitted":0},"rateLimits":null,"items":[{"slug":"quiet-sessioned","title":"quiet-sessioned","state":"in_progress","project":"demo","branches":[],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":"TS","openNotes":[],"board":null},{"slug":"stale-ten-days","title":"stale-ten-days","state":"in_progress","project":"demo","branches":[],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":"TS","openNotes":[],"board":null},{"slug":"degrade","title":"degrade","state":"in_progress","project":"demo","branches":[],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":"TS","openNotes":[],"board":null},{"slug":"pr-cached","title":"pr-cached","state":"in_progress","project":"demo","branches":["c-merged"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-cached-stale-open","title":"pr-cached-stale-open","state":"in_progress","project":"demo","branches":["c-open-stale"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-merged-plus-gone","title":"pr-merged-plus-gone","state":"in_progress","project":"demo","branches":["merged-b","renamed-old"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-no-project","title":"pr-no-project","state":"in_progress","project":"elsewhere","branches":["b-merged"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-none-exists","title":"pr-none-exists","state":"in_progress","project":"demo","branches":["nopr-exists"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-none-gone","title":"pr-none-gone","state":"in_progress","project":"demo","branches":["nopr"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-one-merged","title":"pr-one-merged","state":"in_progress","project":"demo","branches":["b-merged"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-slash-branch","title":"pr-slash-branch","state":"in_progress","project":"demo","branches":["feat/x"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-stack-merged","title":"pr-stack-merged","state":"in_progress","project":"demo","branches":["s1","s2"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-stack-mixed","title":"pr-stack-mixed","state":"in_progress","project":"demo","branches":["m1","m2"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"snoozed-future","title":"snoozed-future","state":"in_progress","project":"demo","branches":[],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"snoozed-garbage","title":"snoozed-garbage","state":"in_progress","project":"demo","branches":[],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"snoozed-past","title":"snoozed-past","state":"in_progress","project":"demo","branches":[],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"stale","title":"stale","state":"in_progress","project":"demo","branches":[],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"fridge-old","title":"fridge-old","state":"fridge","project":"demo","branches":[],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null}]}
+
+$ qm "overview" "--json" "BASE/out/overview.json"
+exit 0
+--- stdout
+18 items: 17 in progress, 1 fridge → BASE/out/overview.json
+
+$ qm "overview" "--url"
+exit 1
+--- stderr
+qm overview: no overview_artifact: in ROOT/config.yml — publish skills/work-items/page.html and put its claude.ai URL there
+
+$ qm "overview" "--url"
+exit 0
+--- stdout
+https://claude.ai/artifact/abc
+
+$ qm "overview" "--url"
+exit 1
+--- stderr
+qm overview: no overview_artifact: in ROOT/config.yml — publish skills/work-items/page.html and put its claude.ai URL there
+
+$ qm "overview" "--page"
+exit 0
+--- stdout
+REPO/skills/work-items/page.html
+
+$ qm "overview" "--page-published"
+exit 0
+
+$ qm "overview" "--page"
+exit 0
+
+$ qm "overview" "--page"
+exit 0
+--- stdout
+REPO/skills/work-items/page.html
+
+file:
+{"v":1,"generatedAt":"TS","counts":{"states":{"in_progress":17,"fridge":1,"resolved":2},"chats":{"blocked":0,"your_turn":0,"working":0,"waiting":0,"none":18},"shown":18,"omitted":0},"rateLimits":null,"items":[{"slug":"quiet-sessioned","title":"quiet-sessioned","state":"in_progress","project":"demo","branches":[],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":"TS","openNotes":[],"board":null},{"slug":"stale-ten-days","title":"stale-ten-days","state":"in_progress","project":"demo","branches":[],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":"TS","openNotes":[],"board":null},{"slug":"degrade","title":"degrade","state":"in_progress","project":"demo","branches":[],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":"TS","openNotes":[],"board":null},{"slug":"pr-cached","title":"pr-cached","state":"in_progress","project":"demo","branches":["c-merged"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-cached-stale-open","title":"pr-cached-stale-open","state":"in_progress","project":"demo","branches":["c-open-stale"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-merged-plus-gone","title":"pr-merged-plus-gone","state":"in_progress","project":"demo","branches":["merged-b","renamed-old"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-no-project","title":"pr-no-project","state":"in_progress","project":"elsewhere","branches":["b-merged"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-none-exists","title":"pr-none-exists","state":"in_progress","project":"demo","branches":["nopr-exists"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-none-gone","title":"pr-none-gone","state":"in_progress","project":"demo","branches":["nopr"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-one-merged","title":"pr-one-merged","state":"in_progress","project":"demo","branches":["b-merged"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-slash-branch","title":"pr-slash-branch","state":"in_progress","project":"demo","branches":["feat/x"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-stack-merged","title":"pr-stack-merged","state":"in_progress","project":"demo","branches":["s1","s2"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"pr-stack-mixed","title":"pr-stack-mixed","state":"in_progress","project":"demo","branches":["m1","m2"],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"snoozed-future","title":"snoozed-future","state":"in_progress","project":"demo","branches":[],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"snoozed-garbage","title":"snoozed-garbage","state":"in_progress","project":"demo","branches":[],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"snoozed-past","title":"snoozed-past","state":"in_progress","project":"demo","branches":[],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"stale","title":"stale","state":"in_progress","project":"demo","branches":[],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null},{"slug":"fridge-old","title":"fridge-old","state":"fridge","project":"demo","branches":[],"chat":{"state":"none","since":null,"snoozed":false,"waitingOn":[]},"paneLive":false,"lastActivity":null,"openNotes":[],"board":null}]}
+record: 5
