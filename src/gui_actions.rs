@@ -266,6 +266,22 @@ fn run(payload: &Value) -> R<Value> {
             item.update_pf_mode(&args.text("mode")?).map_err(error)?;
             Ok(ok())
         }
+        "pr-thread-resolve" => match args.0 {
+            Some(raw) => crate::gui_review_actions::resolve(raw),
+            None => Err(Stop::Unported),
+        },
+        "review-preview" => match args.0 {
+            Some(raw) => crate::gui_review_actions::preview(&slug, raw),
+            None => Err(Stop::Unported),
+        },
+        "review-post" => match args.0 {
+            Some(raw) => crate::gui_review_actions::post(&slug, raw),
+            None => Err(Stop::Unported),
+        },
+        "draft-place" => match args.0 {
+            Some(raw) => crate::gui_review_actions::place(&slug, raw),
+            None => Err(Stop::Unported),
+        },
         "page-annotations" => crate::gui_draft_actions::page_annotations(args.get("root")?, args.get("annotations")?, args.get("url")?, args.get("title")?),
         "drafts-load" => crate::gui_draft_actions::drafts_load(&slug, args.get("text")?),
         "drafts-send" => match args.0 {
@@ -957,7 +973,13 @@ fn drafts(cmd: &str, slug: &str, args: &Args) -> R<Value> {
         "draft-edit" => d::edit(&slug, &args.text("id")?, args.get("comment")?),
         "draft-delete" => d::delete(&slug, &args.text("id")?),
         "drafts-discard" => d::discard(&slug, args.get("ids")?),
-        "draft-move" => d::move_to(&slug, &args.text("id")?, args.get("to")?),
+        "draft-move" => {
+            let id = args.text("id")?;
+            if args.get("to")?.as_str() == Some("github") {
+                crate::gui_review_actions::guard_move(&slug, &id)?;
+            }
+            d::move_to(&slug, &id, args.get("to")?)
+        }
         "issue-comment-put" => match args.0 {
             Some(raw) => d::issue_comment_put(&slug, raw),
             None => Err(Stop::Unported),
@@ -967,7 +989,12 @@ fn drafts(cmd: &str, slug: &str, args: &Args) -> R<Value> {
             None => Err(Stop::Unported),
         },
         _ => match args.0 {
-            Some(raw) => d::put(&slug, raw),
+            Some(raw) => {
+                if raw.get("kind") == Some(&Value::String("github-comment".into())) && !strip(&args.text("comment")?).is_empty() {
+                    crate::gui_review_actions::guard_put(&slug, raw)?;
+                }
+                d::put(&slug, raw)
+            }
             None => Err(Stop::Unported),
         },
     }

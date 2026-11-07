@@ -23,7 +23,7 @@ fn query() -> String {
 }
 
 /// `Err(Some(message))` is the `ArgumentError` Ruby answers with; `Err(None)` a shape only Ruby handles.
-type Failure = Option<String>;
+pub type Failure = Option<String>;
 
 fn word(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
@@ -247,4 +247,61 @@ fn fetch(repo: Option<&str>, number: Option<&str>, head: Option<&str>, fresh: bo
     map.retain(|_, (t, _)| at - *t < TTL);
     map.insert(key, (at, value.clone()));
     Ok(value)
+}
+
+const RESOLVE: &str = "mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { id isResolved } } }";
+const UNRESOLVE: &str = "mutation($id: ID!) { unresolveReviewThread(input: {threadId: $id}) { thread { id isResolved } } }";
+const REPLY: &str = "mutation($review: ID!, $thread: ID!, $body: String!) {\n  addPullRequestReviewThreadReply(input: {pullRequestReviewId: $review, pullRequestReviewThreadId: $thread, body: $body}) {\n    comment { id url }\n  }\n}\n";
+
+/// A write through this module forgets its PR's cached threads, so the refetch after it is fresh.
+pub fn forget(repo: &str, number: &str) {
+    let prefix = format!("{}#{}@", repo.to_lowercase(), number);
+    if let Some(map) = CACHE.lock().unwrap().as_mut() {
+        map.retain(|key, _| !key.starts_with(&prefix));
+    }
+}
+
+fn node_id(id: &str) -> bool {
+    (1..=200).contains(&id.chars().count()) && id.chars().all(|c| word(c) || c == '-')
+}
+
+/// `ReviewThreads#resolve`: resolves (or unresolves) a thread at once; its new `isResolved`.
+pub fn resolve(repo: &str, number: &str, thread: &Value, resolved: bool) -> Result<Value, Failure> {
+    let result = (|| {
+        let _ = checked(Some(repo), Some(number))?;
+        let Some(id) = thread.as_str().filter(|t| node_id(t)) else {
+            let shown = match thread {
+                Value::Null => String::new(),
+                Value::String(t) => t.clone(),
+                Value::Bool(b) => b.to_string(),
+                Value::Number(n) if n.is_i64() || n.is_u64() => n.to_string(),
+                _ => return Err(None),
+            };
+            return Err(Some(format!("'{shown}' is not a review thread id")));
+        };
+        let data = graphql(if resolved { RESOLVE } else { UNRESOLVE }, &[("id", json!(id))])?;
+        let key = if resolved { "resolveReviewThread" } else { "unresolveReviewThread" };
+        match data.get(key).and_then(|v| v.get("thread")).filter(|t| !t.is_null() && **t != Value::Bool(false)) {
+            Some(t) => Ok(t.get("isResolved").cloned().unwrap_or(Value::Null)),
+            None => Err(Some(format!("GitHub did not {} the thread", if resolved { "resolve" } else { "unresolve" }))),
+        }
+    })();
+    forget(repo, number);
+    result
+}
+
+/// `ReviewThreads#reply`: a reply into the pending review `review_id`; the comment's `{id, url}`.
+pub fn reply(repo: &str, number: &str, review_id: &str, thread_id: &str, body: &str) -> Result<Value, Failure> {
+    let result = (|| {
+        if crate::ruby_text::strip(body).is_empty() {
+            return Err(Some("a reply can't be blank".to_string()));
+        }
+        let data = graphql(REPLY, &[("review", json!(review_id)), ("thread", json!(thread_id)), ("body", json!(body))])?;
+        match data.get("addPullRequestReviewThreadReply").and_then(|v| v.get("comment")).filter(|c| !c.is_null() && **c != Value::Bool(false)) {
+            Some(c) => Ok(c.clone()),
+            None => Err(Some(format!("GitHub took no reply on thread {thread_id}"))),
+        }
+    })();
+    forget(repo, number);
+    result
 }

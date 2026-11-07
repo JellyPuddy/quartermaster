@@ -125,21 +125,22 @@ pub(crate) fn discard(slug: &str, ids: &Value) -> R<Value> {
     Ok(merged("discarded", json!(gone)))
 }
 
-/// `Drafts#move` to the chat; a move to the review checks the line with git and stays Ruby's.
+/// `Drafts#move`: the chip on a PR-scope draft, to the review (`github`) or the chat.
 pub(crate) fn move_to(slug: &str, id: &str, to: &Value) -> R<Value> {
-    if to.as_str() == Some("github") {
-        return Err(Stop::Unported);
-    }
-    if to.as_str() != Some("chat") {
-        let shown = match to {
-            Value::Null => "nil".to_string(),
-            Value::Bool(b) => b.to_string(),
-            Value::Number(n) if n.is_i64() || n.is_u64() => n.to_string(),
-            Value::String(s) => crate::ruby_text::inspect_ascii(s).ok_or(Stop::Unported)?,
-            _ => return Err(Stop::Unported),
-        };
-        return Err(Stop::refuse(format!("a draft moves to github or chat, not {shown}")));
-    }
+    let target = match to.as_str() {
+        Some("github") => "github-comment",
+        Some("chat") => "diff-comment",
+        _ => {
+            let shown = match to {
+                Value::Null => "nil".to_string(),
+                Value::Bool(b) => b.to_string(),
+                Value::Number(n) if n.is_i64() || n.is_u64() => n.to_string(),
+                Value::String(s) => crate::ruby_text::inspect_ascii(s).ok_or(Stop::Unported)?,
+                _ => return Err(Stop::Unported),
+            };
+            return Err(Stop::refuse(format!("a draft moves to github or chat, not {shown}")));
+        }
+    };
     let entry = update(slug, |list| {
         let Some(at) = position(list, id) else { return refuse(format!("no draft {id} on {slug}")) };
         let entry = as_map(&mut list[at])?;
@@ -147,9 +148,19 @@ pub(crate) fn move_to(slug: &str, id: &str, to: &Value) -> R<Value> {
         if !LINE_KINDS.contains(&kind) {
             return refuse("only a diff comment moves between the review and the chat");
         }
-        if kind != "diff-comment" {
-            entry.insert("kind".into(), json!("diff-comment"));
+        if target == "github-comment" && matches!(entry.get("number"), None | Some(Value::Null) | Some(Value::Bool(false))) {
+            return refuse("only a draft made in the PR scope can go to the review");
+        }
+        if kind != target {
+            entry.insert("kind".into(), json!(target));
             entry.shift_remove("failed");
+            if target == "github-comment" {
+                for (k, default) in [("subject", "line"), ("author", "user")] {
+                    if matches!(entry.get(k), None | Some(Value::Null) | Some(Value::Bool(false))) {
+                        entry.insert(k.into(), json!(default));
+                    }
+                }
+            }
             bumped(entry)?;
         }
         Ok(Value::Object(entry.clone()))
@@ -174,9 +185,6 @@ pub(crate) fn put(slug: &str, raw: &Map<String, Value>) -> R<Value> {
         Some(v) => to_s(v).map_err(halt)?,
     };
     let kind = if kind.is_empty() { "diff-comment".to_string() } else { kind };
-    if kind == "github-comment" {
-        return Err(Stop::Unported);
-    }
     if !LINE_KINDS.contains(&kind.as_str()) {
         return Err(Stop::refuse(format!("'{kind}' is not a diff comment kind")));
     }
@@ -200,13 +208,16 @@ pub(crate) fn put(slug: &str, raw: &Map<String, Value>) -> R<Value> {
     if fields.get("committed") != Some(&Value::Bool(true)) {
         fields.shift_remove("committed");
     }
-    if !blank(raw.get("number")) {
-        return Err(Stop::Unported); // a PR draft: the repo, number and commit checks
+    if !(kind == "diff-comment" && blank(raw.get("number"))) {
+        for (k, v) in pr_part(raw, &kind).map_err(halt)? {
+            fields.insert(k, v);
+        }
     }
     let comment = raw.get("comment").map(to_s).transpose().map_err(halt)?.unwrap_or_default();
     let address = |m: &Map<String, Value>| -> Result<Vec<String>, Halt> { ["range", "side", "line", "path", "number"].iter().map(|k| m.get(*k).map(to_s).transpose().map(Option::unwrap_or_default)).collect() };
     let wanted = address(&fields).map_err(halt)?;
     let stored = update(slug, |list| {
+        let mut fields = fields.clone();
         let mut found = None;
         for (i, e) in list.iter().enumerate() {
             let kind = e.get("kind").and_then(Value::as_str).unwrap_or("");
@@ -224,6 +235,11 @@ pub(crate) fn put(slug: &str, raw: &Map<String, Value>) -> R<Value> {
         if let Some(i) = found {
             let entry = as_map(&mut list[i])?;
             let before = entry.clone();
+            // a draft Claude wrote stays Claude's until its text changes
+            if fields.contains_key("author") && !matches!(entry.get("author"), None | Some(Value::Null) | Some(Value::Bool(false))) && entry.get("comment") == Some(&json!(comment)) {
+                let keep = entry.get("author").cloned().unwrap_or(Value::Null);
+                fields.insert("author".into(), keep);
+            }
             for k in DIFF_FIELDS.iter().chain(PR_FIELDS.iter()).chain(["pin", "failed"].iter()) {
                 if !fields.contains_key(*k) {
                     entry.shift_remove(*k);
@@ -511,4 +527,60 @@ pub(crate) fn drafts_load(slug: &str, text: &Value) -> R<Value> {
     out["loaded"] = json!(added.len());
     out["ids"] = Value::Array(added.iter().map(|e| e.get("id").cloned().unwrap_or(Value::Null)).collect());
     Ok(out)
+}
+
+
+const SUBJECTS: [&str; 2] = ["line", "file"];
+const AUTHORS: [&str; 2] = ["user", "claude"];
+
+fn sha(t: &str) -> bool {
+    (7..=64).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// The PR fields of a draft made in the PR scope (`Drafts#line_fields`): a review draft names its PR and
+/// the commit it anchors to, and has a subject and an author.
+fn pr_part(raw: &Map<String, Value>, kind: &str) -> Result<Map<String, Value>, Halt> {
+    let mut pr = Map::new();
+    for k in PR_FIELDS {
+        if let Some(v) = raw.get(k) {
+            if !blank(Some(v)) {
+                pr.insert(k.into(), v.clone());
+            }
+        }
+    }
+    let number_text = to_s(pr.get("number").unwrap_or(&Value::Null))?;
+    let number = crate::ruby_text::kernel_integer(&Value::String(number_text)).map_err(|_| Halt::Unported)?;
+    let repo = to_s(pr.get("repo").unwrap_or(&Value::Null))?;
+    match number {
+        Some(n) if crate::review_threads::repo_ok(&repo) && n > 0 => {
+            pr.insert("number".into(), json!(n));
+        }
+        _ => return refuse("a review draft needs its PR's repo and number"),
+    }
+    if !sha(&to_s(pr.get("commit").unwrap_or(&Value::Null))?) {
+        return refuse("a review draft needs the commit it anchors to");
+    }
+    if let Some(base) = pr.get("base") {
+        if !sha(&to_s(base)?) {
+            return refuse("a review draft's base must be a sha");
+        }
+    }
+    if kind == "diff-comment" {
+        pr.shift_remove("subject");
+        pr.shift_remove("author");
+        return Ok(pr);
+    }
+    if !pr.contains_key("subject") {
+        pr.insert("subject".into(), json!("line"));
+    }
+    if !pr.contains_key("author") {
+        pr.insert("author".into(), json!("user"));
+    }
+    if !pr.get("subject").and_then(Value::as_str).is_some_and(|v| SUBJECTS.contains(&v)) {
+        return refuse("subject must be line or file");
+    }
+    if !pr.get("author").and_then(Value::as_str).is_some_and(|v| AUTHORS.contains(&v)) {
+        return refuse("author must be user or claude");
+    }
+    Ok(pr)
 }

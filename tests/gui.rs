@@ -1328,13 +1328,11 @@ fn the_draft_actions_match_ruby() {
     fs::write(root2.join("drafts/stale.json"), "not json").unwrap();
     step("put over junk", &act("draft-put", "stale", r#"{"path":"a.txt","line":1,"comment":"fresh"}"#));
     step("delete it", &act("draft-delete", "stale", r#"{"id":"{ID}"}"#));
-    // GitHub drafts, PR addresses and moves to the review need git: Ruby's, with nothing written
-    let before = draft_traces(&root2, &w.root, &rust_ids);
-    for body in [act("draft-put", "stale", r#"{"path":"a.txt","kind":"github-comment","comment":"x"}"#), act("draft-put", "stale", r#"{"path":"a.txt","number":5,"comment":"x"}"#), act("draft-move", "stale", r#"{"id":"g1","to":"github"}"#)] {
-        let a = request(rust.port, "POST", "/api/action", &origin, &body, true);
-        assert!(a.status.starts_with("501"), "{body}: {}", a.status);
-    }
-    assert_eq!(before, draft_traces(&root2, &w.root, &rust_ids));
+    // GitHub drafts, PR addresses and moves to the review are checked with git (the review test covers a real PR)
+    step("github put without a repo", &act("draft-put", "stale", r#"{"path":"a.txt","kind":"github-comment","comment":"x"}"#));
+    step("PR address put", &act("draft-put", "stale", r#"{"path":"a.txt","number":5,"comment":"x"}"#));
+    step("PR address put, complete", &act("draft-put", "stale", r#"{"path":"a.txt","number":5,"repo":"acme/widgets","commit":"abcdef0","comment":"x"}"#));
+    step("move to the review", &act("draft-move", "stale", r#"{"id":"g1","to":"github"}"#));
 }
 
 fn viewed_traces(root: &Path, other: &Path) -> String {
@@ -4178,4 +4176,369 @@ fn page_annotations_and_clipboard_loads_match_ruby() {
     for s in sockets {
         tmux_on(s, &["kill-server"]);
     }
+}
+
+struct ReviewWorld {
+    base: PathBuf,
+    root: PathBuf,
+    home: PathBuf,
+    repo: PathBuf,
+    transcripts: PathBuf,
+    base_sha: String,
+    c1: String,
+    head: String,
+}
+
+fn review_world(base: &Path) -> ReviewWorld {
+    let w = attention_world(base, std::time::SystemTime::now(), None);
+    let repo = base.join("rev-repo");
+    let origin = base.join("rev-origin.git");
+    fs::create_dir_all(&repo).unwrap();
+    fs::create_dir_all(&origin).unwrap();
+    git(&origin, &["init", "-q", "--bare", "-b", "main"]);
+    git(&repo, &["init", "-q", "-b", "main"]);
+    let lines = |name: &str, n: usize| (1..=n).map(|i| format!("{name}{i}\n")).collect::<String>();
+    fs::write(repo.join("a.rs"), lines("a", 10)).unwrap();
+    fs::write(repo.join("bad.rs"), lines("b", 3)).unwrap();
+    fs::write(repo.join("err.rs"), lines("e", 3)).unwrap();
+    fs::write(repo.join("cf.rs"), lines("f", 5)).unwrap();
+    fs::write(repo.join("long.rs"), lines("l", 3)).unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "-q", "-m", "base"]);
+    git(&repo, &["remote", "add", "origin", origin.to_str().unwrap()]);
+    git(&repo, &["push", "-q", "origin", "main"]);
+    let base_sha = git(&repo, &["rev-parse", "HEAD"]);
+    let edit = |file: &str, from: &str, to: &str| {
+        let text = fs::read_to_string(repo.join(file)).unwrap().replace(from, to);
+        fs::write(repo.join(file), text).unwrap();
+    };
+    git(&repo, &["checkout", "-q", "-b", "pr-branch"]);
+    edit("a.rs", "a3\n", "a3 c1\n");
+    edit("bad.rs", "b2\n", "b2 new\n");
+    edit("err.rs", "e2\n", "e2 new\n");
+    edit("cf.rs", "f2\n", "f2 c1\n");
+    edit("long.rs", "l2\n", "l2 new\n");
+    git(&repo, &["commit", "-q", "-am", "c1"]);
+    let c1 = git(&repo, &["rev-parse", "HEAD"]);
+    edit("a.rs", "a3 c1\n", "a3 c2\n");
+    edit("a.rs", "a8\n", "a8 c2\n");
+    edit("cf.rs", "f2 c1\n", "f2 c2\n");
+    git(&repo, &["commit", "-q", "-am", "c2"]);
+    let head = git(&repo, &["rev-parse", "HEAD"]);
+    git(&repo, &["push", "-q", "origin", "HEAD:refs/pull/5/head"]);
+    git(&repo, &["checkout", "-q", "main"]);
+    fs::write(w.root.join("config.yml"), format!("projects:\n  rev: {}\n", repo.display())).unwrap();
+    fs::write(w.root.join("work-items/rev-item.md"), "---\nv: 1\ntitle: rev-item\nstate: in_progress\nproject: rev\ncreated: '2026-01-01'\n---\n\n## Description\n\nd\n\n## Notes\n\n## Snapshots\n").unwrap();
+    let gh = base.join("gh");
+    fs::create_dir_all(&gh).unwrap();
+    executable(&base.join("bin/gh"), r#"#!/bin/sh
+out=""
+for a in "$@"; do case "$a" in query=*) a="query=$(printf %s "$a" | tr '\n' ' ' | cut -c7-60)";; esac; out="$out|$a"; done
+echo "$out" >> "$FAKE_GH_LOG"
+q="$*"
+case "$q" in
+  *"baseRefName headRefOid"*) cat "$FAKE_GH/pr.json";;
+  *"addPullRequestReview(input"*) echo '{"data":{"addPullRequestReview":{"pullRequestReview":{"id":"R_new"}}}}';;
+  *addPullRequestReviewThreadReply*)
+    case "$q" in
+      *thread=T_bad*) echo '{"data":{"addPullRequestReviewThreadReply":{"comment":null}}}';;
+      *thread=T_err*) echo '{"errors":[{"message":"reply refused"}],"data":null}';;
+      *thread=T_long*) printf '{"errors":[{"message":"%s"}],"data":null}' "$(printf 'x%.0s' $(seq 1 400))";;
+      *) echo '{"data":{"addPullRequestReviewThreadReply":{"comment":{"id":"C_r","url":"u"}}}}';;
+    esac;;
+  *addPullRequestReviewThread*)
+    case "$q" in
+      *path=bad.rs*) echo '{"data":{"addPullRequestReviewThread":{"thread":null}}}';;
+      *path=err.rs*) echo '{"errors":[{"message":"line is not part of the diff"}],"data":null}';;
+      *path=long.rs*) printf '{"errors":[{"message":"%s"}],"data":null}' "$(printf 'y%.0s' $(seq 1 400))";;
+      *) echo '{"data":{"addPullRequestReviewThread":{"thread":{"id":"TH"}}}}';;
+    esac;;
+  *addPullRequestReviewComment*)
+    case "$q" in
+      *path=cf.rs*) echo '{"errors":[{"message":"position is invalid"}],"data":null}';;
+      *) echo '{"data":{"addPullRequestReviewComment":{"comment":{"id":"CM"}}}}';;
+    esac;;
+  *resolveReviewThread*|*unresolveReviewThread*)
+    case "$q" in
+      *id=T_none*) echo '{"data":{"resolveReviewThread":{"thread":null},"unresolveReviewThread":{"thread":null}}}';;
+      *id=T_err*) echo "gh exploded" >&2; exit 1;;
+      *unresolveReviewThread*) echo '{"data":{"unresolveReviewThread":{"thread":{"id":"T","isResolved":false}}}}';;
+      *) echo '{"data":{"resolveReviewThread":{"thread":{"id":"T","isResolved":true}}}}';;
+    esac;;
+esac
+"#);
+    ReviewWorld { base: base.to_path_buf(), root: w.root, home: w.home, repo, transcripts: w.transcripts, base_sha, c1, head }
+}
+
+fn write_pr(w: &ReviewWorld, node: serde_json::Value) {
+    fs::write(w.base.join("gh/pr.json"), serde_json::json!({"data": {"repository": {"pullRequest": node}}}).to_string()).unwrap();
+}
+
+#[test]
+fn the_review_actions_match_ruby() {
+    let base = tempfile::tempdir().unwrap();
+    let bases = [base.path().join("a"), base.path().join("b")];
+    let worlds = [review_world(&bases[0]), review_world(&bases[1])];
+    let open = |w: &ReviewWorld, reviews: serde_json::Value| serde_json::json!({"id": "PR_1", "baseRefName": "main", "headRefOid": w.head, "state": "OPEN", "reviews": {"nodes": reviews}});
+    let env = |i: usize| -> Vec<(&'static str, String)> {
+        let w = &worlds[i];
+        vec![("HOME", w.home.display().to_string()), ("QM_TRANSCRIPTS_DIR", w.transcripts.display().to_string()), ("PATH", format!("{}:{}", w.base.join("bin").display(), std::env::var("PATH").unwrap())), ("FAKE_GH", w.base.join("gh").display().to_string()), ("FAKE_GH_LOG", w.base.join("gh.log").display().to_string()), ("QM_TMUX_SOCKET", format!("qm-test-review-{i}"))]
+    };
+    for w in &worlds {
+        write_pr(w, open(w, serde_json::json!([])));
+    }
+    let ruby = start_env(false, &worlds[0].root, &worlds[0].home, &env(0));
+    let rust = start_env(true, &worlds[1].root, &worlds[1].home, &env(1));
+    let origin = [("Origin", "http://127.0.0.1:PORT".to_string()), ("Content-Type", "application/json".to_string())];
+    let norm = |text: String, i: usize| -> String {
+        let w = &worlds[i];
+        let mut t = text.replace(&w.base.display().to_string(), "BASE");
+        for (sha, name) in [(&w.base_sha, "BASESHA"), (&w.c1, "C1SHA"), (&w.head, "HEADSHA")] {
+            t = t.replace(sha.as_str(), name).replace(&sha[..7], &format!("{name}7"));
+        }
+        let t = regex::Regex::new(r#""(createdAt|updatedAt)":\s*"[^"]*""#).unwrap().replace_all(&t, "\"$1\":\"STAMP\"").into_owned();
+        regex::Regex::new(r#"\b[0-9a-f]{12}\b"#).unwrap().replace_all(&t, "ID").into_owned()
+    };
+    let state = |i: usize| -> String {
+        let w = &worlds[i];
+        let mut out = String::new();
+        tree_text(&w.root.join("drafts"), "drafts", &mut out);
+        out += &fs::read_to_string(w.base.join("gh.log")).unwrap_or_default();
+        let log = fs::read_to_string(w.root.join("qm.log")).unwrap_or_default();
+        out += &regex::Regex::new(r"(?m)^\S+ \[").unwrap().replace_all(&log, "[");
+        norm(out, i)
+    };
+    let act = |cmd: &str, slug: &str, args: &serde_json::Value| serde_json::json!({"cmd": cmd, "slug": slug, "args": args}).to_string();
+    let finished = |i: usize, port: u16| -> String {
+        let a = request(port, "GET", "/api/state", &[], "", true);
+        let v: serde_json::Value = serde_json::from_slice(&a.body).unwrap_or_default();
+        norm(v["finished"].to_string(), i)
+    };
+    let step = |label: &str, body: &str| {
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, body, true), request(rust.port, "POST", "/api/action", &origin, body, true));
+        let (sa, sb) = (norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1));
+        assert_eq!(sa, sb, "{label}: reply to {body}");
+        if sa.contains("\"background\":true") {
+            std::thread::sleep(std::time::Duration::from_millis(2500));
+            assert_eq!(finished(0, ruby.port), finished(1, rust.port), "{label}: the job's result");
+        }
+        assert_eq!(state(0), state(1), "{label}: what happened after {body}");
+    };
+    let step_w = |label: &str, build: &dyn Fn(&ReviewWorld) -> String| {
+        let (ba, bb) = (build(&worlds[0]), build(&worlds[1]));
+        let (a, b) = (request(ruby.port, "POST", "/api/action", &origin, &ba, true), request(rust.port, "POST", "/api/action", &origin, &bb, true));
+        let (sa, sb) = (norm(shown(&a, ruby.port), 0), norm(shown(&b, rust.port), 1));
+        assert_eq!(sa, sb, "{label}: reply to {bb}");
+        assert_eq!(state(0), state(1), "{label}: what happened after {bb}");
+    };
+    let put_drafts = |entries: &dyn Fn(&ReviewWorld) -> serde_json::Value| {
+        for w in &worlds {
+            fs::create_dir_all(w.root.join("drafts")).unwrap();
+            fs::write(w.root.join("drafts/rev-item.json"), serde_json::to_string_pretty(&serde_json::json!({"v": 1, "entries": entries(w)})).unwrap()).unwrap();
+        }
+    };
+    let gh = |w: &ReviewWorld, id: &str, path: &str, line: i64, code: &str, commit: &str, range: Option<&str>, subject: &str| {
+        let mut e = serde_json::json!({"id": id, "kind": "github-comment", "comment": format!("comment {id}"), "rev": 1, "createdAt": "2026-04-01T00:00:00Z", "updatedAt": "2026-04-01T00:00:00Z",
+            "path": path, "side": "new", "line": line, "code": code, "repo": "acme/widgets", "number": 5, "base": w.base_sha, "commit": commit, "subject": subject, "author": "user"});
+        if let Some(r) = range {
+            e["range"] = serde_json::json!(r);
+        }
+        e
+    };
+    let reply = |id: &str, thread: &str| serde_json::json!({"id": id, "kind": "thread-reply", "comment": format!("reply {id}"), "rev": 1, "createdAt": "2026-04-01T00:00:00Z", "updatedAt": "2026-04-01T00:00:00Z", "thread": thread, "repo": "acme/widgets", "number": 5, "url": "u", "path": "a.rs", "line": 3, "author": "user"});
+    let all = |w: &ReviewWorld| {
+        serde_json::json!([
+            gh(w, "d1", "a.rs", 8, "a8 c2", &w.head, None, "line"),
+            {"id": "d2", "kind": "github-comment", "comment": "a range", "rev": 1, "path": "a.rs", "side": "new", "line": 8, "start_line": 7, "start_side": "new", "code": "a7\na8 c2", "repo": "acme/widgets", "number": 5, "base": w.base_sha, "commit": w.head, "subject": "line", "author": "claude"},
+            gh(w, "d3", "bad.rs", 2, "b2 new", &w.head, None, "line"),
+            gh(w, "d4", "err.rs", 2, "e2 new", &w.head, None, "line"),
+            gh(w, "d5", "a.rs", 3, "a3 c1", &w.c1, Some(&w.c1[..7]), "line"),
+            gh(w, "d6", "cf.rs", 2, "f2 c1", &w.c1, Some(&w.c1[..7]), "line"),
+            gh(w, "d7", "a.rs", 1, "x", &w.head, None, "file"),
+            gh(w, "d8", "gone.rs", 1, "x", &w.head, None, "file"),
+            {"id": "d9", "kind": "github-comment", "comment": "a range on a commit", "rev": 1, "path": "a.rs", "side": "new", "line": 3, "start_line": 2, "start_side": "new", "code": "a2\na3 c1", "range": &w.c1[..7], "repo": "acme/widgets", "number": 5, "base": w.base_sha, "commit": w.c1, "subject": "line", "author": "user"},
+            {"id": "d10", "kind": "github-comment", "comment": "a removed line", "rev": 1, "path": "a.rs", "side": "old", "line": 3, "code": "a3", "repo": "acme/widgets", "number": 5, "base": w.base_sha, "commit": w.head, "subject": "line", "author": "user"},
+            {"id": "d11", "kind": "github-comment", "comment": "uppercase side", "rev": 1, "path": "a.rs", "side": "LEFT", "line": 8, "code": "a8", "repo": "acme/widgets", "number": 5, "base": w.base_sha, "commit": w.head, "subject": "line", "author": "user"},
+            gh(w, "d12", "long.rs", 2, "l2 new", &w.head, None, "line"),
+            reply("r4", "T_long"),
+            reply("r1", "T_ok"),
+            reply("r2", "T_bad"),
+            reply("r3", "T_err"),
+            {"id": "other", "kind": "github-comment", "comment": "another PR", "rev": 1, "path": "a.rs", "side": "new", "line": 8, "code": "a8 c2", "repo": "acme/other", "number": 9, "base": w.base_sha, "commit": w.head, "subject": "line", "author": "user"},
+            {"id": "chat", "kind": "diff-comment", "comment": "chat one", "rev": 1, "path": "a.rs", "side": "new", "line": 2}
+        ])
+    };
+    put_drafts(&all);
+    let args = |extra: serde_json::Value| {
+        let mut a = serde_json::json!({"repo": "acme/widgets", "number": 5});
+        for (k, v) in extra.as_object().unwrap() {
+            a[k] = v.clone();
+        }
+        a
+    };
+    // the confirmation: counts per route, replies, moved lines and an existing pending review
+    step("preview of everything", &act("review-preview", "rev-item", &args(serde_json::json!({}))));
+    step("preview of two", &act("review-preview", "rev-item", &args(serde_json::json!({"ids": ["d1", "d5"]}))));
+    step("preview of replies only", &act("review-preview", "rev-item", &args(serde_json::json!({"ids": ["r1", "r2"]}))));
+    step("preview of nothing chosen", &act("review-preview", "rev-item", &args(serde_json::json!({"ids": ["chat"]}))));
+    step("preview of another PR", &act("review-preview", "rev-item", &serde_json::json!({"repo": "acme/other", "number": 9})));
+    step("preview of an unknown PR", &act("review-preview", "rev-item", &serde_json::json!({"repo": "acme/widgets", "number": 77})));
+    step("a bad repo", &act("review-preview", "rev-item", &serde_json::json!({"repo": "nope", "number": 5})));
+    step("a bad number", &act("review-preview", "rev-item", &serde_json::json!({"repo": "acme/widgets", "number": "x"})));
+    step("a hex number", &act("review-preview", "rev-item", &serde_json::json!({"repo": "acme/widgets", "number": "0x5"})));
+    step("no number", &act("review-preview", "rev-item", &serde_json::json!({"repo": "acme/widgets"})));
+    step("preview on an item without a repo", &act("review-preview", "orphan", &args(serde_json::json!({}))));
+    step("preview on a missing item", &act("review-preview", "nowhere", &args(serde_json::json!({}))));
+    for w in &worlds {
+        write_pr(w, open(w, serde_json::json!([{"id": "R_other", "viewerDidAuthor": false, "comments": {"totalCount": 9}}, {"id": "R_mine", "viewerDidAuthor": true, "comments": {"totalCount": 4}}])));
+    }
+    step("preview with a pending review", &act("review-preview", "rev-item", &args(serde_json::json!({}))));
+    for w in &worlds {
+        let mut node = open(w, serde_json::json!([]));
+        node["state"] = serde_json::json!("MERGED");
+        write_pr(w, node);
+    }
+    step("preview of a merged PR", &act("review-preview", "rev-item", &args(serde_json::json!({}))));
+    for w in &worlds {
+        write_pr(w, serde_json::Value::Null);
+    }
+    step("preview of a PR GitHub doesn't know", &act("review-preview", "rev-item", &args(serde_json::json!({}))));
+    for w in &worlds {
+        let mut node = open(w, serde_json::json!([]));
+        node["headRefOid"] = serde_json::json!("0000000000000000000000000000000000000000");
+        write_pr(w, node);
+    }
+    step("preview when the head moved", &act("review-preview", "rev-item", &args(serde_json::json!({}))));
+    // posting: a thread per head draft, a position for a commit one, a fallback, replies and the failures kept
+    for w in &worlds {
+        write_pr(w, open(w, serde_json::json!([])));
+    }
+    step("post some", &act("review-post", "rev-item", &args(serde_json::json!({"ids": ["d1", "d2", "d5", "d7"]}))));
+    step("post the rest", &act("review-post", "rev-item", &args(serde_json::json!({}))));
+    step("post what failed again", &act("review-post", "rev-item", &args(serde_json::json!({}))));
+    step("post nothing", &act("review-post", "rev-item", &args(serde_json::json!({"ids": []}))));
+    put_drafts(&all);
+    for w in &worlds {
+        write_pr(w, open(w, serde_json::json!([{"id": "R_mine", "viewerDidAuthor": true, "comments": {"totalCount": 4}}])));
+    }
+    step("post into an existing review", &act("review-post", "rev-item", &args(serde_json::json!({"ids": ["d1", "r1", "d8"]}))));
+    let log = fs::read_to_string(worlds[1].base.join("gh.log")).unwrap();
+    for needle in ["subject=LINE", "subject=FILE", "startSide=RIGHT", "|-F|startLine=7", "|-F|position=", "|-H|GraphQL-Features: pull_request_review_comment_position|", "|-f|commit=", "|-f|thread=T_bad", "pr=PR_1"] {
+        assert!(log.contains(needle), "the posts should have made {needle}: {log}");
+    }
+    step("post only outdated ones", &act("review-post", "rev-item", &args(serde_json::json!({"ids": ["d8"]}))));
+    for w in &worlds {
+        let mut node = open(w, serde_json::json!([]));
+        node["state"] = serde_json::json!("CLOSED");
+        write_pr(w, node);
+    }
+    put_drafts(&all);
+    step("post to a closed PR", &act("review-post", "rev-item", &args(serde_json::json!({}))));
+    // resolving threads
+    step("resolve", &act("pr-thread-resolve", "", &serde_json::json!({"repo": "acme/widgets", "number": 5, "thread": "T_x1"})));
+    step("unresolve", &act("pr-thread-resolve", "", &serde_json::json!({"repo": "acme/widgets", "number": "5", "thread": "T_x1", "resolve": false})));
+    step("resolve with a truthy flag", &act("pr-thread-resolve", "", &serde_json::json!({"repo": "acme/widgets", "number": 5, "thread": "T_x2", "resolve": null})));
+    step("resolve a thread GitHub lost", &act("pr-thread-resolve", "", &serde_json::json!({"repo": "acme/widgets", "number": 5, "thread": "T_none"})));
+    step("resolve when gh fails", &act("pr-thread-resolve", "", &serde_json::json!({"repo": "acme/widgets", "number": 5, "thread": "T_err"})));
+    step("resolve a bad thread", &act("pr-thread-resolve", "", &serde_json::json!({"repo": "acme/widgets", "number": 5, "thread": "a b"})));
+    step("resolve no thread", &act("pr-thread-resolve", "", &serde_json::json!({"repo": "acme/widgets", "number": 5})));
+    step("resolve a bad repo", &act("pr-thread-resolve", "", &serde_json::json!({"repo": 5, "number": 5, "thread": "T"})));
+    step("resolve a bad number", &act("pr-thread-resolve", "", &serde_json::json!({"repo": "acme/widgets", "number": 0, "thread": "T"})));
+    // GitHub drafts put, moved and placed: the anchor is checked against the PR head with git
+    put_drafts(&|w| {
+        serde_json::json!([
+            gh(w, "g1", "a.rs", 8, "a8 c2", &w.head, None, "line"),
+            {"id": "dn", "kind": "diff-comment", "comment": "pr scope chat draft", "rev": 2, "path": "a.rs", "side": "new", "line": 7, "code": "a7", "repo": "acme/widgets", "number": 5, "base": w.base_sha, "commit": w.head},
+            {"id": "dc", "kind": "diff-comment", "comment": "plain", "rev": 1, "path": "a.rs", "side": "new", "line": 2},
+            {"id": "gf", "kind": "github-comment", "comment": "failed before", "rev": 3, "failed": "422", "pin": "commit", "path": "cf.rs", "side": "new", "line": 2, "code": "f2 c1", "repo": "acme/widgets", "number": 5, "base": w.base_sha, "commit": w.c1, "range": &w.c1[..7], "subject": "line", "author": "claude"}
+        ])
+    });
+    let put = |extra: serde_json::Value| {
+        move |w: &ReviewWorld| {
+            let mut a = serde_json::json!({"kind": "github-comment", "path": "a.rs", "side": "new", "line": 8, "code": "a8 c2", "comment": "put one", "repo": "acme/widgets", "number": 5, "base": w.base_sha, "commit": w.head});
+            for (k, v) in extra.as_object().unwrap() {
+                if v.is_null() {
+                    a.as_object_mut().unwrap().remove(k);
+                } else {
+                    a[k] = v.clone();
+                }
+            }
+            serde_json::json!({"cmd": "draft-put", "slug": "rev-item", "args": a}).to_string()
+        }
+    };
+    for (label, extra) in [
+        ("put a review draft", serde_json::json!({})),
+        ("put it again", serde_json::json!({})),
+        ("put a new comment on it", serde_json::json!({"comment": "changed"})),
+        ("put as claude", serde_json::json!({"author": "claude", "comment": "claude's"})),
+        ("put the same text as the user", serde_json::json!({"author": "user", "comment": "claude's"})),
+        ("put a range", serde_json::json!({"line": 8, "start_line": 7, "start_side": "new", "code": "a7\na8 c2", "comment": "range"})),
+        ("put a file comment", serde_json::json!({"subject": "file", "line": 1, "code": "", "comment": "file"})),
+        ("put a file comment of a missing file", serde_json::json!({"subject": "file", "path": "none.rs", "comment": "x"})),
+        ("put a line outside the diff", serde_json::json!({"path": "bad.rs", "line": 99, "code": "zzz"})),
+        ("put the wrong text", serde_json::json!({"code": "wrong"})),
+        ("put a removed line", serde_json::json!({"side": "old", "line": 3, "code": "a3"})),
+        ("put on a commit's line", serde_json::json!({"line": 3, "code": "a3 c1", "commit": "C1", "range": "C1"})),
+        ("put without a base", serde_json::json!({"base": null})),
+        ("put with a short base", serde_json::json!({"base": "abc"})),
+        ("put without a commit", serde_json::json!({"commit": null})),
+        ("put without a repo", serde_json::json!({"repo": null})),
+        ("put with a bad repo", serde_json::json!({"repo": "nope"})),
+        ("put with a string number", serde_json::json!({"number": "5", "comment": "n"})),
+        ("put with a zero number", serde_json::json!({"number": 0})),
+        ("put with a hex number", serde_json::json!({"number": "0x5"})),
+        ("put with a bad author", serde_json::json!({"author": "robot"})),
+        ("put with a bad subject", serde_json::json!({"subject": "word"})),
+        ("put a blank review draft with a short base", serde_json::json!({"comment": "", "base": "abc"})),
+        ("put a chat draft with a short base", serde_json::json!({"kind": "diff-comment", "base": "abc"})),
+        ("put a blank comment (removes)", serde_json::json!({"comment": "  "})),
+        ("put a blank comment (nothing there)", serde_json::json!({"line": 2, "comment": ""})),
+        ("put a PR-scope chat draft", serde_json::json!({"kind": "diff-comment", "line": 7, "code": "a7", "comment": "chat"})),
+        ("put a PR-scope chat draft without a commit", serde_json::json!({"kind": "diff-comment", "commit": null})),
+        ("put without a path", serde_json::json!({"path": null})),
+        ("put a branch", serde_json::json!({"branch": "feat/x", "line": 2, "code": "a2", "comment": "branch"})),
+        ("put another kind", serde_json::json!({"kind": "annotation"})),
+    ] {
+        let extra = extra.clone();
+        step_w(label, &|w| {
+            let fix = |v: &serde_json::Value| match v {
+                serde_json::Value::String(t) if t == "C1" => serde_json::json!(w.c1),
+                other => other.clone(),
+            };
+            let mapped: serde_json::Map<String, serde_json::Value> = extra.as_object().unwrap().iter().map(|(k, v)| (k.clone(), fix(v))).collect();
+            put(serde_json::Value::Object(mapped))(w)
+        });
+    }
+    let simple = |cmd: &'static str, args: serde_json::Value| move |_: &ReviewWorld| serde_json::json!({"cmd": cmd, "slug": "rev-item", "args": args}).to_string();
+    step_w("move a PR-scope draft to the review", &simple("draft-move", serde_json::json!({"id": "dn", "to": "github"})));
+    step_w("move it again", &simple("draft-move", serde_json::json!({"id": "dn", "to": "github"})));
+    step_w("move a draft without a PR", &simple("draft-move", serde_json::json!({"id": "dc", "to": "github"})));
+    step_w("move one back to the chat", &simple("draft-move", serde_json::json!({"id": "dn", "to": "chat"})));
+    step_w("move a missing one", &simple("draft-move", serde_json::json!({"id": "zz", "to": "github"})));
+    step_w("move to nowhere", &simple("draft-move", serde_json::json!({"id": "dn", "to": "gitlab"})));
+    put_drafts(&|w| serde_json::json!([gh(w, "g1", "a.rs", 8, "a8 c2", &w.head, None, "line"), {"id": "dn", "kind": "diff-comment", "comment": "x", "rev": 1, "path": "a.rs", "side": "new", "line": 7, "code": "wrong", "repo": "acme/widgets", "number": 5, "base": w.base_sha, "commit": w.head}, {"id": "dm", "kind": "diff-comment", "comment": "no base", "rev": 1, "path": "a.rs", "side": "new", "line": 7, "code": "a7", "repo": "acme/widgets", "number": 5, "commit": w.head}]));
+    step_w("move one the diff refuses", &simple("draft-move", serde_json::json!({"id": "dn", "to": "github"})));
+    step_w("move one without a base", &simple("draft-move", serde_json::json!({"id": "dm", "to": "github"})));
+    let place = |args: serde_json::Value| {
+        move |w: &ReviewWorld| {
+            let mut a = args.clone();
+            for k in ["commit", "base"] {
+                if a.get(k) == Some(&serde_json::json!(format!("<{k}>"))) {
+                    a[k] = serde_json::json!(if k == "commit" { w.head.clone() } else { w.base_sha.clone() });
+                }
+            }
+            serde_json::json!({"cmd": "draft-place", "slug": "rev-item", "args": a}).to_string()
+        }
+    };
+    put_drafts(&|w| serde_json::json!([gh(w, "g1", "a.rs", 3, "a3 c1", &w.c1, Some(&w.c1[..7]), "line"), {"id": "dc", "kind": "diff-comment", "comment": "plain", "rev": 1, "path": "a.rs", "side": "new", "line": 2}]));
+    step_w("pin to its commit", &place(serde_json::json!({"id": "g1", "how": "commit"})));
+    step_w("place on a line of the head", &place(serde_json::json!({"id": "g1", "how": "line", "path": "a.rs", "side": "new", "line": 8, "code": "a8 c2", "commit": "<commit>", "base": "<base>"})));
+    step_w("place on a line that isn't there", &place(serde_json::json!({"id": "g1", "how": "line", "path": "a.rs", "side": "new", "line": 8, "code": "other", "commit": "<commit>", "base": "<base>"})));
+    step_w("place as a file comment", &place(serde_json::json!({"id": "g1", "how": "file", "path": "ignored.rs", "commit": "<commit>", "base": "<base>"})));
+    step_w("place somewhere odd", &place(serde_json::json!({"id": "g1", "how": "moon"})));
+    step_w("place with no how", &place(serde_json::json!({"id": "g1"})));
+    step_w("place a number", &place(serde_json::json!({"id": "g1", "how": 5})));
+    step_w("place a chat draft", &place(serde_json::json!({"id": "dc", "how": "commit"})));
+    step_w("place a missing draft", &place(serde_json::json!({"id": "zz", "how": "commit"})));
+    step_w("place with no base", &place(serde_json::json!({"id": "g1", "how": "file", "commit": "<commit>"})));
 }

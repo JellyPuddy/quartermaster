@@ -509,18 +509,35 @@ fn fetch_pr(path: &str, pr: &Value, fresh: bool) -> R<Value> {
         let args = ["rev-parse", "--quiet", &format!("{reference}^{{commit}}"), &format!("{}^{{commit}}", revs["baseSha"].as_str().unwrap_or(""))];
         g(path, &args).as_deref() == Some(&format!("{}\n{}", revs["headSha"].as_str().unwrap_or(""), revs["baseSha"].as_str().unwrap_or("")))
     };
-    memo(&key, fresh, held, || {
-        let result = {
-            let _lock = FETCH_LOCK.lock().unwrap();
-            crate::command_runner::call(&["git", "-C", path, "fetch", "--quiet", "--no-tags", "origin", &format!("+refs/pull/{number}/head:{reference}"), &format!("+refs/heads/{base}:refs/remotes/origin/{base}")])
-        };
-        if !result.success {
-            return arg(format!("could not fetch {} from origin: {}", label(pr), crate::ruby_text::strip(&result.err).chars().take(200).collect::<String>()));
-        }
-        let Some(head) = g(path, &["rev-parse", "--verify", "--quiet", &format!("{reference}^{{commit}}")]) else { return arg(format!("{}'s head did not arrive in {reference}", label(pr))) };
-        let Some(base_sha) = g(path, &["merge-base", &format!("origin/{base}"), &head]) else { return arg(format!("{} shares no history with origin/{base}", label(pr))) };
-        Ok(json!({"headSha": head, "baseSha": base_sha, "baseRef": format!("origin/{base}")}))
+    memo(&key, fresh, held, || fetch_now(path, pr, &reference, number, &base))
+}
+
+/// `PrRevisions#fetch` without a memo (the CLI and review posting always ask the network).
+pub(crate) fn fetch_pr_uncached(path: &str, pr: &Value) -> Result<Value, Result<String, ()>> {
+    let number = lenient(&pr["number"]);
+    let base = to_s(&pr["base"]);
+    let usable_base = !base.is_empty() && !base.starts_with('-') && !base.contains("..") && base.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'/' | b'-'));
+    if !(number > 0 && usable_base) {
+        return Err(Ok(format!("{} has no usable base branch ({})", label(pr), crate::gui_server::inspect(&base))));
+    }
+    let reference = format!("refs/quartermaster/pr/{number}");
+    fetch_now(path, pr, &reference, number, &base).map_err(|f| match f {
+        Failure::Arg(m) => Ok(m),
+        Failure::Unported => Err(()),
     })
+}
+
+fn fetch_now(path: &str, pr: &Value, reference: &str, number: i64, base: &str) -> R<Value> {
+    let result = {
+        let _lock = FETCH_LOCK.lock().unwrap();
+        crate::command_runner::call(&["git", "-C", path, "fetch", "--quiet", "--no-tags", "origin", &format!("+refs/pull/{number}/head:{reference}"), &format!("+refs/heads/{base}:refs/remotes/origin/{base}")])
+    };
+    if !result.success {
+        return arg(format!("could not fetch {} from origin: {}", label(pr), crate::ruby_text::strip(&result.err).chars().take(200).collect::<String>()));
+    }
+    let Some(head) = g(path, &["rev-parse", "--verify", "--quiet", &format!("{reference}^{{commit}}")]) else { return arg(format!("{}'s head did not arrive in {reference}", label(pr))) };
+    let Some(base_sha) = g(path, &["merge-base", &format!("origin/{base}"), &head]) else { return arg(format!("{} shares no history with origin/{base}", label(pr))) };
+    Ok(json!({"headSha": head, "baseSha": base_sha, "baseRef": format!("origin/{base}")}))
 }
 
 /// A selected run shows parent(from)..to, but GitHub takes a comment anchored to `to` only on lines

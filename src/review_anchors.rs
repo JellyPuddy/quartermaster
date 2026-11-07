@@ -218,3 +218,25 @@ impl ReviewAnchors {
         &self.repo
     }
 }
+
+/// `ReviewAnchors.refusal(repo, entry)`: the refusal for a draft as stored — anchored to its commit,
+/// against its PR's base, numbered like the view it was made in (a selected run's parent, else the base).
+pub fn refusal_stored(repo: &str, entry: &serde_json::Map<String, Value>) -> R<Option<String>> {
+    let text = |k: &str| crate::draft_command::s(entry.get(k)).ok_or(E::Unsure);
+    let base = text("base")?;
+    if !(7..=64).contains(&base.len()) || !base.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Ok(Some("the draft doesn't know its PR's base commit".into()));
+    }
+    let anchors = new(repo, &base, &text("commit")?).map_err(E::Arg)?;
+    let range = text("range")?;
+    let mut parts: Vec<&str> = range.split("..").collect();
+    while parts.last() == Some(&"") {
+        parts.pop();
+    }
+    let from = parts.first().copied();
+    let view_base = match from {
+        Some(f) => g(repo, &["rev-parse", "--verify", "--quiet", &format!("{f}^")]).unwrap_or_default(),
+        None => anchors.base_sha.clone(),
+    };
+    anchors.refusal(entry, &view_base)
+}
