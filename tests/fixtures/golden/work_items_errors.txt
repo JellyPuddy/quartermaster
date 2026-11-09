@@ -1,7 +1,7 @@
 $ qm "new"
 exit 1
 --- stderr
-usage: qm new TITLE [--project P] [--branch B] [--session ID] [--description TEXT] [--pf-mode MODE]
+usage: qm new [--project P] [--branch B] [--session ID] [--description TEXT] [--pf-mode MODE] [--] TITLE
 --- target.md
 ---
 v: 1
@@ -22,7 +22,7 @@ _TODO_
 $ qm "new" "  "
 exit 1
 --- stderr
-usage: qm new TITLE [--project P] [--branch B] [--session ID] [--description TEXT] [--pf-mode MODE]
+usage: qm new [--project P] [--branch B] [--session ID] [--description TEXT] [--pf-mode MODE] [--] TITLE
 --- target.md
 ---
 v: 1
@@ -64,7 +64,7 @@ _TODO_
 $ qm "note"
 exit 1
 --- stderr
-usage: qm note SLUG [--kind open|decision|history] TEXT
+usage: qm note SLUG [--kind open|decision|history] [--] TEXT
 --- target.md
 ---
 v: 1
@@ -85,7 +85,7 @@ _TODO_
 $ qm "note" "target"
 exit 1
 --- stderr
-usage: qm note SLUG [--kind open|decision|history] TEXT
+usage: qm note SLUG [--kind open|decision|history] [--] TEXT
 --- target.md
 ---
 v: 1
@@ -608,7 +608,7 @@ _TODO_
 $ qm "retitle"
 exit 1
 --- stderr
-usage: qm retitle SLUG NEW_TITLE  (the slug never changes)
+usage: qm retitle SLUG [--] NEW_TITLE  (the slug never changes)
 --- target.md
 ---
 v: 1
@@ -629,7 +629,7 @@ _TODO_
 $ qm "retitle" "target"
 exit 1
 --- stderr
-usage: qm retitle SLUG NEW_TITLE  (the slug never changes)
+usage: qm retitle SLUG [--] NEW_TITLE  (the slug never changes)
 --- target.md
 ---
 v: 1
@@ -671,7 +671,7 @@ _TODO_
 $ qm "describe"
 exit 1
 --- stderr
-usage: qm describe SLUG TEXT  (or pipe the text on stdin)
+usage: qm describe SLUG [--] TEXT  (or pipe the text on stdin)
 --- target.md
 ---
 v: 1
@@ -692,7 +692,7 @@ _TODO_
 $ qm "describe" "target"
 exit 1
 --- stderr
-usage: qm describe SLUG TEXT  (or pipe the text on stdin)
+usage: qm describe SLUG [--] TEXT  (or pipe the text on stdin)
 --- target.md
 ---
 v: 1

@@ -45,11 +45,15 @@ fn options(a: &[String], names: &[&str]) -> Option<(Vec<(String, String)>, Vec<S
     let (mut found, mut rest) = (vec![], vec![]);
     let mut i = 0;
     while i < a.len() {
+        if a[i] == "--" {
+            rest.extend(a[i + 1..].iter().cloned());
+            break;
+        }
         let (name, inline) = match a[i].split_once('=') {
             Some((n, v)) if n.starts_with("--") => (n, Some(v.to_string())),
             _ => (a[i].as_str(), None),
         };
-        if name.starts_with('-') && name != "-" {
+        if name.starts_with('-') && name != "-" && !a[i].contains(char::is_whitespace) {
             if !names.contains(&name) {
                 return None;
             }
@@ -161,7 +165,7 @@ pub fn loose(a: &[String]) -> Outcome {
     let Some((found, rest)) = options(a, &["--project", "--model", "--starter"]) else { return Outcome::Delegate };
     let models = ["sonnet", "opus", "haiku"];
     if rest.len() > 1 {
-        return abort(&format!("usage: qm loose [--project P] [--model {}] [--starter NAME] [\"first prompt\"]", models.join("|")));
+        return abort(&format!("usage: qm loose [--project P] [--model {}] [--starter NAME] [--] [\"first prompt\"]", models.join("|")));
     }
     let (model, starter) = (last(&found, "--model"), last(&found, "--starter"));
     if let Some(m) = model.filter(|m| !models.contains(m)) {

@@ -37,6 +37,8 @@ struct Spec {
     /// The command takes its first argument (the slug) before any option is read.
     slug_first: bool,
     say: Say,
+    /// Free text may start with a dash (`new`, `note`, `loose`): see `is_text`.
+    free_text: bool,
 }
 
 macro_rules! opts {
@@ -51,13 +53,14 @@ const PR_REQUIRES_USAGE: &str = "usage: qm pr-requires PR-OR-SHA [--pr PR] [--no
 const DRAFT_USAGE: &str = "usage: qm draft add SLUG --path P --line N [options] (--body TEXT | --body-file F) | qm draft list SLUG [--json]";
 
 fn spec(command: &str, args: &[String]) -> Option<Spec> {
-    let plain = |opts, slug_first| Some(Spec { opts, slug_first, say: Say::Plain });
+    let plain = |opts, slug_first| Some(Spec { opts, slug_first, say: Say::Plain, free_text: false });
+    let text = |opts, slug_first| Some(Spec { opts, slug_first, say: Say::Plain, free_text: true });
     match command {
-        "new" => plain(opts![val("--project"), val("--branch"), val("--session"), val("--description"), val("--pf-mode")], false),
+        "new" => text(opts![val("--project"), val("--branch"), val("--session"), val("--description"), val("--pf-mode")], false),
         "attach" | "detach" | "pane-resume" => plain(SESSION, true),
         "resume" => plain(opts![val("--session"), flag("--here")], true),
         "start" => plain(opts![flag("--here")], true),
-        "note" => plain(opts![val("--kind")], true),
+        "note" => text(opts![val("--kind")], true),
         "link-branch" => plain(opts![flag("--temp")], false),
         "board" => plain(opts![val("--answers-dir")], false),
         "sessions" | "inbox" => plain(opts![num("-n")], false),
@@ -68,17 +71,18 @@ fn spec(command: &str, args: &[String]) -> Option<Spec> {
         "cleanup" | "sweep" => plain(opts![flag("--yes"), val("--force")], false),
         "open-chat" => plain(opts![val("--benchmark")], false),
         "start-issue" => plain(opts![val("--project")], false),
-        "loose" => plain(opts![val("--project"), val("--model"), val("--starter")], false),
+        "loose" => text(opts![val("--project"), val("--model"), val("--starter")], false),
         "feature-use" => plain(opts![num("--days")], false),
         "viewer-rows" => plain(opts![val("--state")], false),
-        "pr-requires" => Some(Spec { opts: opts![val("--pr"), flag("--remove"), flag("--list"), val("--session"), val("--note")], slug_first: false, say: Say::WithUsage("qm", PR_REQUIRES_USAGE) }),
+        "pr-requires" => Some(Spec { opts: opts![val("--pr"), flag("--remove"), flag("--list"), val("--session"), val("--note")], slug_first: false, say: Say::WithUsage("qm", PR_REQUIRES_USAGE), free_text: false }),
         "draft" => match args.first().map(String::as_str) {
             Some("add") => Some(Spec {
                 opts: opts![val("--path"), num("--line"), num("--start-line"), val("--side"), val("--commit"), flag("--file"), val("--reply-to"), val("--pr"), val("--branch"), val("--body"), val("--body-file")],
                 slug_first: false,
                 say: Say::WithUsage("qm draft add", DRAFT_USAGE),
+                free_text: false,
             }),
-            Some("list") => Some(Spec { opts: opts![flag("--json")], slug_first: false, say: Say::Prefixed("qm draft list") }),
+            Some("list") => Some(Spec { opts: opts![flag("--json")], slug_first: false, say: Say::Prefixed("qm draft list"), free_text: false }),
             _ => None,
         },
         _ => None,
@@ -92,7 +96,7 @@ pub fn normalize(command: &str, args: &[String]) -> Option<Result<Vec<String>, O
     // `draft add|list` keeps its subcommand word out of the way
     let (head, rest): (&[String], &[String]) = if command == "draft" { (&args[..1], &args[1..]) } else { (&[], args) };
     let (first, rest): (&[String], &[String]) = if spec.slug_first && !rest.is_empty() { (&rest[..1], &rest[1..]) } else { (&[], rest) };
-    Some(match canonical(rest, spec.opts) {
+    Some(match canonical(rest, spec.opts, spec.free_text) {
         Ok(out) => Ok(head.iter().chain(first).cloned().chain(out).collect()),
         Err(message) => Err(match spec.say {
             Say::Plain => abort(&format!("qm: {message}")),
@@ -102,15 +106,35 @@ pub fn normalize(command: &str, args: &[String]) -> Option<Result<Vec<String>, O
     })
 }
 
-fn canonical(args: &[String], opts: &[Opt]) -> Result<Vec<String>, String> {
+/// An argument that starts with `-` and holds whitespace (`"- a bullet"`) is text, never an option or an
+/// abbreviation of one (`"-d does stuff"` is not `--description`) — unless it is an inline `--flag=value`.
+fn is_text(arg: &str) -> bool {
+    let inline_flag = arg.strip_prefix("--").is_some_and(|rest| rest.split_once('=').is_some_and(|(name, _)| !name.is_empty() && !name.contains(char::is_whitespace)));
+    arg.starts_with('-') && arg.contains(char::is_whitespace) && !inline_flag
+}
+
+/// What a command without options takes after the slug: a leading `--` only ends options, so it is dropped.
+pub fn words(args: &[String]) -> &[String] {
+    args.strip_prefix(&["--".to_string()][..]).unwrap_or(args)
+}
+
+fn canonical(args: &[String], opts: &[Opt], free_text: bool) -> Result<Vec<String>, String> {
     let mut out = vec![];
     let mut i = 0;
     while i < args.len() {
         let a = &args[i];
         i += 1;
         if a == "--" {
+            // a free-text command keeps the `--`: what follows is text even when it looks like an option
+            if free_text {
+                out.push(a.clone());
+            }
             out.extend(args[i..].iter().cloned());
             break;
+        }
+        if free_text && is_text(a) {
+            out.push(a.clone());
+            continue;
         }
         if let Some(long) = a.strip_prefix("--") {
             let (name, inline) = match long.split_once('=') {

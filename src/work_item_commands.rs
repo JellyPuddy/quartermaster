@@ -8,13 +8,13 @@ use crate::error::{QmError, UNEMITTABLE};
 use crate::git::git;
 pub use crate::outcome::Outcome;
 use crate::outcome::{abort, done};
-use crate::note::{DEFAULT_NOTE_KIND, NOTE_KINDS};
+use crate::note::NOTE_KINDS;
 use crate::ruby_text::strip;
 use crate::attention::Attention;
 use crate::work_item::{Snooze, WorkItem, STATES};
 
 /// An error as `Cli#run` reports it: `qm: <message>`, or Ruby's job when only it can write the value.
-fn failed(e: QmError) -> Outcome {
+pub(crate) fn failed(e: QmError) -> Outcome {
     if e.class == UNEMITTABLE {
         Outcome::Delegate
     } else {
@@ -30,12 +30,13 @@ macro_rules! tri {
         }
     };
 }
+pub(crate) use tri;
 
 /// `Some(outcome)` for the commands ported here, `None` for every other word.
 pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
     Some(match command {
-        "new" => new(args),
-        "note" => note(args),
+        "new" => crate::free_text_commands::new(args),
+        "note" => crate::free_text_commands::note(args),
         "retag" => retag(args),
         "state" => state(args),
         "link-branch" => link_branch(args),
@@ -60,77 +61,6 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
         "list" => list(),
         _ => return None,
     })
-}
-
-fn new(a: &[String]) -> Outcome {
-    let (mut project, mut branch, mut description, mut session, mut pf_mode) = ("No project".to_string(), None, None, None, None);
-    let mut parts: Vec<&str> = vec![];
-    let mut i = 0;
-    while i < a.len() {
-        match a[i].as_str() {
-            flag @ ("--project" | "--branch" | "--description" | "--session" | "--pf-mode") => {
-                let Some(value) = a.get(i + 1) else { return Outcome::Delegate };
-                match flag {
-                    "--project" => project = value.clone(),
-                    "--branch" => branch = Some(value.clone()),
-                    "--session" => session = Some(value.clone()),
-                    "--pf-mode" => pf_mode = Some(value.clone()),
-                    _ => description = Some(value.clone()),
-                }
-                i += 2;
-            }
-            s if s.starts_with('-') => return Outcome::Delegate,
-            s => {
-                parts.push(s);
-                i += 1;
-            }
-        }
-    }
-    let title = strip(&parts.join(" ")).to_string();
-    if title.is_empty() {
-        return abort("usage: qm new TITLE [--project P] [--branch B] [--session ID] [--description TEXT] [--pf-mode MODE]");
-    }
-    let mut item = tri!(WorkItem::create(&title, &project, branch.as_deref(), session.as_deref(), description.as_deref(), pf_mode.as_deref()));
-    let (mut stdout, mut stderr) = (String::new(), String::new());
-    if let Some(id) = &session {
-        let vacated = tri!(item.claim_session(id));
-        report_claim(&vacated, id, &item.slug, &mut stdout, &mut stderr);
-    }
-    stdout.push_str(&format!("{}\n", item.slug));
-    Outcome::Done { code: 0, stdout, stderr }
-}
-
-fn note(a: &[String]) -> Outcome {
-    if a.first().is_some_and(|s| s.starts_with('-')) {
-        return Outcome::Delegate;
-    }
-    let mut kind = DEFAULT_NOTE_KIND.to_string();
-    let mut parts: Vec<&str> = vec![];
-    let rest = a.get(1..).unwrap_or(&[]);
-    let mut i = 0;
-    while i < rest.len() {
-        match rest[i].as_str() {
-            "--kind" => {
-                let Some(value) = rest.get(i + 1) else { return Outcome::Delegate };
-                kind = value.clone();
-                i += 2;
-            }
-            s if s.starts_with('-') => return Outcome::Delegate,
-            s => {
-                parts.push(s);
-                i += 1;
-            }
-        }
-    }
-    let text = strip(&parts.join(" ")).to_string();
-    let usage = || abort(&format!("usage: qm note SLUG [--kind {}] TEXT", NOTE_KINDS.join("|")));
-    let Some(slug) = a.first() else { return usage() };
-    if text.is_empty() {
-        return usage();
-    }
-    let mut item = tri!(WorkItem::find(slug));
-    tri!(item.add_note(&text, &kind));
-    done(format!("{}\n", note_line(&item.notes()[0])))
 }
 
 /// Where the /draft-issues skill writes an item's issue files: created here, printed.
@@ -288,9 +218,9 @@ fn pr(a: &[String]) -> Outcome {
 }
 
 fn retitle(a: &[String]) -> Outcome {
-    let title = strip(&a.get(1..).unwrap_or(&[]).join(" ")).to_string();
+    let title = strip(&crate::opt_parse::words(a.get(1..).unwrap_or(&[])).join(" ")).to_string();
     let Some(slug) = a.first().filter(|_| !title.is_empty()) else {
-        return abort("usage: qm retitle SLUG NEW_TITLE  (the slug never changes)");
+        return abort("usage: qm retitle SLUG [--] NEW_TITLE  (the slug never changes)");
     };
     let mut item = tri!(WorkItem::find(slug));
     tri!(item.retitle(&title));
@@ -298,14 +228,14 @@ fn retitle(a: &[String]) -> Outcome {
 }
 
 fn describe(a: &[String]) -> Outcome {
-    let mut text = strip(&a.get(1..).unwrap_or(&[]).join(" ")).to_string();
+    let mut text = strip(&crate::opt_parse::words(a.get(1..).unwrap_or(&[])).join(" ")).to_string();
     if text.is_empty() || text == "-" {
         let mut piped = String::new();
         let _ = std::io::stdin().read_to_string(&mut piped);
         text = strip(&piped).to_string();
     }
     let Some(slug) = a.first().filter(|_| !text.is_empty()) else {
-        return abort("usage: qm describe SLUG TEXT  (or pipe the text on stdin)");
+        return abort("usage: qm describe SLUG [--] TEXT  (or pipe the text on stdin)");
     };
     let mut item = tri!(WorkItem::find(slug));
     tri!(item.describe(&text));
@@ -443,7 +373,7 @@ fn board_rows(a: &[String]) -> Outcome {
 
 fn board_answer(a: &[String]) -> Outcome {
     let (Some(slug), Some(doc_id)) = (a.first(), a.get(1)) else { return abort("usage: qm board-answer SLUG ROW_ID TEXT  ('-' or no TEXT reads stdin)") };
-    let words = &a[2..];
+    let words = crate::opt_parse::words(&a[2..]);
     let text = if words.is_empty() || words == ["-"] {
         let mut piped = String::new();
         let _ = std::io::stdin().read_to_string(&mut piped);

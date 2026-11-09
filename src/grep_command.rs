@@ -7,7 +7,7 @@ use crate::outcome::{abort, done, Outcome};
 use crate::transcript_search::{self, Failure};
 
 pub fn grep(args: &[String]) -> Outcome {
-    let query = args.join(" ");
+    let query = crate::opt_parse::words(args).join(" ");
     if crate::ruby_text::strip(&query).is_empty() {
         return abort("usage: qm grep PHRASE");
     }

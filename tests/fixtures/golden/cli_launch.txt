@@ -203,7 +203,7 @@ qm loose: unknown model "gpt" (sonnet, opus, haiku)
 $ qm "loose" "a" "b"
 exit 1
 --- stderr
-usage: qm loose [--project P] [--model sonnet|opus|haiku] [--starter NAME] ["first prompt"]
+usage: qm loose [--project P] [--model sonnet|opus|haiku] [--starter NAME] [--] ["first prompt"]
 
 $ qm "loose" "--starter" "dev" "--model" "haiku" "q"
 exit 0

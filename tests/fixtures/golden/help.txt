@@ -10,7 +10,7 @@ Work items:
   qm new TITLE [flags]                                            create a work item, prints its slug (--project P, --branch B, --session ID, --description TEXT, --pf-mode MODE)
   qm attach SLUG --session ID                                     attach a session to a work item (detaches it from any other item)
   qm detach SLUG --session ID                                     detach a session, leaving it unlinked
-  qm note SLUG TEXT                                               append a dated progress note (--kind open|decision|history, default decision)
+  qm note SLUG TEXT                                               append a dated progress note (--kind open|decision|history, default decision); text may start with "- ", or follow --
   qm retag SLUG POSITION KIND                                     change a note's kind (POSITION is the number qm show prints)
   qm state SLUG STATE                                             set the state: in_progress | fridge | resolved
   qm link-branch SLUG [BRANCH]                                    add a branch to the item (stacks welcome; default: the current branch; --temp: a scratch branch cleanup may delete)

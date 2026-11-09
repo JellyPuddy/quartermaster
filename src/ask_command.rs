@@ -146,7 +146,7 @@ pub fn search(query: &str) -> Result<Vec<(String, String)>, Fail> {
 }
 
 pub fn ask(args: &[String]) -> Outcome {
-    let query = args.join(" ");
+    let query = crate::opt_parse::words(args).join(" ");
     if strip(&query).is_empty() {
         return abort("usage: qm ask QUERY");
     }

@@ -15,7 +15,7 @@
   "src/issue_drafts.rs": 442,
   "src/prompt_diff.rs": 469,
   "src/psych.rs": 596,
-  "src/work_item.rs": 868,
-  "src/work_item_commands.rs": 475,
+  "src/work_item.rs": 851,
+  "src/work_item_commands.rs": 405,
   "tests/gui.rs": 5974
 }
