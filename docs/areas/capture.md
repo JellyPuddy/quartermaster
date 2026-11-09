@@ -74,7 +74,7 @@ fallback protocol for when the injection is missing.
 - **Hooks never block or break a session.** The `hook-*` commands rescue everything, log
   to `qm.log` and exit 0 (`guard_hook` in `src/cli.rs`); a panic is caught too (`panic_guard`:
   default panic message silenced, payload logged to `qm.log`, exit 0; `qm statusline` gets the
-  same containment but logs nothing); the launcher exits 0 without a binary;
+  same containment but logs nothing); the launcher exits 0 without a binary (hooks and `statusline`);
   the `sh` hooks wrap their body in `{ … } >/dev/null 2>&1` and always `exit 0`. Pinned by tests.
 - **Every `qm.log` line is a header starting at column 0**, and only headers carry
   `[<context>] transient` or `[<context>] recovered`: a multi-line message is folded onto its

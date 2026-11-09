@@ -15,6 +15,7 @@ bin=${QM_BIN:-$dir/target/release/qm}
 if [ ! -x "$bin" ]; then
   case $1 in
     hook-*) exit 0 ;; # a hook never breaks a session
+    statusline) exit 0 ;; # nor does the status line: an empty one is better than an error
   esac
   echo "qm: no built binary at $bin: run \`cargo build --release\` in $dir" >&2
   exit 127

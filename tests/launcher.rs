@@ -92,7 +92,7 @@ fn without_a_binary_it_says_so_but_a_hook_stays_silent() {
     assert_eq!(o.status.code(), Some(127));
     assert!(err(&o).contains("no built binary") && err(&o).contains("cargo build --release"), "{}", err(&o));
     assert_eq!(out(&o), "");
-    for hook in ["hook-session-start", "hook-session-end"] {
+    for hook in ["hook-session-start", "hook-session-end", "statusline"] {
         let o = run(&checkout.join("quartermaster"), &[], &[hook], "{}");
         assert_eq!((o.status.code(), out(&o), err(&o)), (Some(0), String::new(), String::new()), "{hook}");
     }

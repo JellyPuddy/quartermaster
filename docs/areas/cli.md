@@ -66,7 +66,7 @@ settings snippet) — see [capture](capture.md).
   (`Doctor`): the SessionStart, SessionEnd and record-event.sh hooks registered (record-event.sh
   on every event `qm install-hooks` gives it) in `$QM_CLAUDE_SETTINGS` (default
   `~/.claude/settings.json`) and pointing at existing files; the built binary behind the
-  launcher the SessionStart hook runs (`QM_BIN`, else `target/release/qm` beside it; a hook with
+  launcher the SessionStart hook runs (`QM_BIN`, else `target/release/qm` beside it; a hook or `qm statusline` with
   no binary exits 0 and captures nothing); the data root present and writable (doctor never
   creates it); unseen `qm.log` errors (`!` with the newest, counted by `ErrorLog`: header lines
   that are neither `transient` nor `recovered`, newer than `errors-seen-at` or else the last
