@@ -80,6 +80,7 @@ pub mod clipboard_annotations;
 pub mod gui_draft_send;
 pub mod draft_messages;
 pub mod pr_prerequisites;
+pub mod pr_review_start;
 pub mod pr_requires_command;
 pub mod pr_status;
 pub mod prompt_diff;

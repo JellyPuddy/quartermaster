@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 //! Helpers shared by the black-box test files.
 
+pub mod chat;
+
 use regex::Regex;
 use std::io::Write;
 use std::path::{Path, PathBuf};

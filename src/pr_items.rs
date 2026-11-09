@@ -66,3 +66,12 @@ pub fn review_item<'a>(pr: &Value, items: &'a [WorkItem]) -> Option<&'a WorkItem
 pub fn review_kickoff(skill: &str, pr: &Value, slug: &str) -> String {
     format!("{skill} {}\n\nRecord each finding as a qm draft with `qm draft add {slug} …` (see `qm draft add --help`) instead of posting to GitHub; the user curates and posts them.", field(pr, "url"))
 }
+
+/// The item of that title's slug, made (with the branch linked, if any) when it doesn't exist.
+pub fn find_or_create_item(title: &str, project: &str, branch: Option<&str>, description: &str) -> crate::error::Res<WorkItem> {
+    let slug = WorkItem::slugify(title);
+    if WorkItem::path_for(&slug).exists() {
+        return WorkItem::find(&slug);
+    }
+    WorkItem::create(title, project, branch, None, Some(description), None)
+}

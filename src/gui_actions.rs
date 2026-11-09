@@ -563,7 +563,7 @@ fn pr_chat(args: &Args) -> R<Value> {
         Some(i) => i.slug.clone(),
         None => {
             let title = format!("{}: {}", crate::pr_items::pr_label(&pr), pr["title"].as_str().unwrap_or(""));
-            find_or_create(&title, &project, pr["head"].as_str(), &format!("Pull request {}.", crate::pr_items::pr_summary(&pr)))?
+            crate::pr_items::find_or_create_item(&title, &project, pr["head"].as_str(), &format!("Pull request {}.", crate::pr_items::pr_summary(&pr))).map_err(error)?.slug
         }
     };
     let mut reply = pane(&slug, false, &Args(Some(&Map::new())))?;
@@ -571,45 +571,12 @@ fn pr_chat(args: &Args) -> R<Value> {
     Ok(reply)
 }
 
-fn find_or_create(title: &str, project: &str, branch: Option<&str>, description: &str) -> R<String> {
-    let slug = WorkItem::slugify(title);
-    if WorkItem::path_for(&slug).exists() {
-        return Ok(find(&slug)?.slug);
-    }
-    Ok(WorkItem::create(title, project, branch, None, Some(description), None).map_err(error)?.slug)
-}
-
-/// A review runs in a chat of its own — a separate item, so it never lands in the PR's own chat — with the
-/// review skill as its first prompt.
+/// A review runs in a chat of its own (`pr_review_start`).
 fn pr_review(args: &Args) -> R<Value> {
     let pr = pr_of(args)?;
-    let project = crate::pr_items::project_for_repo(pr["repo"].as_str().unwrap_or("")).unwrap_or_else(|| "No project".to_string());
-    let items = WorkItem::all().map_err(error)?;
-    let slug = match crate::pr_items::review_item(&pr, &items) {
-        Some(i) => i.slug.clone(),
-        None => {
-            let title = format!("Review {}: {}", crate::pr_items::pr_label(&pr), pr["title"].as_str().unwrap_or(""));
-            find_or_create(&title, &project, None, &format!("Review of pull request {}.", crate::pr_items::pr_summary(&pr)))?
-        }
-    };
-    let tmux = crate::tmux::Tmux::new();
-    if tmux.live(&slug) {
-        return Ok(json!({"ok": true, "slug": slug, "attached": true}));
-    }
-    let mut item = find(&slug)?;
-    if item.state().as_deref() == Some("resolved") {
-        item.update_state("in_progress").map_err(error)?;
-    }
-    let plan = crate::launcher::chat_plan(&item, true, None, None).ok_or(Stop::Unported)?;
-    if matches!(plan.mode, crate::launcher::Mode::Live) {
-        return Err(fail(format!("{slug} has a chat running outside the GUI — review from there, or end it first")));
-    }
-    let skill = crate::project_config::ProjectConfig::current().review_skill(Some(&project));
-    let argv: Vec<String> = plan.argv.iter().cloned().chain([crate::pr_items::review_kickoff(&skill, &pr, &slug)]).collect();
-    match tmux.open(&slug, &plan.cwd, &argv, &plan.env) {
-        Ok(_) => Ok(json!({"ok": true, "slug": slug, "mode": "start"})),
-        Err(m) => Err(fail(m)),
-    }
+    let mut reply = json!({"ok": true});
+    reply.as_object_mut().unwrap().extend(crate::pr_review_start::start(&pr, &[], None).map_err(fail)?.as_object().cloned().unwrap_or_default());
+    Ok(reply)
 }
 
 /// The dev server / the IDE on the PR's own branch (a new worktree when none has it).
