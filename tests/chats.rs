@@ -9,6 +9,14 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
+fn quartermaster_root_id(root: &Path) -> String {
+    quartermaster::sha256::hex(std::fs::canonicalize(root).unwrap().to_string_lossy().as_bytes())
+}
+
+fn text_is_probe(raw: &[u8]) -> bool {
+    raw.starts_with(b"GET /api/root")
+}
+
 fn rust() -> &'static Path {
     Path::new(env!("CARGO_BIN_EXE_qm"))
 }
@@ -24,7 +32,8 @@ fn world(root: &Path) {
 }
 
 /// Starts the fake GUI; it answers one request with `reply` (raw HTTP body) and records it.
-fn fake_gui(reply: Option<String>) -> (u16, Arc<Mutex<Vec<String>>>) {
+fn fake_gui(reply: Option<String>, root: &Path) -> (u16, Arc<Mutex<Vec<String>>>) {
+    let root_id = quartermaster_root_id(root);
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let seen = Arc::new(Mutex::new(vec![]));
@@ -33,13 +42,19 @@ fn fake_gui(reply: Option<String>) -> (u16, Arc<Mutex<Vec<String>>>) {
         Some(body) => {
             let seen = seen.clone();
             std::thread::spawn(move || {
-                let Ok((mut stream, _)) = listener.accept() else { return };
+              // the Rust CLI asks which data root the GUI serves before it posts; the Ruby oracle never asks
+              while let Ok((mut stream, _)) = listener.accept() {
                 let mut raw = vec![];
                 let mut buf = [0u8; 4096];
                 loop {
                     let n = stream.read(&mut buf).unwrap_or(0);
                     raw.extend_from_slice(&buf[..n]);
                     let text = String::from_utf8_lossy(&raw).into_owned();
+                    if text.starts_with("GET /api/root") {
+                        let probe = format!("{{\"root\":\"{root_id}\"}}");
+                        let _ = stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{probe}", probe.len()).as_bytes());
+                        break;
+                    }
                     if let Some((head, rest)) = text.split_once("\r\n\r\n") {
                         let len = head.to_ascii_lowercase().lines().find_map(|l| l.strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0))).unwrap_or(0);
                         if rest.len() >= len || n == 0 {
@@ -52,7 +67,10 @@ fn fake_gui(reply: Option<String>) -> (u16, Arc<Mutex<Vec<String>>>) {
                         break;
                     }
                 }
-                let _ = stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes());
+                if !text_is_probe(&raw) {
+                    let _ = stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes());
+                }
+              }
             });
         }
     }
@@ -74,7 +92,7 @@ fn attempt_with(bin: &Path, args: &[&str], reply: Option<&str>, env: &[(&str, &s
         _ => 999_999,
     };
     std::fs::write(dir.path().join("sessions.jsonl"), format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"s-live\",\"cwd\":\"/srv\",\"pid\":{pid},\"ts\":\"2026-03-01T00:00:00+00:00\"}}\n")).unwrap();
-    let (port, seen) = fake_gui(reply.map(String::from));
+    let (port, seen) = fake_gui(reply.map(String::from), dir.path());
     let mut cmd = Command::new(bin);
     cmd.args(args).env("QM_ROOT", dir.path()).env("QM_GUI_PORT", port.to_string()).env("LANG", "C.UTF-8").env("LC_ALL", "C.UTF-8").env_remove("QM_ASIDE").env_remove("QM_ITEM").current_dir(dir.path()).stdin(Stdio::null());
     for (k, v) in env {

@@ -19,7 +19,7 @@ use crate::outcome::{done, Outcome};
 use crate::work_item::WorkItem;
 
 const LOCAL_ACTIONS: [&str; 7] = ["caffeinate", "pane-start", "pane-resume", "rotate", "issue-start", "loose-start", "page-annotations"];
-const POLLS: [&str; 2] = ["/api/state", "/api/pulse"];
+const POLLS: [&str; 3] = ["/api/state", "/api/pulse", "/api/root"];
 const MAX_BYTES: usize = 1_000_000;
 const MAX_LINES: usize = 20_000;
 
@@ -334,6 +334,9 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
                 return ("200 OK", kind, std::fs::read(file).unwrap_or_default());
             }
             return text_reply("404 Not Found", "not found");
+        }
+        if route == "/api/root" {
+            return json_reply(json!({"root": data_root::root_id()}));
         }
         if route == "/api/attention" {
             return match crate::gui_state::attention_payload() {

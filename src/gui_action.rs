@@ -68,6 +68,15 @@ fn post(name: &str, cmd: &str, slug: Option<&str>, args: Value, optional: bool) 
         Err(_) if optional => return Ok(None),
         Err(_) => return Err(no_gui()),
     };
+    if !serves_this_root(&mut stream, port) {
+        let shown = crate::cli_format::short_path(Some(&crate::data_root::root().to_string_lossy()));
+        return if optional { Ok(None) } else { Err(abort(format!("qm {name}: 127.0.0.1:{port} is not a qm gui on this data root ({shown}) — nothing done"))) };
+    }
+    let mut stream = match TcpStream::connect_timeout(&addr, Duration::from_secs(2)) {
+        Ok(s) => s,
+        Err(_) if optional => return Ok(None),
+        Err(_) => return Err(no_gui()),
+    };
     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
     let request = format!("POST /api/action HTTP/1.1\r\nContent-Type: application/json\r\nConnection: close\r\nHost: 127.0.0.1:{port}\r\nContent-Length: {}\r\n\r\n{body}", body.len());
     if stream.write_all(request.as_bytes()).is_err() {
@@ -95,6 +104,27 @@ fn post(name: &str, cmd: &str, slug: Option<&str>, args: Value, optional: bool) 
         return Err(abort(format!("qm {name}: {error}")));
     }
     Ok(Some(reply))
+}
+
+/// Asks the GUI behind `stream` (one request, then the connection ends) which data root it serves: a GUI on
+/// another root, or a server that names no root, is no GUI of this root's. The check runs before the action
+/// rather than on its reply, because by the time a reply arrives the wrong GUI has already acted.
+fn serves_this_root(stream: &mut TcpStream, port: u16) -> bool {
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
+    let request = format!("GET /api/root HTTP/1.1\r\nConnection: close\r\nHost: 127.0.0.1:{port}\r\n\r\n");
+    let mut raw = vec![];
+    if stream.write_all(request.as_bytes()).is_err() || stream.read_to_end(&mut raw).is_err() {
+        return false;
+    }
+    let Some(split) = raw.windows(4).position(|w| w == b"\r\n\r\n") else { return false };
+    let head = String::from_utf8_lossy(&raw[..split]).to_ascii_lowercase();
+    let mut payload = raw[split + 4..].to_vec();
+    if head.contains("transfer-encoding: chunked") {
+        let Some(plain) = decode_chunked(&payload) else { return false };
+        payload = plain;
+    }
+    let ok = head.lines().next().is_some_and(|l| l.split_whitespace().nth(1) == Some("200"));
+    ok && serde_json::from_slice::<Value>(&payload).ok().and_then(|v| v.get("root").and_then(Value::as_str).map(String::from)).as_deref() == Some(crate::data_root::root_id().as_str())
 }
 
 pub fn truthy(v: Option<&Value>) -> bool {

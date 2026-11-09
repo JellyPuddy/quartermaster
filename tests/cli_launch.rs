@@ -18,7 +18,8 @@ fn script(path: &Path, text: &str) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
 }
 
-fn fake_gui(log: std::path::PathBuf, refuse: Arc<AtomicBool>) -> u16 {
+fn fake_gui(log: std::path::PathBuf, refuse: Arc<AtomicBool>, root: &Path) -> u16 {
+    let root_id = quartermaster::sha256::hex(fs::canonicalize(root).unwrap().to_string_lossy().as_bytes());
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     std::thread::spawn(move || {
@@ -40,6 +41,11 @@ fn fake_gui(log: std::path::PathBuf, refuse: Arc<AtomicBool>) -> u16 {
                 }
             }
             let text = String::from_utf8_lossy(&raw).to_string();
+            if text.starts_with("GET /api/root") {
+                let reply = format!("{{\"root\":\"{root_id}\"}}");
+                let _ = write!(s, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}", reply.len());
+                continue;
+            }
             let body = text.split("\r\n\r\n").nth(1).unwrap_or("").to_string();
             let mut f = fs::OpenOptions::new().create(true).append(true).open(&log).unwrap();
             writeln!(f, "{body}").unwrap();
@@ -86,7 +92,7 @@ fn viewer_pickers_and_launch_commands() {
     fs::write(root.join("sessions.jsonl"), format!("{{\"v\":1,\"event\":\"start\",\"session_id\":\"s-newone-1\",\"cwd\":\"{}\",\"branch\":\"feat-x\",\"project\":\"demo\",\"pid\":999999,\"transcript_path\":\"/nowhere\",\"ts\":\"2026-03-01T00:00:00+00:00\"}}\n", repo.display())).unwrap();
     let gui_log = root.join("gui.log");
     let refuse = Arc::new(AtomicBool::new(false));
-    let live_port = fake_gui(gui_log.clone(), refuse.clone());
+    let live_port = fake_gui(gui_log.clone(), refuse.clone(), &root);
     let dead_port = { let l = TcpListener::bind("127.0.0.1:0").unwrap(); l.local_addr().unwrap().port() };
     fs::create_dir_all(root.join("home")).unwrap();
     let fake_log = root.join("tool.log");

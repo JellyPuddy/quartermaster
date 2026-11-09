@@ -46,6 +46,12 @@ pub fn root() -> PathBuf {
     }
 }
 
+/// Which data root a process serves, as a digest of its realpath so a reply never carries the path: `GET
+/// /api/root` answers it, and the CLI hands off only to a qm gui on its own root.
+pub fn root_id() -> String {
+    crate::sha256::hex(normalize(&root().to_string_lossy()).to_string_lossy().as_bytes())
+}
+
 pub fn transcripts_dir() -> PathBuf {
     match std::env::var("QM_TRANSCRIPTS_DIR") {
         Ok(v) => expand_path(&v),
