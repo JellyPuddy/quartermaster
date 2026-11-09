@@ -49,8 +49,8 @@ unset): a name, the item fields it needs and `start(automation, item, prompt, ru
 `Reply::Started {item_slug, tmux}` once a chat runs, or `Reply::Waiting(reason)` to stay queued.
 `problem(flow, item)` says why a flow can't take an item (unknown flow, a needed field missing or blank; a
 cron run's null item lacks every field); `start` fails with it, and for a yml the store would refuse. Both
-pass claude `--session-id` (qm's uuid), then `--model`, `--permission-mode`, `--allowedTools` (one value, so
-it can't swallow the prompt) when set.
+pass claude `--session-id` (qm's uuid), then `--model`, `--permission-mode`, `--allowedTools=<a,b>` (one `=` value, so
+the variadic flag can't swallow the prompt) when set.
 - `chat` (`chat_flow`): tmux `<slug>--run-<run id>` on qm's socket running the chat command
   (`QM_CHAT_COMMAND` swaps it) with `QM_ITEM=<automation slug>`, `CLAUDE*` unset by `Tmux`; cwd the yml's
   `cwd`, else the project root, else home. The prompt is `<slug>.prompt.md`, plus for an item a final

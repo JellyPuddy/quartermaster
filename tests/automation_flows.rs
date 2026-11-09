@@ -65,7 +65,7 @@ fn a_chat_run_opens_its_own_tmux_session_with_the_session_id_flags_and_prompt_la
     assert_eq!(world.sessions(), ["nightly-triage--run-ab12cd34"]);
     assert_eq!(started.item, "nightly-triage");
     assert_eq!(std::fs::canonicalize(&started.cwd).unwrap(), std::fs::canonicalize(cwd.path()).unwrap());
-    assert_eq!(started.args, ["--session-id", SID, "--model", "sonnet", "--permission-mode", "acceptEdits", "--allowedTools", "Bash(gh:*),Read", "Triage the inbox.\n"]);
+    assert_eq!(started.args, ["--session-id", SID, "--model", "sonnet", "--permission-mode", "acceptEdits", "--allowedTools=Bash(gh:*),Read", "Triage the inbox.\n"]);
 }
 
 #[test]
@@ -250,5 +250,5 @@ fn a_pr_gh_cant_find_fails_the_run() {
 #[test]
 fn flags_join_allowed_tools_into_one_value() {
     let record = entry(json!({"allowed_tools": ["A", "B(x:*)"]})).record;
-    assert_eq!(flows::flags(&record, "sid"), ["--session-id", "sid", "--allowedTools", "A,B(x:*)"]);
+    assert_eq!(flows::flags(&record, "sid"), ["--session-id", "sid", "--allowedTools=A,B(x:*)"]);
 }

@@ -114,8 +114,7 @@ pub fn start(automation: &Entry, item: &Value, prompt: &str, run_id: &str, sessi
     }
 }
 
-/// The claude flags a local automation's yml sets, before the prompt. `--allowedTools` takes one comma-joined
-/// value: the flag is variadic and would swallow the prompt after it.
+/// The claude flags a local automation's yml sets, before the prompt.
 pub fn flags(record: &Record, session_id: &str) -> Vec<String> {
     let tools: Vec<&str> = record.get("allowed_tools").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
     let text = |key: &str| record.get(key).filter(|v| !v.is_null()).map(to_s);
@@ -127,7 +126,7 @@ pub fn flags(record: &Record, session_id: &str) -> Vec<String> {
         out.extend(["--permission-mode".to_string(), mode]);
     }
     if !tools.is_empty() {
-        out.extend(["--allowedTools".to_string(), tools.join(",")]);
+        out.push(format!("--allowedTools={}", tools.join(",")));
     }
     out
 }
