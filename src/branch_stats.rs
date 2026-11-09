@@ -24,7 +24,7 @@ fn arg<T>(m: impl Into<String>) -> R<T> {
 }
 
 fn script() -> String {
-    format!("{}/skills/branch-stats/scripts/branch-stats.sh", env!("CARGO_MANIFEST_DIR"))
+    format!("{}/skills/branch-stats/scripts/branch-stats.sh", crate::delegate::checkout().display())
 }
 
 fn cache_file() -> std::path::PathBuf {

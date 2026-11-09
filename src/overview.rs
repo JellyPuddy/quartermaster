@@ -22,7 +22,7 @@ const MAX_BYTES: usize = 200 * 1024;
 const CONFIG_KEY: &str = "overview_artifact";
 
 fn page() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("skills/work-items/page.html")
+    crate::delegate::checkout().join("skills/work-items/page.html")
 }
 
 fn published_file() -> std::path::PathBuf {

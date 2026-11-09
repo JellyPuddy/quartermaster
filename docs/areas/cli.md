@@ -9,8 +9,8 @@
 `qm` is shared by the user, Claude and the hooks. `./quartermaster` is a launcher only: a POSIX
 `sh` script that follows its own symlinks (so `~/bin/qm`, `~/bin/quartermaster` and the hook
 registrations keep working wherever the checkout is) and execs `target/release/qm` (`QM_BIN` names
-another binary); with no binary it says to run `cargo build --release`, except for a hook, which
-exits 0 silently. `src/cli.rs` records the command in `feature-use.jsonl`, rewrites the command's
+another binary; `delegate::checkout()` finds the checkout from the running binary's own path, `<checkout>/target/<profile>/qm`, at run time, so GUI assets, the tick LaunchAgent and `install-hooks` follow a moved checkout); with no binary it says to run `cargo build --release`, except for a hook or `statusline`, which
+exit 0 silently. `src/cli.rs` records the command in `feature-use.jsonl`, rewrites the command's
 options through `src/opt_parse.rs` (any unambiguous abbreviation of a long option, `--name=value`,
 `-n5`, options among the arguments; an unknown one is `qm: invalid option: --x`) and runs the command.
 A command that can't take its arguments as given (an odd value in a file it reads, say) says
