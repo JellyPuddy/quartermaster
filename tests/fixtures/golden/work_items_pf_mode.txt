@@ -67,7 +67,7 @@ _TODO_
 $ qm "new" "No server" "--project" "plain" "--pf-mode" "dev"
 exit 1
 --- stderr
-qm: plain has no dev server: set projects.plain.dev_server in config.yml
+qm: plain has no dev server: run `qm config set projects.plain.dev_server.command <command>`
 --- tunnel-work.md
 ---
 v: 1
@@ -89,7 +89,7 @@ _TODO_
 $ qm "new" "Unknown project" "--project" "ghost" "--pf-mode" "dev"
 exit 1
 --- stderr
-qm: ghost has no dev server: set projects.ghost.dev_server in config.yml
+qm: ghost has no dev server: run `qm config set projects.ghost.dev_server.command <command>`
 --- tunnel-work.md
 ---
 v: 1

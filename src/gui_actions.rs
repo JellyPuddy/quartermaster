@@ -446,7 +446,7 @@ pub(crate) fn loose_kickoff(starter: Option<&str>, question: Option<&str>) -> R<
     let Some(known) = config.loose_starters().iter().find(|s| s.key == starter) else {
         let shown = crate::ruby_text::inspect_ascii(starter).ok_or(Stop::Unported)?;
         let keys: Vec<&str> = config.loose_starters().iter().map(|s| s.key.as_str()).collect();
-        return Err(fail(format!("unknown starter {shown} (config.yml loose_starters: {})", keys.join(", "))));
+        return Err(fail(format!("unknown starter {shown} (configured: {}; add one with `qm config set loose_starters.{starter}.prompt <prompt>`)", keys.join(", "))));
     };
     Ok(Some(match question {
         Some(q) => format!("{} answer my question about them:\n\n{q}", known.prompt),
@@ -617,13 +617,13 @@ fn pr_workspace_job(args: &Args, pf: bool) -> R<Value> {
     let pr = pr_of(args)?;
     let repo = pr["repo"].as_str().unwrap_or("").to_string();
     let Some(project) = crate::pr_items::project_for_repo(&repo) else {
-        return Err(fail(format!("{repo} is not a project in config.yml — qm doesn't know where it is checked out")));
+        return Err(fail(format!("{repo} is not a project qm knows: run `qm config set projects.<name>.root <its checkout>`")));
     };
     let config = crate::project_config::ProjectConfig::current();
     let label = if pf {
         "switching the dev server…".to_string()
     } else {
-        format!("opening {}…", config.ide(Some(&project)).ok_or_else(|| fail("no IDE configured: set ide_command (and ide_label) in config.yml"))?.label)
+        format!("opening {}…", config.ide(Some(&project)).ok_or_else(|| fail(format!("no IDE configured: run `{}`", crate::project_config::Ide::CONFIG_COMMAND)))?.label)
     };
     let items = WorkItem::all().map_err(error)?;
     let item = crate::pr_items::pr_item(&pr, Some(&project), &items);
@@ -779,7 +779,7 @@ fn workspace_job(cmd: &str, slug: &str, args: &Args) -> R<Value> {
         "pf-switch" => "switching the dev server…".to_string(),
         "ide" => {
             let config = crate::project_config::ProjectConfig::current();
-            let ide = config.ide(item.project().as_deref()).ok_or_else(|| fail("no IDE configured: set ide_command (and ide_label) in config.yml"))?;
+            let ide = config.ide(item.project().as_deref()).ok_or_else(|| fail(format!("no IDE configured: run `{}`", crate::project_config::Ide::CONFIG_COMMAND)))?;
             format!("opening {}…", ide.label)
         }
         _ => "opening a terminal…".to_string(),

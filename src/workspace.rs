@@ -198,11 +198,11 @@ fn check_mode(server: &crate::project_config::DevServer, mode: &str) -> Result<S
 }
 
 fn no_ide() -> Failed {
-    "no IDE configured: set ide_command (and ide_label) in config.yml".into()
+    format!("no IDE configured: run `{}`", crate::project_config::Ide::CONFIG_COMMAND)
 }
 
 fn dev_server_of(config: &ProjectConfig, project: Option<&str>) -> Result<crate::project_config::DevServer, Failed> {
-    config.settings(project).and_then(|s| s.dev_server.clone()).ok_or_else(|| format!("{0} has no dev server: set projects.{0}.dev_server in config.yml", project.unwrap_or("")))
+    config.settings(project).and_then(|s| s.dev_server.clone()).ok_or_else(|| format!("{} has no dev server: run `{}`", project.unwrap_or(""), crate::project_config::config_command(project.unwrap_or(""), "dev_server.command", "<command>")))
 }
 
 /// `Workspace#switch_pf`.
@@ -268,11 +268,11 @@ pub fn work_on(item: &mut WorkItem, mode: Option<&str>, worktree: Option<&str>, 
     report(target, mode.clone(), |steps, target| {
         steps.push(match (&server, &mode) {
             (Some(s), Some(m)) => pf_step(s, target, m)?,
-            _ => format!("dev server skipped: {name} has none configured"),
+            _ => format!("dev server skipped: {name} has none ({})", crate::project_config::config_command(&name, "dev_server.command", "<command>")),
         });
         steps.push(match ide {
             Some(ide) => ide_step(ide, target)?,
-            None => "IDE skipped: no ide_command in config.yml".to_string(),
+            None => format!("IDE skipped: none configured ({})", crate::project_config::Ide::CONFIG_COMMAND),
         });
         Ok(())
     })
@@ -281,7 +281,7 @@ pub fn work_on(item: &mut WorkItem, mode: Option<&str>, worktree: Option<&str>, 
 /// `Workspace#stop_pf`: stops the dev server, whichever checkout it serves.
 pub fn stop_pf() -> Result<String, Failed> {
     let config = ProjectConfig::current();
-    let server = config.dev_server().ok_or_else(|| "no dev server configured in config.yml".to_string())?;
+    let server = config.dev_server().ok_or_else(|| format!("no dev server configured: run `{}`", crate::project_config::DEV_SERVER_ANYWHERE))?;
     crate::pf::stop(server)?;
     Ok(format!("{} stopped", server.command))
 }

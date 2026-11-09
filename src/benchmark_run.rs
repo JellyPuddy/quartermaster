@@ -63,7 +63,7 @@ pub fn enabled(item: &WorkItem) -> bool {
 pub fn settings_checked(project: &str) -> R<crate::project_config::Benchmark> {
     match settings(Some(project)) {
         Some(s) => Ok(s),
-        None => arg(format!("{project} has no benchmarks: set projects.{project}.benchmark in config.yml")),
+        None => arg(format!("{project} has no benchmarks: run `qm config set projects.{project}.benchmark.database <database>` and `qm config set projects.{project}.benchmark.skill <skill folder>`")),
     }
 }
 

@@ -88,6 +88,7 @@ impl Qm {
             .env("LANG", "C.UTF-8")
             .env("LC_ALL", "C.UTF-8")
             .env("QM_TMUX_SOCKET", "qm-test-characterization")
+            .env("QM_CONFIG_STRICT", "1")
             .env_remove("QM_SKIP")
             .env_remove("QM_ASIDE")
             .env_remove("QM_LOOSE")

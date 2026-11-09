@@ -70,9 +70,9 @@ assets under `gui/`, POSIX hooks under `hooks/`, and the tests under `tests/` ([
 The key reference: `config_schema` lists exactly these keys ([settings](areas/settings.md)), and
 a test checks this section names each one. qm writes the file (Settings view, `qm config`) in its
 own layout, dropping comments and keeping keys it doesn't govern; the seed is its header line and
-`projects: {}`. `ProjectConfig` reads it; a broken file reads as no projects, a missing or malformed
-key leaves its feature off (buttons hidden, actions refused naming the setting). A project is a repo
-root path (`my-app: ~/code/my-app`) or a mapping:
+`projects: {}`. Code reads it only through `ProjectConfig` (schema keys only, via `ConfigReader`); a
+broken file reads as no projects, a bad key leaves its feature off (buttons hidden, actions name the
+`qm config set` to run). A project is a root path or a mapping:
 
 - `projects.<name>.root` — the main repo root.
 - `projects.<name>.dev_server` — a command name, or `projects.<name>.dev_server.{command, modes,

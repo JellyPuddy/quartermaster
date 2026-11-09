@@ -1,8 +1,11 @@
 use serde_yaml::Value;
 
+use crate::config_reader::ConfigReader;
 use crate::data_root;
+use crate::ruby_num::Num;
 use crate::ruby_text::strip;
-use crate::yaml_scalar::{array, get, string, text};
+use crate::transcript_usage::KINDS;
+use crate::yaml_scalar::{array, string, text};
 
 pub struct Ide {
     pub label: String,
@@ -14,6 +17,8 @@ pub const DEFAULT_REVIEW_SKILL: &str = "/code-review";
 
 impl Ide {
     pub const DEFAULT_LABEL: &'static str = "IDE";
+    /// What "no IDE" messages tell the user to run.
+    pub const CONFIG_COMMAND: &'static str = "qm config set ide_command '[open, -a, <IDE>, PATH]'";
 
     /// The command with the checkout's path in: an element that is exactly `PATH` becomes the path, `PATH`
     /// inside a longer element (a `sh -c` script) the shell-escaped path.
@@ -74,15 +79,28 @@ pub struct ProjectSettings {
     pub test_db: Option<String>,
     /// The PRs view's Review button runs this skill (default `/code-review`).
     pub review_skill: String,
+    /// Whether the project names its own review skill (else the default shows as inherited).
+    pub review_skill_set: bool,
     pub benchmark: Option<Benchmark>,
 }
 
-/// config.yml's project side; an unreadable or malformed file reads as no projects.
+/// Why config.yml read as an empty config.
+pub enum LoadFailure {
+    Syntax(String),
+    NotMapping,
+}
+
+/// config.yml's project side, read through `ConfigReader`; an unreadable or malformed file reads as no
+/// projects.
 pub struct ProjectConfig {
     projects: Vec<ProjectSettings>,
     ide: Option<Ide>,
     default_name: String,
+    default_raw: Value,
     starters: Vec<Starter>,
+    prices: Vec<(String, Vec<(usize, Num)>)>,
+    overview_artifact: Option<String>,
+    failure: Option<LoadFailure>,
 }
 
 /// A loose-chat starter (config.yml `loose_starters:`): its prompt has the chat load something first.
@@ -108,19 +126,14 @@ pub(crate) fn parse_ide(command: Option<&Value>, label: Option<&Value>) -> Optio
     Some(Ide { label: string(label).unwrap_or_else(|| Ide::DEFAULT_LABEL.to_string()), command: argv })
 }
 
-fn expand(path: Option<String>) -> Option<String> {
-    path.map(|p| data_root::expand_path(&p).to_string_lossy().into_owned())
+fn expand(path: Option<&Value>) -> Option<String> {
+    string(path).map(|p| data_root::expand_path(&p).to_string_lossy().into_owned())
 }
 
-pub(crate) fn parse_dev_server(value: Option<&Value>) -> Option<DevServer> {
-    let (command, modes_value, default_value, status_url, state_file) = match value {
-        Some(Value::String(_)) => (string(value), None, None, None, None),
-        Some(Value::Mapping(m)) => (string(get(m, "command")), get(m, "modes"), get(m, "default_mode"), string(get(m, "status_url")), expand(string(get(m, "state_file")))),
-        _ => return None,
-    };
-    let command = command?;
-    let default = string(default_value);
-    let mut modes: Vec<String> = array(modes_value).into_iter().map(text).filter(|m| !m.is_empty()).collect();
+pub(crate) fn parse_dev_server(server: &ConfigReader) -> Option<DevServer> {
+    let command = string(server.get("command"))?;
+    let default = string(server.get("default_mode"));
+    let mut modes: Vec<String> = array(server.get("modes")).into_iter().map(text).filter(|m| !m.is_empty()).collect();
     if modes.is_empty() {
         modes = vec![default.clone().unwrap_or_else(|| "default".to_string())];
     }
@@ -128,37 +141,48 @@ pub(crate) fn parse_dev_server(value: Option<&Value>) -> Option<DevServer> {
         Some(d) if modes.contains(d) => d.clone(),
         _ => modes[0].clone(),
     };
-    Some(DevServer { command, modes, default_mode, status_url, state_file })
+    Some(DevServer { command, modes, default_mode, status_url: string(server.get("status_url")), state_file: expand(server.get("state_file")) })
 }
 
-fn parse_project(name: String, value: &Value) -> Option<ProjectSettings> {
-    let (root, raw) = match value {
-        Value::Mapping(m) => (string(get(m, "root")), Some(m)),
-        other => (string(Some(other)), None),
-    };
-    let root = expand(root)?;
-    let get_raw = |key: &str| raw.and_then(|m| get(m, key));
-    Some(ProjectSettings {
-        name,
-        root,
-        dev_server: parse_dev_server(get_raw("dev_server")),
-        ide: parse_ide(get_raw("ide_command"), get_raw("ide_label")),
-        pr_prerequisites: matches!(get_raw("pr_prerequisites"), Some(Value::Bool(true))),
-        test_db: string(get_raw("test_db")),
-        review_skill: string(get_raw("review_skill")).unwrap_or_else(|| DEFAULT_REVIEW_SKILL.to_string()),
-        benchmark: parse_benchmark(get_raw("benchmark")),
-    })
+impl ProjectSettings {
+    /// A project qm can place (it has a root).
+    fn read(name: &str, project: &ConfigReader) -> Option<ProjectSettings> {
+        Some(Self::read_any(name, project)).filter(|s| !s.root.is_empty())
+    }
+
+    /// Whatever the project's entry sets, root or not (the Settings grid shows projects without one).
+    pub(crate) fn read_any(name: &str, project: &ConfigReader) -> ProjectSettings {
+        ProjectSettings {
+            name: name.to_string(),
+            root: expand(project.get("root")).unwrap_or_default(),
+            dev_server: parse_dev_server(&project.section("dev_server")),
+            ide: parse_ide(project.get("ide_command"), project.get("ide_label")),
+            pr_prerequisites: matches!(project.get("pr_prerequisites"), Some(Value::Bool(true))),
+            test_db: string(project.get("test_db")),
+            review_skill: string(project.get("review_skill")).unwrap_or_else(|| DEFAULT_REVIEW_SKILL.to_string()),
+            review_skill_set: string(project.get("review_skill")).is_some(),
+            benchmark: parse_benchmark(&project.section("benchmark")),
+        }
+    }
 }
+
+/// The command that sets one of a project's keys, for "not configured" messages:
+/// `qm config set projects.App.test_db <command>`.
+pub fn config_command(project: &str, key: &str, value: &str) -> String {
+    format!("qm config set projects.{project}.{key} {value}")
+}
+
+/// What "no project has a dev server" messages tell the user to run.
+pub const DEV_SERVER_ANYWHERE: &str = "qm config set projects.<project>.dev_server.command <command>";
 
 /// Both database and skill, or no benchmarks.
-pub(crate) fn parse_benchmark(value: Option<&Value>) -> Option<Benchmark> {
-    let Some(Value::Mapping(m)) = value else { return None };
-    let database = string(get(m, "database"))?;
-    let skill = expand(string(get(m, "skill")))?;
+pub(crate) fn parse_benchmark(bench: &ConfigReader) -> Option<Benchmark> {
+    let database = string(bench.get("database"))?;
+    let skill = expand(bench.get("skill"))?;
     if database.is_empty() || !database.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
         return None;
     }
-    Some(Benchmark { database, skill, notes: string(get(m, "notes")) })
+    Some(Benchmark { database, skill, notes: string(bench.get("notes")) })
 }
 
 impl ProjectConfig {
@@ -168,39 +192,74 @@ impl ProjectConfig {
     }
 
     pub fn parse(source: &str) -> ProjectConfig {
-        let data = match serde_yaml::from_str::<Value>(source) {
-            Ok(Value::Mapping(m)) => m,
-            _ => return ProjectConfig { projects: vec![], ide: None, default_name: String::new(), starters: vec![] },
+        let (data, failure) = match serde_yaml::from_str::<Value>(source) {
+            Ok(v @ Value::Mapping(_)) => (v, None),
+            Ok(Value::Null) => (Value::Null, None),
+            Ok(_) => (Value::Null, Some(LoadFailure::NotMapping)),
+            Err(e) => (Value::Null, Some(LoadFailure::Syntax(e.to_string()))),
         };
-        let projects = match data.get("projects") {
-            Some(Value::Mapping(m)) => m.iter().filter_map(|(k, v)| parse_project(text(k), v)).collect(),
-            _ => vec![],
-        };
-        let default_name = match get(&data, "default_project") {
+        let config = ConfigReader::new(&data);
+        let projects = config.section("projects").entries().into_iter().filter_map(|(name, p)| ProjectSettings::read(&name, &p)).collect();
+        let default_name = match config.get("default_project") {
             Some(Value::String(t)) => t.clone(),
             _ => String::new(),
         };
         let mut starters: Vec<Starter> = vec![];
-        if let Some(Value::Mapping(m)) = get(&data, "loose_starters") {
-            for (key, starter) in m {
-                let Value::Mapping(fields) = starter else { continue };
-                let Some(Value::String(prompt)) = get(fields, "prompt") else { continue };
-                if crate::ruby_text::strip(prompt).is_empty() {
-                    continue;
-                }
-                let key = text(key);
-                let label = match get(fields, "label") {
-                    Some(Value::String(l)) if !l.is_empty() => l.clone(),
-                    _ => key.clone(),
-                };
-                let starter = Starter { key: key.clone(), label, prompt: crate::ruby_text::strip(prompt).to_string() };
-                match starters.iter_mut().find(|s| s.key == key) {
-                    Some(existing) => *existing = starter,
-                    None => starters.push(starter),
-                }
+        for (key, starter) in config.section("loose_starters").entries() {
+            let Some(Value::String(prompt)) = starter.get("prompt").filter(|_| starter.is_mapping()) else { continue };
+            if strip(prompt).is_empty() {
+                continue;
+            }
+            let label = match starter.get("label") {
+                Some(Value::String(l)) if !l.is_empty() => l.clone(),
+                _ => key.clone(),
+            };
+            let starter = Starter { key: key.clone(), label, prompt: strip(prompt).to_string() };
+            match starters.iter_mut().find(|s| s.key == key) {
+                Some(existing) => *existing = starter,
+                None => starters.push(starter),
             }
         }
-        ProjectConfig { projects, ide: parse_ide(get(&data, "ide_command"), get(&data, "ide_label")), default_name, starters }
+        let prices = config
+            .section("prices")
+            .entries()
+            .into_iter()
+            .filter(|(_, fields)| fields.is_mapping())
+            .map(|(model, fields)| {
+                let numbers = KINDS.iter().enumerate().filter_map(|(i, kind)| if let Some(Value::Number(n)) = fields.get(kind) { Some((i, Num::from_yaml(n))) } else { None });
+                (model, numbers.collect())
+            })
+            .collect();
+        ProjectConfig {
+            projects,
+            ide: parse_ide(config.get("ide_command"), config.get("ide_label")),
+            default_name,
+            default_raw: config.get("default_project").cloned().unwrap_or(Value::Null),
+            starters,
+            prices,
+            overview_artifact: string(config.get("overview_artifact")),
+            failure,
+        }
+    }
+
+    /// The `prices:` overrides: per model, the kind index (`transcript_usage::KINDS`) and its number.
+    pub fn prices(&self) -> &[(String, Vec<(usize, Num)>)] {
+        &self.prices
+    }
+
+    /// The published phone page's claude.ai URL, None while unset.
+    pub fn overview_artifact(&self) -> Option<&str> {
+        self.overview_artifact.as_deref()
+    }
+
+    /// Why the file read as an empty config, None when it parsed.
+    pub fn failure(&self) -> Option<&LoadFailure> {
+        self.failure.as_ref()
+    }
+
+    /// `default_project:` as written, null when unset.
+    pub fn default_project_raw(&self) -> &Value {
+        &self.default_raw
     }
 
     /// key → starter, in config order.

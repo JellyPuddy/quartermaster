@@ -209,7 +209,7 @@ d
 $ qm "pf-switch" "w-bare"
 exit 1
 --- stderr
-qm: bare has no dev server: set projects.bare.dev_server in config.yml
+qm: bare has no dev server: run `qm config set projects.bare.dev_server.command <command>`
 --- w-item.md
 ---
 v: 1
@@ -497,7 +497,7 @@ d
 $ qm "work-on" "w-bare"
 exit 0
 --- stdout
-dev server skipped: bare has none configured
+dev server skipped: bare has none (qm config set projects.bare.dev_server.command <command>)
 FakeIDE opened ROOT/wt-w
 --- w-item.md
 ---

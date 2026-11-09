@@ -101,17 +101,6 @@ pub fn events_pulse() -> String {
     format!("{size}:{}:{}:{}", drafts::signature(), issue_drafts::signature(), crate::turn_notifier::seq())
 }
 
-fn config_raw() -> Map<String, Value> {
-    let text = std::fs::read_to_string(data_root::config_file()).unwrap_or_default();
-    match serde_yaml::from_str::<serde_yaml::Value>(&text) {
-        Ok(v) => match serde_json::to_value(v) {
-            Ok(Value::Object(m)) => m,
-            _ => Map::new(),
-        },
-        _ => Map::new(),
-    }
-}
-
 /// `RateLimits#payload`: the account's limits as the status line last wrote them.
 pub(crate) fn rate_limits() -> Value {
     let Ok(raw) = std::fs::read_to_string(data_root::root().join("rate-limits.json")) else { return Value::Null };
@@ -482,16 +471,15 @@ pub fn build(token: &str) -> R<Value> {
     drop(guard);
 
     let building = active_build_agents(&work_items, &log)?;
-    let raw = config_raw();
     let names: Vec<&str> = config.roots().into_iter().map(|(n, _)| n).collect();
     let mut projects: Vec<String> = names.iter().map(|s| s.to_string()).collect();
     if !projects.iter().any(|p| p == "No project") {
         projects.push("No project".into());
     }
-    let default_project = match raw.get("default_project") {
-        None | Some(Value::Null) => String::new(),
-        Some(Value::String(s)) => s.clone(),
-        Some(_) => return Err(Unported),
+    let default_project = match config.default_project_raw() {
+        serde_yaml::Value::Null => String::new(),
+        serde_yaml::Value::String(s) => s.clone(),
+        _ => return Err(Unported),
     };
     let default_project = if names.contains(&default_project.as_str()) { json!(default_project) } else { json!(names.first()) };
 

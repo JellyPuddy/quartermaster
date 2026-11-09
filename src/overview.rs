@@ -5,7 +5,7 @@
 use serde_json::{json, Map, Value};
 
 use crate::chat_attention::{ChatAttention, STATES as CHAT_STATES};
-use crate::cli_format::{puts, short_path};
+use crate::cli_format::puts;
 use crate::data_root;
 use crate::gui_state::{iso, rate_limits};
 use crate::outcome::{abort, done, Outcome};
@@ -140,15 +140,11 @@ fn write(path: &str, text: &str) -> std::io::Result<()> {
 }
 
 fn artifact_url() -> Option<String> {
-    let text = std::fs::read_to_string(data_root::root().join("config.yml")).ok()?;
-    match serde_yaml::from_str::<serde_yaml::Value>(&text) {
-        Ok(serde_yaml::Value::Mapping(m)) => m.get(CONFIG_KEY).and_then(|v| v.as_str()).map(|v| strip(v).to_string()).filter(|v| !v.is_empty()),
-        Ok(_) => None,
-        Err(e) => {
-            data_root::log_error("overview-config", "Psych::SyntaxError", &e.to_string());
-            None
-        }
+    let config = crate::project_config::ProjectConfig::current();
+    if let Some(crate::project_config::LoadFailure::Syntax(message)) = config.failure() {
+        data_root::log_error("overview-config", "Psych::SyntaxError", message);
     }
+    config.overview_artifact().map(String::from)
 }
 
 fn page_digest() -> Option<String> {
@@ -174,7 +170,7 @@ pub fn run(a: &[String]) -> Outcome {
         }
         Some("--url") => match artifact_url() {
             Some(url) => done(puts(&url)),
-            None => abort(&format!("qm overview: no {CONFIG_KEY}: in {} — publish skills/work-items/page.html and put its claude.ai URL there", short_path(Some(&data_root::root().join("config.yml").to_string_lossy())))),
+            None => abort(&format!("qm overview: no {CONFIG_KEY} configured — publish skills/work-items/page.html, then run `qm config set {CONFIG_KEY} <its claude.ai URL>`")),
         },
         Some("--page") => {
             let published = std::fs::read_to_string(published_file()).ok().map(|t| strip(&t).to_string());

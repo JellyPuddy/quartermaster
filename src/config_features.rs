@@ -7,8 +7,8 @@ use serde_json::{json, Map, Value};
 use serde_yaml::Value as Yaml;
 
 use crate::config_check::Issue;
-use crate::project_config::{parse_benchmark, parse_dev_server, parse_ide, Ide, DEFAULT_REVIEW_SKILL};
-use crate::yaml_scalar::{get, string, text};
+use crate::config_reader::ConfigReader;
+use crate::project_config::{parse_ide, Ide, ProjectSettings};
 
 /// Each feature's id and the key paths (under `projects.<name>`) whose issues mark its cell.
 const FEATURES: [(&str, &[&str]); 6] = [
@@ -24,53 +24,37 @@ pub const FEATURE_IDS: [&str; 6] = ["dev_server", "test_db", "review", "ships_by
 
 /// name → feature → cell for every project in a config mapping.
 pub fn features(data: &Yaml, issues: &[Issue]) -> Value {
-    let empty = serde_yaml::Mapping::new();
-    let top = match data {
-        Yaml::Mapping(m) => m,
-        _ => &empty,
-    };
-    let global = parse_ide(get(top, "ide_command"), get(top, "ide_label"));
+    let config = ConfigReader::new(data);
+    let global = parse_ide(config.get("ide_command"), config.get("ide_label"));
     let mut out = Map::new();
-    if let Some(Yaml::Mapping(projects)) = get(top, "projects") {
-        for (name, value) in projects {
-            let name = text(name);
-            out.insert(name.clone(), project_features(&name, value, global.as_ref(), issues));
-        }
+    for (name, project) in config.section("projects").entries() {
+        let settings = ProjectSettings::read_any(&name, &project);
+        out.insert(name.clone(), project_features(&settings, global.as_ref(), issues));
     }
     Value::Object(out)
 }
 
-fn project_features(name: &str, value: &Yaml, global: Option<&Ide>, issues: &[Issue]) -> Value {
-    let empty = serde_yaml::Mapping::new();
-    let raw = match value {
-        Yaml::Mapping(m) => m,
-        _ => &empty,
-    };
-    let get_raw = |key: &str| if matches!(value, Yaml::Mapping(_)) { get(raw, key) } else { None };
-    let server = parse_dev_server(get_raw("dev_server"));
-    let bench = parse_benchmark(get_raw("benchmark"));
-    let ide = parse_ide(get_raw("ide_command"), get_raw("ide_label"));
-    let review = string(get_raw("review_skill"));
-    let ships = matches!(get_raw("pr_prerequisites"), Some(Yaml::Bool(true)));
+fn project_features(settings: &ProjectSettings, global: Option<&Ide>, issues: &[Issue]) -> Value {
     let cells: Vec<(&str, Cell)> = vec![
-        ("dev_server", match &server {
+        ("dev_server", match &settings.dev_server {
             Some(s) => Cell::on(format!("{} · {} mode{}", s.command, s.modes.len(), if s.modes.len() == 1 { "" } else { "s" }), format!("{}: {} (default {})", s.command, s.modes.join(", "), s.default_mode)),
             None => Cell::off(),
         }),
-        ("test_db", match string(get_raw("test_db")) {
-            Some(t) => Cell::on(t.clone(), t),
+        ("test_db", match &settings.test_db {
+            Some(t) => Cell::on(t.clone(), t.clone()),
             None => Cell::off(),
         }),
-        ("review", match review {
-            Some(r) => Cell::on(r.clone(), r),
-            None => Cell::new("inherit", Some("default".into()), Some(DEFAULT_REVIEW_SKILL.into())),
+        ("review", if settings.review_skill_set {
+            Cell::on(settings.review_skill.clone(), settings.review_skill.clone())
+        } else {
+            Cell::new("inherit", Some("default".into()), Some(settings.review_skill.clone()))
         }),
-        ("ships_by_release", if ships { Cell::on("yes".into(), "PRs ship by release".into()) } else { Cell::off() }),
-        ("benchmarks", match &bench {
+        ("ships_by_release", if settings.pr_prerequisites { Cell::on("yes".into(), "PRs ship by release".into()) } else { Cell::off() }),
+        ("benchmarks", match &settings.benchmark {
             Some(b) => Cell::on(b.database.clone(), format!("{} · {}", b.database, b.skill)),
             None => Cell::off(),
         }),
-        ("ide", match (&ide, global) {
+        ("ide", match (&settings.ide, global) {
             (Some(i), _) => Cell::on(i.label.clone(), i.command.join(" ")),
             (None, Some(g)) => Cell::new("inherit", Some("global".into()), Some(format!("{}: {}", g.label, g.command.join(" ")))),
             (None, None) => Cell::off(),
@@ -79,7 +63,7 @@ fn project_features(name: &str, value: &Yaml, global: Option<&Ide>, issues: &[Is
     let mut out = Map::new();
     for (feature, mut cell) in cells {
         let keys = FEATURES.iter().find(|(f, _)| *f == feature).map(|(_, k)| *k).unwrap_or(&[]);
-        let found: Vec<&Issue> = issues.iter().filter(|i| keys.iter().any(|k| under(&i.path, &format!("projects.{name}.{k}")))).collect();
+        let found: Vec<&Issue> = issues.iter().filter(|i| keys.iter().any(|k| under(&i.path, &format!("projects.{}.{k}", settings.name)))).collect();
         if !found.is_empty() {
             cell.state = if found.iter().any(|i| i.level == "error") { "error" } else { "warning" };
         }

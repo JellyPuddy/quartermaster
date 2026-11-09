@@ -398,7 +398,7 @@ impl WorkItem {
         let config = crate::project_config::ProjectConfig::current();
         let Some(server) = config.settings(project).and_then(|s| s.dev_server.as_ref()) else {
             let project = project.unwrap_or("");
-            return Err(QmError::argument(format!("{project} has no dev server: set projects.{project}.dev_server in config.yml")));
+            return Err(QmError::argument(format!("{project} has no dev server: run `{}`", crate::project_config::config_command(&project, "dev_server.command", "<command>"))));
         };
         if server.modes.iter().any(|m| m == mode) {
             Ok(())

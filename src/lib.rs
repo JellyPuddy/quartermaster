@@ -9,6 +9,7 @@ pub mod config_command;
 pub mod config_emit;
 pub mod config_features;
 pub mod config_file;
+pub mod config_reader;
 pub mod config_schema;
 pub mod cli_format;
 pub mod caffeinate;

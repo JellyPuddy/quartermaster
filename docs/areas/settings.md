@@ -1,8 +1,8 @@
 # Settings
 
-**Code:** `src/config_schema.rs`, `src/config_features.rs`, `src/config_check.rs`, `src/config_file.rs`, `src/config_emit.rs`, `src/config_command.rs`
-**Tests:** `tests/config_file.rs`, `tests/config_cli.rs`
-**Depends on:** [capture](capture.md) (`ProjectConfig` reads the same file)
+**Code:** `src/config_schema.rs`, `src/config_features.rs`, `src/config_check.rs`, `src/config_file.rs`, `src/config_emit.rs`, `src/config_reader.rs`, `src/config_command.rs`
+**Tests:** `tests/config_file.rs`, `tests/config_cli.rs`, `tests/config_reads.rs`
+**Depends on:** [capture](capture.md) (`ProjectConfig` reads the same file through `ConfigReader`)
 
 ## What it does
 
@@ -44,6 +44,19 @@ number; unreadable text stays a string). `replace` swaps in a whole mapping (the
 `.config.yml.lock` flock, it copies the old file to `config.yml.bak` and replaces the file through
 `atomic_file` (temp file beside it, renamed over, the file's mode kept).
 
+**Read** — `ConfigReader` is how code reads config: a reader over a mapping at a schema pattern
+hands out `get(key)` (the raw value, null reads as unset), `section(key)` (a reader one level
+down, opening a shorthand) and `entries()` (a map's names and readers); a non-mapping reads as
+empty. `ProjectConfig` (and its `ProjectSettings`) read only through it, and `PriceTable::load`
+and `qm overview --url` ask `ProjectConfig::current` (`prices()`, `overview_artifact()`) instead of
+parsing the file; `failure()` says why a broken file read as empty, so the callers still log it.
+Asking for a key the schema doesn't list panics while `QM_CONFIG_STRICT=1` (`tests/common` sets it
+for every `qm` it runs) and otherwise logs `[config-read]` to `qm.log` and reads nothing.
+`tests/config_reads.rs` scans `src/` for raw reads of config key names (`m.get("test_db")`,
+`get(m, "prices")`) and for `config_file()` outside this layer. A "not configured" message names the
+command that turns the feature on (`project_config::config_command`, `Ide::CONFIG_COMMAND`), e.g.
+`qm config set projects.App.dev_server.command <command>`.
+
 **Layout** — `emit`: the header line
 `# Edited by qm (Settings view / qm config); key reference: docs/overview.md`, then `projects`
 (in the user's order), `default_project`, `ide_command`, `ide_label`, `loose_starters`,
@@ -82,6 +95,9 @@ reassigns).
   `config.yml.bak`, and is refused as stale when the file changed since the editor loaded it.
 - Projects are never renamed (work items store the name): renaming is remove + add.
 - Validation lives here only; no editor re-implements it.
+- Code reads config only through `ConfigReader` (via `ProjectConfig`); only this layer opens
+  `config.yml` or reads keys off the raw mapping.
+- A "not configured" message names the exact `qm config set <path> <value>` command.
 
 ## Data
 

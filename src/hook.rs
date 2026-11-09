@@ -274,7 +274,7 @@ Work item protocol:
     )
 }
 
-/// Only a project with a dev server (config.yml) pays these tokens.
+/// Only a project with a dev server (`projects.<name>.dev_server.command`) pays these tokens.
 fn pf_protocol_line(item: &WorkItem) -> String {
     let config = ProjectConfig::current();
     let project = item.project();

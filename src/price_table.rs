@@ -4,10 +4,9 @@
 
 use std::collections::HashMap;
 
-use serde_yaml::Value;
-
 use crate::data_root;
 use crate::price_defaults::DEFAULTS;
+use crate::project_config::{LoadFailure, ProjectConfig};
 use crate::ruby_num::{sum, Num};
 use crate::transcript_usage::{Buckets, KINDS};
 
@@ -16,40 +15,27 @@ pub struct PriceTable {
 }
 
 impl PriceTable {
-    /// Defaults merged with config.yml's `prices:`; a broken config falls back to the defaults.
+    /// Defaults merged with config.yml's `prices:` (`ProjectConfig::prices`); a broken config falls back to
+    /// the defaults.
     pub fn load() -> PriceTable {
-        let overrides = std::fs::read_to_string(data_root::config_file()).ok().map(|text| -> Result<Option<Value>, (&'static str, String)> {
-            match serde_yaml::from_str::<Value>(&text) {
-                Err(e) => Err(("Psych::SyntaxError", e.to_string())),
-                Ok(Value::Null) => Ok(None),
-                Ok(Value::Mapping(m)) => Ok(m.get("prices").cloned()),
-                Ok(_) => Err(("TypeError", "no implicit conversion of String into Integer".into())),
-            }
-        });
-        match overrides {
-            None | Some(Ok(None)) => PriceTable::new(&[]),
-            Some(Ok(Some(Value::Mapping(m)))) => PriceTable::new(&m.iter().collect::<Vec<_>>()),
-            Some(Ok(Some(_))) => PriceTable::new(&[]),
-            Some(Err((class, message))) => {
-                data_root::log_error("price-table", class, &message);
-                PriceTable::new(&[])
-            }
+        let config = ProjectConfig::current();
+        match config.failure() {
+            Some(LoadFailure::Syntax(message)) => data_root::log_error("price-table", "Psych::SyntaxError", message),
+            Some(LoadFailure::NotMapping) => data_root::log_error("price-table", "TypeError", "no implicit conversion of String into Integer"),
+            None => {}
         }
+        PriceTable::new(config.prices())
     }
 
-    pub fn new(overrides: &[(&Value, &Value)]) -> PriceTable {
+    pub fn new(overrides: &[(String, Vec<(usize, Num)>)]) -> PriceTable {
         let mut rates: HashMap<String, [Option<Num>; 5]> = DEFAULTS
             .iter()
             .map(|(model, r)| (model.to_string(), [Some(Num::literal(r[0])), Some(Num::literal(r[1])), Some(Num::literal(r[2])), Some(Num::literal(r[3])), Some(Num::literal(r[4]))]))
             .collect();
         for (model, fields) in overrides {
-            let Value::Mapping(fields) = fields else { continue };
-            let entry = rates.entry(crate::yaml_scalar::text(model)).or_insert([None; 5]);
-            for (i, kind) in KINDS.iter().enumerate() {
-                let found = fields.iter().find(|(k, _)| matches!(k, Value::String(s) if s == kind));
-                if let Some((_, Value::Number(n))) = found {
-                    entry[i] = Some(Num::from_yaml(n));
-                }
+            let entry = rates.entry(model.clone()).or_insert([None; 5]);
+            for (i, number) in fields {
+                entry[*i] = Some(*number);
             }
         }
         PriceTable { rates }

@@ -110,7 +110,8 @@ row tooltip).
   file there that doesn't parse as a ledger reads as empty, but a save never overwrites it: it
   moves it to `usage-cache.json.corrupt-<UTC time>` and logs a `[usage-ledger]` error first.
 - `PriceTable`: defaults from the official pricing page (cited in the class), overridable per
-  model and field under `prices:` in `config.yml`. A bucket falls back `x:fast:long` → `x:fast`
+  model and field under `prices:` in `config.yml` (`PriceTable::load` takes `ProjectConfig::current().prices()`;
+  a broken config reads as no overrides). A bucket falls back `x:fast:long` → `x:fast`
   → `x`. Unknown models still count tokens; the cost is marked **partial** and names them.
 - `ItemUsage` sums the sessions plus every aside session (`aside_for` the slug). A session
   that expired before any tally makes the figure a lower bound ("≥"); none ever tallied reads

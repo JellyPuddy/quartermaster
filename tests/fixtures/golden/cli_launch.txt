@@ -193,7 +193,7 @@ no qm gui running — start the loose chat with:
 $ qm "loose" "--starter" "nope"
 exit 1
 --- stderr
-qm loose: unknown starter "nope" (config.yml loose_starters: dev)
+qm loose: unknown starter "nope" (configured: dev; add one with `qm config set loose_starters.nope.prompt <prompt>`)
 
 $ qm "loose" "--model" "gpt"
 exit 1

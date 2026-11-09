@@ -132,7 +132,8 @@ fallback protocol for when the injection is missing.
   seconds). The trees are unreferenced objects, so `git gc` prunes them after ~2 weeks.
 - `config.yml` — `projects:` (name → path, or a mapping with `root:` and feature keys),
   `default_project:`, `loose_starters:`; seeded on first run with no projects (`CONFIG_SEED`, the
-  file [settings](settings.md) writes for none). A broken file reads as no projects.
+  file [settings](settings.md) writes for none). `ProjectConfig` reads every key through
+  `ConfigReader` ([settings](settings.md)); a broken file reads as no projects.
 - Hook stdin: `session_id`, `cwd`, `transcript_path`, `hook_event_name`, plus `source` on
   SessionStart (`startup|resume|clear|compact`) and `reason` on SessionEnd.
 

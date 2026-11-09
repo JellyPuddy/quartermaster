@@ -84,7 +84,7 @@ fn workspace_command(name: &str, a: &[String], mode: bool, act: impl FnOnce(&mut
 
 fn pf_status() -> Outcome {
     let config = crate::project_config::ProjectConfig::current();
-    let Some(server) = config.dev_server() else { return abort("qm: no project configures a dev_server in config.yml") };
+    let Some(server) = config.dev_server() else { return abort(&format!("qm: no project configures a dev server: run `{}`", crate::project_config::DEV_SERVER_ANYWHERE)) };
     let Some(status) = crate::pf::status(Some(server)) else { return Outcome::Delegate };
     let state = if status.running { if status.switching { "switching" } else { "running" } } else { "stopped" };
     let last = match status.mode.as_str() {

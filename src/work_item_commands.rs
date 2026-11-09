@@ -397,7 +397,7 @@ fn pf_mode(a: &[String]) -> Outcome {
     let Some(mode) = a.get(1) else {
         return match item.pf_mode() {
             Some(m) => done(format!("{m}\n")),
-            None => abort(&format!("qm: '{slug}' is {}, which has no dev_server in config.yml", item.project().unwrap_or_default())),
+            None => abort(&format!("qm: '{slug}' is {}, which has no dev server: run `{}`", item.project().unwrap_or_default(), crate::project_config::config_command(&item.project().unwrap_or_default(), "dev_server.command", "<command>"))),
         };
     };
     tri!(item.update_pf_mode(mode));

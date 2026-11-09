@@ -21,7 +21,7 @@ exit 0
 $ qm "overview" "--url"
 exit 1
 --- stderr
-qm overview: no overview_artifact: in ROOT/config.yml — publish skills/work-items/page.html and put its claude.ai URL there
+qm overview: no overview_artifact configured — publish skills/work-items/page.html, then run `qm config set overview_artifact <its claude.ai URL>`
 
 $ qm "overview" "--url"
 exit 0
@@ -31,7 +31,7 @@ https://claude.ai/artifact/abc
 $ qm "overview" "--url"
 exit 1
 --- stderr
-qm overview: no overview_artifact: in ROOT/config.yml — publish skills/work-items/page.html and put its claude.ai URL there
+qm overview: no overview_artifact configured — publish skills/work-items/page.html, then run `qm config set overview_artifact <its claude.ai URL>`
 
 $ qm "overview" "--page"
 exit 0

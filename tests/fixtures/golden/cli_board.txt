@@ -599,7 +599,7 @@ _TODO_
 $ qm "pf-mode" "plain-item"
 exit 1
 --- stderr
-qm: 'plain-item' is elsewhere, which has no dev_server in config.yml
+qm: 'plain-item' is elsewhere, which has no dev server: run `qm config set projects.elsewhere.dev_server.command <command>`
 --- board-item.md
 ---
 v: 1
@@ -623,7 +623,7 @@ _TODO_
 $ qm "pf-mode" "plain-item" "dev"
 exit 1
 --- stderr
-qm: elsewhere has no dev server: set projects.elsewhere.dev_server in config.yml
+qm: elsewhere has no dev server: run `qm config set projects.elsewhere.dev_server.command <command>`
 --- board-item.md
 ---
 v: 1
