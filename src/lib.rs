@@ -56,6 +56,7 @@ pub mod gui_automations;
 pub mod gui_draft_actions;
 pub mod gui_issues;
 pub mod gui_jobs;
+pub mod gui_launch;
 pub mod gui_local_automations;
 pub mod gui_prs;
 pub mod gui_state;

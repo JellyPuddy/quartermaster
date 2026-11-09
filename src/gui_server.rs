@@ -11,6 +11,7 @@ use serde_json::{json, Map, Value};
 
 use crate::data_root;
 use crate::delegate;
+use crate::gui_launch;
 use crate::gui_action::{port, Failed};
 use crate::outcome::{done, Outcome};
 use crate::work_item::WorkItem;
@@ -498,14 +499,8 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
     text_reply("501 Not Implemented", &format!("unsupported input: {method} {route}"))
 }
 
-/// How long a client may take to send its request: 60 s, or `QM_GUI_REQUEST_TIMEOUT_MS` (tests shorten it).
-fn request_timeout() -> std::time::Duration {
-    let ms = std::env::var("QM_GUI_REQUEST_TIMEOUT_MS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|ms| *ms > 0).unwrap_or(60_000);
-    std::time::Duration::from_millis(ms)
-}
-
 fn handle(mut stream: TcpStream, guard: &Guard, token: &str) {
-    let _ = stream.set_read_timeout(Some(request_timeout()));
+    let _ = stream.set_read_timeout(Some(gui_launch::request_timeout()));
     let mut reader = BufReader::new(stream.try_clone().unwrap());
     let mut line = String::new();
     if reader.read_line(&mut line).unwrap_or(0) == 0 {
@@ -562,20 +557,6 @@ fn handle(mut stream: TcpStream, guard: &Guard, token: &str) {
     crate::failure_log::client_write(stream.write_all(head.as_bytes()).and_then(|()| stream.write_all(&payload)));
 }
 
-fn open_browser(url: &str) {
-    if std::env::var_os("QM_GUI_NO_OPEN").is_none() {
-        let _ = std::process::Command::new("open").arg(url).status();
-    }
-}
-
-fn random_token() -> String {
-    let mut bytes = [0u8; 24];
-    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
-        let _ = f.read_exact(&mut bytes);
-    }
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
 /// `qm gui`: serves until interrupted.
 pub fn run() -> Outcome {
     let port = match port() {
@@ -588,7 +569,7 @@ pub fn run() -> Outcome {
         Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && port != 0 => {
             let url = format!("http://127.0.0.1:{port}");
             println!("qm gui already running → {url}   (opening the existing tab)");
-            open_browser(&url);
+            gui_launch::open_browser(&url);
             return done(String::new());
         }
         Err(e) => return crate::outcome::abort(&format!("qm gui: can't listen on 127.0.0.1:{port}: {e}")),
@@ -596,7 +577,7 @@ pub fn run() -> Outcome {
     let port = listener.local_addr().map(|a| a.port()).unwrap_or(port);
     let url = format!("http://127.0.0.1:{port}");
     println!("qm gui → {url}   (Ctrl-C to stop)");
-    open_browser(&url);
+    gui_launch::open_browser(&url);
     extern "C" fn stop(_: libc::c_int) {
         unsafe { libc::_exit(0) }
     }
@@ -624,7 +605,7 @@ pub fn run() -> Outcome {
             }
         }
     });
-    let token = random_token();
+    let token = gui_launch::random_token();
     let guard = std::sync::Arc::new(Guard::new(port));
     for stream in listener.incoming().flatten() {
         let (guard, token) = (guard.clone(), token.clone());
