@@ -1,6 +1,6 @@
 # CLI and viewer
 
-**Code:** `src/cli.rs`, `src/cli_format.rs`, `src/viewer_commands.rs`, `src/session_rows.rs`, `src/show_command.rs`, `src/session_detail.rs`, `src/attention_command.rs`, `src/overview.rs`, `src/chats_commands.rs`, `src/pr_requires_command.rs`, `src/draft_command.rs`, `src/cleanup_command.rs`, `src/workspace_commands.rs`, `src/viewer.rs`, `src/feature_use.rs`, `quartermaster`, `src/main.rs`, `src/lib.rs`, `src/outcome.rs`, `src/delegate.rs`, `src/opt_parse.rs`, `src/session_commands.rs`, `src/doctor.rs`, `src/work_item_commands.rs`, `src/free_text_commands.rs`, `src/error.rs`, `src/clock.rs`, `src/ruby_format.rs`, `src/ruby_num.rs`, `src/ruby_text.rs`, `src/data_root.rs`, `src/git.rs`, `src/sha1.rs`, `src/sha256.rs`
+**Code:** `src/cli.rs`, `src/cli_format.rs`, `src/viewer_commands.rs`, `src/session_rows.rs`, `src/show_command.rs`, `src/session_detail.rs`, `src/attention_command.rs`, `src/overview.rs`, `src/chats_commands.rs`, `src/pr_requires_command.rs`, `src/draft_command.rs`, `src/cleanup_command.rs`, `src/workspace_commands.rs`, `src/viewer.rs`, `src/feature_use.rs`, `quartermaster`, `src/main.rs`, `src/lib.rs`, `src/outcome.rs`, `src/delegate.rs`, `src/opt_parse.rs`, `src/session_commands.rs`, `src/doctor.rs`, `src/list_command.rs`, `src/work_item_commands.rs`, `src/free_text_commands.rs`, `src/error.rs`, `src/clock.rs`, `src/ruby_format.rs`, `src/ruby_num.rs`, `src/ruby_text.rs`, `src/data_root.rs`, `src/git.rs`, `src/sha1.rs`, `src/sha256.rs`
 **Tests:** `tests/free_text_args.rs`, `tests/viewer.rs`, `tests/cli_feature_use.rs`, `tests/cli_launch.rs`, `tests/cli_overview.rs`, `tests/launcher.rs`, `tests/doctor.rs`, `tests/characterization.rs`
 **Depends on:** [work-items](work-items.md), [linking](linking.md), [gui-shell](gui-shell.md)
 
@@ -28,12 +28,12 @@ A command that can't take its arguments as given (an odd value in a file it read
 - `qm new TITLE` — create an item, print its slug (`--project`, `--branch`, `--session`, `--description`, `--pf-mode`).
 - `qm attach SLUG --session ID` / `qm detach SLUG --session ID` — link or unlink a session; attach moves it off any other item.
 - `qm note SLUG [--kind open|decision|history] TEXT` / `qm retag SLUG POSITION KIND` — add a note, change a note's kind.
-- `qm state SLUG STATE` — in_progress | fridge | resolved.
+- `qm state SLUG STATE` — in_progress | active | fridge | resolved.
 - `qm link-branch SLUG [BRANCH] [--temp]` / `qm unlink-branch SLUG BRANCH` — branch links (default: current branch; `--temp` marks a scratch branch cleanup may delete).
 - `qm board SLUG [URL|clear] [--answers-dir DIR]` / `qm board-rows SLUG [--json]` / `qm board-answer SLUG ROW TEXT` — status board URL, mirrored rows, answering a blocked row.
 - `qm move SLUG PROJECT` / `qm retitle SLUG TITLE` / `qm describe SLUG [TEXT|-]` — project, title (slug never changes), description (stdin-capable).
-- `qm show SLUG` — the item with sessions, warnings, stack lines and usage.
-- `qm list` — table of all items.
+- `qm show SLUG` — the item with sessions, warnings, stack lines and usage (and kind, routine, runner for an automation).
+- `qm list [--kind automation]` — table of all items but automations; `--kind automation` lists only those.
 - `qm draft add SLUG …` / `qm draft list SLUG [--json]` — Claude's review drafts ([review](review.md)).
 - `qm issues-dir SLUG` — the item's issue-drafts directory ([drafts](drafts.md)).
 - `qm cleanup SLUG [--yes] [--force P]` / `qm sweep [--yes] [--force P]` — plan or run worktree cleanup ([worktrees](worktrees.md)).

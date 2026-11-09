@@ -73,6 +73,7 @@ fn spec(command: &str, args: &[String]) -> Option<Spec> {
         "start-issue" => plain(opts![val("--project")], false),
         "loose" => text(opts![val("--project"), val("--model"), val("--starter")], false),
         "feature-use" => plain(opts![num("--days")], false),
+        "list" => plain(opts![val("--kind")], false),
         "viewer-rows" => plain(opts![val("--state")], false),
         "pr-requires" => Some(Spec { opts: opts![val("--pr"), flag("--remove"), flag("--list"), val("--session"), val("--note")], slug_first: false, say: Say::WithUsage("qm", PR_REQUIRES_USAGE), free_text: false }),
         "draft" => match args.first().map(String::as_str) {

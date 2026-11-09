@@ -14,7 +14,7 @@ use crate::sections;
 use crate::ruby_text::strip;
 use crate::yaml_scalar::{array, get, text};
 
-pub const STATES: [&str; 3] = ["in_progress", "fridge", "resolved"];
+pub const STATES: [&str; 4] = ["in_progress", "active", "fridge", "resolved"];
 pub const INJECTED_NOTES: usize = 5;
 pub const INJECTED_OPEN_NOTES: usize = 3;
 
@@ -70,7 +70,7 @@ impl WorkItem {
         names.iter().map(|n| Self::find(n.trim_end_matches(".md"))).collect()
     }
 
-    fn field(&self, key: &str) -> Option<String> {
+    pub(crate) fn field(&self, key: &str) -> Option<String> {
         get(&self.front, key).map(text)
     }
 

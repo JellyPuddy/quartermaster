@@ -126,6 +126,7 @@ pub fn show(a: &[String]) -> Outcome {
         })
         .collect();
     let mut meta: Vec<String> = item.state().into_iter().chain(item.project()).collect();
+    meta.extend(item.kind().map(|k| format!("{k} {} ({})", item.routine().unwrap_or_else(|| "(no routine yet)".into()), item.runner().unwrap_or_else(|| "?".into()))));
     meta.extend(branch_bits);
     meta.extend(item.issue_number().map(|n| format!("issue #{n}")));
     meta.extend(item.snooze_until_raw().map(|s| format!("snoozed until {s}")));

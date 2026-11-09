@@ -96,6 +96,9 @@ impl ChatAttention {
     pub fn entries(&mut self) -> Res<Vec<Entry>> {
         let mut out = vec![];
         for item in WorkItem::all()? {
+            if item.automation() {
+                continue;
+            }
             let live = self.live_sessions(&item);
             if item.state().as_deref() != Some("in_progress") && live.is_empty() {
                 continue;

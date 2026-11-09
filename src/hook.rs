@@ -13,7 +13,7 @@ use crate::work_item::WorkItem;
 
 const WORKTREE_SEGMENT: &str = "/.claude/worktrees/";
 const MAINLINE_BRANCHES: [&str; 3] = ["main", "master", "develop"];
-const STATES: [&str; 3] = ["in_progress", "fridge", "resolved"];
+const STATES: [&str; 4] = ["in_progress", "active", "fridge", "resolved"];
 
 fn field(input: &Value, key: &str) -> Value {
     input.get(key).cloned().unwrap_or(Value::Null)
@@ -340,7 +340,7 @@ fn note_line(n: &Note) -> String {
 fn unlinked_context(session_id: &str, project: &str) -> Res<String> {
     let mut listing: Vec<String> = WorkItem::all()?
         .iter()
-        .filter(|i| i.state().as_deref() != Some("resolved"))
+        .filter(|i| i.state().as_deref() != Some("resolved") && !i.automation())
         .map(|i| {
             let mut details: Vec<String> = i.project().into_iter().collect();
             details.extend(i.branches());

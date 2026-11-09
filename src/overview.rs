@@ -43,7 +43,7 @@ fn label(state: &str) -> &'static str {
 
 /// The `Overview#snapshot` document.
 pub fn snapshot() -> Result<Value, crate::error::QmError> {
-    let all = WorkItem::all()?;
+    let all: Vec<WorkItem> = WorkItem::all()?.into_iter().filter(|i| !i.automation()).collect();
     let log = crate::session_log::SessionLog::read();
     let chats = ChatAttention::new().entries()?;
     let panes = crate::tmux::Tmux::new().sessions();

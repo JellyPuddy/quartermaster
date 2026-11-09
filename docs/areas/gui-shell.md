@@ -80,7 +80,8 @@ design reference: SF for chrome, SF Mono for data (slugs, ids, states, stamps, k
 an indigo accent reserved for focus/links/primary, semantic colours apart from it (amber
 stale, red degrading, green merged), light and dark.
 
-**Board.** Columns In progress / Fridge / Resolved; filters All / Open / per state; an inbox
+**Board.** Columns In progress / Fridge / Resolved (All adds Active); never automation items,
+which `/api/state` still carries for their chat view; filters All / Open / per state; an inbox
 rail of unlinked sessions. Card actions on one line: Resume · Start · State ▾ · ⋯ (note and
 the rest live in ⋯). A card click (or Enter) opens the item's chat in the chat view; the
 **detail sheet** opens from ⋯ "Open detail", the chat view's `i` or the side panel's "Full

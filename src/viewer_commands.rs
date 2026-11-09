@@ -55,6 +55,7 @@ fn cycle_filter() -> Outcome {
 fn badge(state: &str) -> (&'static str, u8) {
     match state {
         "in_progress" => ("●", 32),
+        "active" => ("▶", 34),
         "fridge" => ("❄", 36),
         "resolved" => ("✓", 90),
         _ => ("?", 0),
@@ -78,6 +79,7 @@ fn viewer_rows(a: &[String]) -> Outcome {
     let state = state.unwrap_or_else(|| stored_filter().to_string());
     let items: Vec<WorkItem> = tri!(WorkItem::all())
         .into_iter()
+        .filter(|i| !i.automation())
         .filter(|i| match state.as_str() {
             "all" => true,
             "open" => i.state().as_deref() != Some("resolved"),

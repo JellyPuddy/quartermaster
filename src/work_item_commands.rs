@@ -58,7 +58,7 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
         "issues-dir" => issues_dir(args),
         "draft" => crate::draft_command::run(args),
         "snooze" => snooze(args),
-        "list" => list(),
+        "list" => crate::list_command::list(args),
         _ => return None,
     })
 }
@@ -280,34 +280,6 @@ fn detach(a: &[String]) -> Outcome {
     let mut item = tri!(WorkItem::find(slug));
     tri!(item.detach_session(session));
     done(String::new())
-}
-
-fn list() -> Outcome {
-    let items = tri!(WorkItem::all());
-    if items.is_empty() {
-        return done("No work items yet. Create one with: qm new TITLE\n".into());
-    }
-    let rows: Vec<[String; 5]> = items
-        .iter()
-        .map(|i| {
-            let branches = i.branches();
-            [
-                i.state().unwrap_or_else(|| "?".into()),
-                i.project().unwrap_or_else(|| "?".into()),
-                i.slug.clone(),
-                i.session_count().to_string(),
-                if branches.is_empty() { "-".into() } else { branches.join(" ") },
-            ]
-        })
-        .collect();
-    let widths: Vec<usize> = (0..5).map(|c| rows.iter().map(|r| r[c].chars().count()).max().unwrap_or(0)).collect();
-    let mut out = String::new();
-    for row in &rows {
-        let cells: Vec<String> = row.iter().enumerate().map(|(c, cell)| ljust(cell, widths[c])).collect();
-        out.push_str(&cells.join("  "));
-        out.push('\n');
-    }
-    done(out)
 }
 
 fn ack(a: &[String]) -> Outcome {

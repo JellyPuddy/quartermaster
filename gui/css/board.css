@@ -29,6 +29,7 @@
 }
 
 .dot-in_progress { background: var(--accent); }
+.dot-active { background: var(--turn); }
 .dot-fridge { background: var(--warn); }
 .dot-resolved { background: var(--good); }
 

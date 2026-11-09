@@ -75,7 +75,7 @@ fn state_changes_and_rejects_unknown_states() {
     assert!(qm.read("work-items/t.md").contains("state: fridge"));
     let bad = qm.run(&["state", "t", "bogus"]);
     assert_eq!(bad.code, 1);
-    assert_eq!(bad.stderr, "qm: state must be one of: in_progress, fridge, resolved\n");
+    assert_eq!(bad.stderr, "qm: state must be one of: in_progress, active, fridge, resolved\n");
 }
 
 #[test]

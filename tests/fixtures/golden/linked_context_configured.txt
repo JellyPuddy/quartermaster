@@ -22,7 +22,7 @@ Work item protocol:
   One kind per note: if a milestone has both a decision and its mechanics, write two notes. If a note contains anything still open, it is 'open' whatever else it says. Omitting --kind means 'decision'. Don't repeat the date in the text — qm stamps it.
 - When an open item is handled, retag it so it stops being injected: qm retag configured <position> decision (positions are the #n above). Same command backfills a kind you got wrong.
 - Keep the Description as the item's current truth: when a note records a decision or constraint that still governs the work, fold it into the description (qm describe configured "..."). Notes fall out of the injection window; the description doesn't.
-- Update the state when it changes: qm state configured (in_progress | fridge | resolved)
+- Update the state when it changes: qm state configured (in_progress | active | fridge | resolved)
 - A 'status board' above means the item already has one: reuse that URL instead of publishing a new board (record one with qm board configured URL).
 - Refine a stale title when asked (or when it's clearly outdated): qm retitle configured "..."
 - The session sits on the item it is working on right now. The moment its work moves to another item (a different issue, a follow-up, refinement prep), re-link it then and there; likewise when this link is a wrong branch-based guess, telling the user:

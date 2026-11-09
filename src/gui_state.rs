@@ -335,7 +335,7 @@ fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R
         ("issue_number", json!(item.issue_number())),
         ("board", json!(item.board())),
         ("pf_mode", json!(item.pf_mode())),
-        ("board_answers_dir", json!(item.board_answers_dir())),
+        ("board_answers_dir", json!(item.board_answers_dir())), ("kind", json!(item.kind())), ("routine", json!(item.routine())), ("runner", json!(item.runner())),
         ("session_ids", json!(ids)),
         ("sessions", json!(item.sessions_count())),
         ("description", json!(item.description())),

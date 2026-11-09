@@ -1,15 +1,24 @@
 # Work items
 
-**Code:** `src/work_item.rs`, `src/slug.rs`, `src/atomic_file.rs`, `src/item_deletion.rs`, `src/note.rs`, `src/attention.rs`, `src/front_edit.rs`, `src/psych.rs`, `src/yaml_scalar.rs`, `src/sections.rs`, `src/distill.rs`
+**Code:** `src/work_item.rs`, `src/automation_item.rs`, `src/slug.rs`, `src/atomic_file.rs`, `src/item_deletion.rs`, `src/note.rs`, `src/attention.rs`, `src/front_edit.rs`, `src/psych.rs`, `src/yaml_scalar.rs`, `src/sections.rs`, `src/distill.rs`
 **Tests:** `tests/work_items.rs`, `tests/work_item_storage.rs`, `tests/item_deletion.rs`, `tests/psych_scalars.rs`, `tests/interop.rs`, `tests/show.rs`
 **Depends on:** [capture](capture.md)
 
 ## What it does
 
 A work item is the curated layer over the session log: one markdown file per piece of work,
-`work-items/<slug>.md`, with a state (`in_progress` / `fridge` / `resolved`), a Description,
+`work-items/<slug>.md`, with a state (`in_progress` / `active` / `fridge` / `resolved`), a Description,
 running Notes and distilled Snapshots. Human-editable by design — fixing a project is
 editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
+
+- **Automations are work items of `kind: automation`**, carrying `routine:` (the cloud
+  routine's id, once pushed) and `runner:` (`cloud` or `local`). `active` is valid for any item
+  and is what a running automation sits in. `WorkItem::automation` is the one test, and every
+  list of the user's work leaves them out: the GUI board (`board.js render`, while `/api/state`
+  keeps them for their chat view), the chats list and its rotate offers (`ChatAttention`),
+  `Attention`, the phone page (`overview`: neither rows nor counts), plain `qm list`, the
+  viewer rows, the attach-session picker and the unlinked-session listing. `qm list --kind
+  automation` lists only them; `qm show` names kind, routine and runner on its meta line.
 
 - **Created** by `qm new "Title" [--project P] [--session ID] [--description …]` (slug from
   the title by `slug::slug_words`: accents transliterated, `Café` → `cafe`, then only `a-z0-9`
@@ -122,6 +131,9 @@ editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
   name uses the non-raising `slugify`, so such a title still gets the plain `issue/<n>`. A slug is
   made once: changing the slug rules never renames existing items, and nothing re-slugifies a
   stored title.
+- **A new list of items filters with `automation()`**: an automation surfacing on the board,
+  in attention or as a link target would read as unfinished work. Adding `kind` needed no
+  `v:` bump, since readers already keep unknown front keys.
 - **`pf_mode` needs a dev server**: only an item whose project has `dev_server:` in config.yml
   takes one, and only one of that server's `modes`; anything else is refused naming the setting.
 
@@ -140,6 +152,7 @@ editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
 | `pf_mode` | dev-server projects only; absent = the server's `default_mode` |
 | `rotations` | `[{at, from, via, carried, decisions, open}]`, oldest first ([rotation](rotation.md)) |
 | `snooze_until`, `turn_snoozed_at` | staleness mute date; your-turn quiet time |
+| `kind`, `routine`, `runner` | absent on ordinary items; `automation`, its routine id, `cloud` or `local` on an automation |
 
 ## Known limits
 

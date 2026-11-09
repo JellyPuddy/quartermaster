@@ -21,7 +21,7 @@ lastActivity, openNotes: [{position, stamp, text}], board}`.
 - `rateLimits` is `RateLimits#payload` (see [side-panel](side-panel.md)).
 - Order: in progress first, then fridge; within a state ChatAttention's rank (blocked, your
   turn, working, waiting, none), then newest activity, then slug. Resolved items are only
-  counted.
+  counted; automations (`kind: automation`) are neither shown nor counted.
 - With PATH it writes atomically (temp file + rename) and prints a one-line summary; without,
   the JSON goes to stdout.
 

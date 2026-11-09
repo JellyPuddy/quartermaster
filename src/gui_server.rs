@@ -60,7 +60,7 @@ pub(crate) fn params(query: Option<&str>) -> Map<String, Value> {
 
 fn taxonomies() -> Value {
     json!({
-        "states": [{"key": "in_progress", "label": "In progress"}, {"key": "fridge", "label": "Fridge"}, {"key": "resolved", "label": "Resolved"}],
+        "states": [{"key": "in_progress", "label": "In progress"}, {"key": "active", "label": "Active"}, {"key": "fridge", "label": "Fridge"}, {"key": "resolved", "label": "Resolved"}],
         "noteKinds": [
             {"key": "open", "hint": "unresolved, always re-injected"},
             {"key": "decision", "hint": "a choice or finding"},

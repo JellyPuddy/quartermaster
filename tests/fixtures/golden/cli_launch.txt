@@ -300,9 +300,11 @@ gh issue view 14 --repo acme/widgets --json number,title,state,url
 gh issue view 14 --repo acme/widgets --json number,title,state,url
 fzf stdin:
 in_progress
+active
 fridge
 resolved
 in_progress
+active
 fridge
 resolved
 demo

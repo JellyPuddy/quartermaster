@@ -66,7 +66,7 @@ impl Attention {
     /// Entries for every unresolved item, in file order.
     pub fn entries(&self) -> Res<Vec<Entry>> {
         let mut out = vec![];
-        for item in WorkItem::all()?.iter().filter(|i| i.state().as_deref() != Some("resolved")) {
+        for item in WorkItem::all()?.iter().filter(|i| i.state().as_deref() != Some("resolved") && !i.automation()) {
             out.extend(self.entries_for(item)?);
         }
         Ok(out)

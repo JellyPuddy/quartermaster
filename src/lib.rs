@@ -1,4 +1,5 @@
 pub mod ask_command;
+pub mod automation_item;
 pub mod attention;
 pub mod attention_command;
 pub mod background_jobs;
@@ -119,6 +120,7 @@ pub mod slug;
 pub mod item_deletion;
 pub mod atomic_file;
 pub mod launcher;
+pub mod list_command;
 pub mod work_item;
 pub mod work_item_commands;
 pub mod workspace;

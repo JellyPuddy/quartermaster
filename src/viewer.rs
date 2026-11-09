@@ -167,7 +167,7 @@ pub fn choose_snooze(a: &[String]) -> Outcome {
 pub fn attach_session(a: &[String]) -> Outcome {
     let Some(session) = a.first() else { return abort("usage: qm attach-session SESSION_ID") };
     let items = tri!(WorkItem::all());
-    let lines: Vec<String> = items.iter().filter(|i| i.state().as_deref() != Some("resolved")).map(|i| format!("{}\t{}", i.slug, i.title())).collect();
+    let lines: Vec<String> = items.iter().filter(|i| i.state().as_deref() != Some("resolved") && !i.automation()).map(|i| format!("{}\t{}", i.slug, i.title())).collect();
     let Some(choice) = chosen(&lines, &format!("attach {} to >", crate::ruby_text::prefix(session, 8))) else { return done(String::new()) };
     let slug = choice.split('\t').next().unwrap_or("").to_string();
     let mut item = tri!(WorkItem::find(&slug));

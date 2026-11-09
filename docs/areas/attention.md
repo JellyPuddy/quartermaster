@@ -13,7 +13,8 @@ Says whose move it is in every chat, and tells the user when one needs them.
   to `events.jsonl`. `EventLog` folds it per session into a turn: state, `since`, tool,
   `prompt_ts`, `stop_ts`.
 - `ChatAttention` turns the fold into one entry per item, for in-progress items plus any item
-  with a live chat (SessionLog liveness). The item speaks through its most urgent live session.
+  with a live chat (SessionLog liveness), never an automation, even with a live chat (so no
+  rotate offer either). The item speaks through its most urgent live session.
   Order: 🔴 `blocked` → 🟠 `your_turn` → 🔵 `working` → ◐ `waiting` → ⚪ `none`, longest-waiting
   (`since`) first; a snoozed your_turn ranks between waiting and none.
 - `TranscriptVitals` reads a transcript's tail (256 KB, grown ×4 until an assistant usage shows):

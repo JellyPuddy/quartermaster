@@ -253,7 +253,7 @@ _TODO_
 $ qm "state"
 exit 1
 --- stderr
-usage: qm state SLUG (in_progress | fridge | resolved)
+usage: qm state SLUG (in_progress | active | fridge | resolved)
 --- target.md
 ---
 v: 1
@@ -274,7 +274,7 @@ _TODO_
 $ qm "state" "target"
 exit 1
 --- stderr
-usage: qm state SLUG (in_progress | fridge | resolved)
+usage: qm state SLUG (in_progress | active | fridge | resolved)
 --- target.md
 ---
 v: 1
@@ -316,7 +316,7 @@ _TODO_
 $ qm "state" "target" "bogus"
 exit 1
 --- stderr
-qm: state must be one of: in_progress, fridge, resolved
+qm: state must be one of: in_progress, active, fridge, resolved
 --- target.md
 ---
 v: 1
