@@ -69,9 +69,8 @@ pub struct Fold {
 impl Fold {
     pub(crate) fn read(path: &Path) -> Fold {
         let mut fold = Fold::default();
-        let Ok(text) = std::fs::read_to_string(path) else { return fold };
-        for line in text.lines() {
-            if let Ok(Value::Object(event)) = serde_json::from_str::<Value>(line) {
+        for line in crate::jsonl_lines::read(path) {
+            if let Ok(Value::Object(event)) = serde_json::from_str::<Value>(&line) {
                 fold.apply(&event);
             }
         }

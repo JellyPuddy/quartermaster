@@ -150,9 +150,8 @@ impl SessionLog {
     }
 
     pub fn read() -> SessionLog {
-        let text = std::fs::read_to_string(Self::path()).unwrap_or_default();
-        let events = text
-            .lines()
+        let events = crate::jsonl_lines::read(&Self::path())
+            .iter()
             .filter_map(|l| match serde_json::from_str::<Value>(l) {
                 Ok(Value::Object(m)) => Some(m),
                 _ => None,

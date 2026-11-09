@@ -61,6 +61,7 @@ pub mod gui_prs;
 pub mod gui_state;
 pub mod hook;
 pub mod issue_drafts;
+pub mod jsonl_lines;
 pub mod note;
 pub mod opt_parse;
 pub mod outcome;

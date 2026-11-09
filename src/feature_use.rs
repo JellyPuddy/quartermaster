@@ -58,8 +58,8 @@ struct Use {
 }
 
 fn uses(path: &std::path::Path) -> Vec<Use> {
-    let Ok(text) = std::fs::read_to_string(path) else { return vec![] };
-    text.lines()
+    crate::jsonl_lines::read(path)
+        .iter()
         .filter_map(|line| {
             let v: serde_json::Value = serde_json::from_str(line).ok()?;
             let at = chrono::DateTime::parse_from_rfc3339(v.get("at")?.as_str()?).ok()?;

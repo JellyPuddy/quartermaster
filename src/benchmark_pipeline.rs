@@ -52,8 +52,7 @@ fn from_run(f: run::Fail) -> Stop {
 }
 
 pub fn events(dir: &std::path::Path) -> Vec<Value> {
-    let Ok(text) = std::fs::read_to_string(dir.join("events.jsonl")) else { return vec![] };
-    text.split_inclusive('\n').filter_map(|l| serde_json::from_str::<Value>(l).ok().filter(Value::is_object)).collect()
+    crate::jsonl_lines::read(&dir.join("events.jsonl")).iter().filter_map(|l| serde_json::from_str::<Value>(l).ok().filter(Value::is_object)).collect()
 }
 
 struct Pipeline {

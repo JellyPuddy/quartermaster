@@ -199,8 +199,7 @@ fn call(mut item: WorkItem, branch: Option<&str>, run_id: Option<&str>) -> R<Val
 }
 
 fn read_events(path: &std::path::Path) -> Vec<Map<String, Value>> {
-    let Ok(text) = std::fs::read_to_string(path) else { return vec![] };
-    text.split_inclusive('\n').filter_map(|l| serde_json::from_str::<Value>(l).ok()).filter_map(|v| v.as_object().cloned()).collect()
+    crate::jsonl_lines::read(path).iter().filter_map(|l| serde_json::from_str::<Value>(l).ok()).filter_map(|v| v.as_object().cloned()).collect()
 }
 
 fn full(item: &mut WorkItem, meta: &Value) -> R<Value> {

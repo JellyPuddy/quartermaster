@@ -76,11 +76,10 @@ struct Snapshot {
 
 fn snapshots_for(session: &Session, log: &SessionLog) -> R<Vec<Snapshot>> {
     let path = crate::data_root::root().join("prompt-snapshots.jsonl");
-    let Ok(bytes) = std::fs::read(&path) else { return Ok(vec![]) };
-    let text = String::from_utf8(bytes).map_err(|_| Failure::Unsupported)?;
+    let lines = crate::jsonl_lines::read(&path);
     let tree = Regex::new(r"\A[0-9a-fA-F]{40}([0-9a-fA-F]{24})?\z").unwrap();
     let mut out: Vec<Snapshot> = vec![];
-    for line in text.split_inclusive('\n') {
+    for line in &lines {
         let Ok(Value::Object(e)) = serde_json::from_str::<Value>(line) else { continue };
         let t = match e.get("tree") {
             None | Some(Value::Null) => String::new(),

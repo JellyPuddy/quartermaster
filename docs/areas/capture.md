@@ -1,6 +1,6 @@
 # Capture
 
-**Code:** `src/hook.rs`, `src/panic_guard.rs`, `src/session_log.rs`, `src/project_map.rs`, `src/project_config.rs`, `src/failure_log.rs`, `src/error_log.rs`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
+**Code:** `src/hook.rs`, `src/panic_guard.rs`, `src/jsonl_lines.rs`, `src/session_log.rs`, `src/project_map.rs`, `src/project_config.rs`, `src/failure_log.rs`, `src/error_log.rs`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
 **Tests:** `tests/non_object_lines.rs`, `tests/sessions.rs`, `tests/characterization.rs`, `tests/chat_attention.rs`, `tests/failure_log.rs`, `tests/error_log.rs`
 **Depends on:** none
 
@@ -118,7 +118,9 @@ fallback protocol for when the injection is missing.
 - **Path comparisons go through realpath on both sides** (`ProjectMap#normalize`): macOS
   `/var` → `/private/var` and git returning realpaths would otherwise miss matches.
 - **`sessions.jsonl` is append-only** under an exclusive `flock`, every event stamped with
-  `v`. A dismissal is another appended event, never an edit; a line that isn't a JSON object is skipped.
+  `v`. A dismissal is another appended event, never an edit; a line that isn't a JSON object, or isn't UTF-8, is skipped
+  (`jsonl_lines` decodes line by line, so one bad line never empties the log; the run, feature-use,
+  prompt-snapshot and benchmark-event readers use it too).
 
 ## Data
 
