@@ -25,7 +25,7 @@ a body over `Drops::MAX_BYTES` is refused unread with 413. Routes: `GET /`, `/as
 `/api/history/<slug>`, `/api/workspace/<slug>`, `/api/diff/<slug>`, `/api/diff-file/<slug>`,
 `/api/prs`, `/api/pr-threads`, `/api/issues[/<slug>]`; `POST /api/action`, `/api/drop`,
 `/api/ask`, `/api/grep`, `/api/cleanup-plan`. `GET /api/settings` and `POST
-/api/settings/check|save` are [settings](settings.md)' (`gui_settings`, tried before the 501). `/api/root`
+/api/settings/check|save` are [settings](settings.md)' (`gui_settings`), `/api/automations…` [automations](automations.md)' (`gui_automations`), both tried before the 501. `/api/root`
 answers `{root}`, `data_root::root_id`: a SHA256 of the realpath'd data root, never the path, which the CLI's
 hand-off checks before it POSTs ([cli](cli.md)).
 

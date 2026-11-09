@@ -33,6 +33,7 @@
 <link rel="stylesheet" href="/assets/css/issues-list.css">
 <link rel="stylesheet" href="/assets/css/issue-start.css">
 <link rel="stylesheet" href="/assets/css/settings.css">
+<link rel="stylesheet" href="/assets/css/automations.css">
 <link rel="stylesheet" href="/assets/css/responsive.css">
 </head>
 <body data-mode="board">
@@ -168,7 +169,12 @@
   </div>
 
   <div class="st-wrap">
+    <nav class="st-tabs" id="st-tabs" role="tablist" aria-label="Settings area">
+      <button role="tab" data-st-tab="settings" aria-selected="true">Settings</button>
+      <button role="tab" data-st-tab="automations" aria-selected="false" title="claude.ai routines qm manages">Automations</button>
+    </nav>
     <main class="st-main" id="st-body"></main>
+    <main class="au-main" id="au-body"></main>
   </div>
 
   <footer class="legend">
@@ -264,6 +270,8 @@ let terminalToken = /*__TERMINAL_TOKEN__*/ null;
 <script src="/assets/js/settings-widgets.js"></script>
 <script src="/assets/js/settings-render.js"></script>
 <script src="/assets/js/settings.js"></script>
+<script src="/assets/js/automations-render.js"></script>
+<script src="/assets/js/automations.js"></script>
 <script src="/assets/js/events.js"></script>
 </body>
 </html>

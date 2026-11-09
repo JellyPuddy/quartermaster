@@ -98,7 +98,10 @@ false, error, issues, features}` while the draft has errors.
 the header's ⚙ icon button `#settings-btn` opens it and shows pressed while it is open, with no
 tab highlighted; the button again, `,` or Esc (a first Esc only leaves a focused field) returns
 to the mode it was opened from; a mode tab or mode key leaves for its own mode, and `v` never
-lands on Settings; ⌘S saves). Full width, three parts. On top a projects × features grid: per
+lands on Settings; ⌘S saves). A tab strip on top, **Settings | Automations** (the choice
+remembered per browser), switches between this form and the Automations tab ([automations](automations.md)), which has its
+own per-automation Apply and is in none of the form's Save, Revert, Check list or table of contents; ⌘S saves only on the
+Settings tab. The form is full width, three parts. On top a projects × features grid: per
 project its name and root, a chip per feature from the server's `features` (on in green with its
 short value, off, inherit as a hollow accent outline with the real value in its tooltip, warning,
 error) and its work-item count; clicking the name or any cell opens that project's card (and the

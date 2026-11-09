@@ -1,8 +1,8 @@
 # Automations
 
-**Code:** `src/automations.rs`, `src/automation_fields.rs`, `src/automation_command.rs`, `src/routines_client.rs`, `src/automation_store.rs`, `src/local_schedule.rs`, `src/automation_chat.rs`
-**Tests:** `tests/automations.rs`, `tests/automation_cli.rs`, `tests/automation_new_cli.rs`, `tests/routines_client.rs`, `tests/routines_curl.rs`, `tests/automation_store.rs`, `tests/local_schedule.rs`, `tests/automation_chat.rs`
-**Depends on:** [work-items](work-items.md) (an automation is a work item of `kind: automation`), [settings](settings.md) (`automations.token_source`), [chats](chats.md) (its chat is the item's pane)
+**Code:** `src/automations.rs`, `src/automation_fields.rs`, `src/automation_command.rs`, `src/routines_client.rs`, `src/automation_store.rs`, `src/local_schedule.rs`, `src/automation_chat.rs`, `src/gui_automations.rs`, `gui/js/automations.js`, `gui/js/automations-render.js`, `gui/css/automations.css`
+**Tests:** `tests/automations.rs`, `tests/automation_cli.rs`, `tests/automation_new_cli.rs`, `tests/routines_client.rs`, `tests/routines_curl.rs`, `tests/automation_store.rs`, `tests/local_schedule.rs`, `tests/automation_chat.rs`, `tests/gui_automations.rs`, `tests/gui_automations_http.rs`
+**Depends on:** [gui-shell](gui-shell.md) (`gui_jobs`, Origin rules), [work-items](work-items.md) (an automation is a work item of `kind: automation`), [settings](settings.md) (`automations.token_source`), [chats](chats.md) (its chat is the item's pane)
 
 ## What it does
 
@@ -134,6 +134,30 @@ rule never to call RemoteTrigger create/update itself, decisions recorded with `
 decision`, the house rules verbatim from `docs/automations-house-rules.md`, and the item's description and
 notes (oldest first, kind shown).
 
+**GUI tab** — the ⚙ area's Automations tab (`gui_automations`; `automations.js`, `-render.js`,
+`automations.css`): one list for both runners, a ☁ or 💻 badge per row. `GET /api/automations`
+answers the local rows at once (name, project, state, local-time schedule, enabled, runner, links)
+merged with the routines the last list call saw (last run, next run, drift, a routine gone from
+claude.ai), the routines "Not managed by qm", `remote.state` (`idle`, `ok`, `off` with the `qm
+config set` command, `expired` or `error`) and `local` (the tick header). `GET
+/api/automations/<slug>` adds the prompt, file paths, model, repos, connectors, the item's
+description and notes and its runs as last loaded, and `runsState` (`idle`, `ok`, `error`). POSTs
+under `/api/automations/`: `refresh` (the one list call), `runs` (the client's `runs(id, 10)`, no GET
+of the routine), `apply` (a schedule as `days` + local `time` or a raw `cron`, and/or the `prompt`:
+saved locally at once, then pushed), `pause`, `resume`, `run`, `pull`, `push` (`force` overwrites a
+drifted routine), `recreate` (the detail's **Re-create on claude.ai**, shown only while the row is
+`missing`), `delete`, `adopt` (`id`, `project`) and `new` (`title`, `project`, `runner` from the New
+form's runner choice: the item and empty files; the page then opens its chat with the
+`automation-chat` action, as Edit with Claude does). Every network call is a `gui_jobs` job
+(`automations`, `automation-<slug>`, `automation-runs-<slug>`, `automation-adopt-<id>`) that builds its
+own client on its thread; each action ends with one list call, and the page reloads the tab when the
+state poll hands it the job's end. Opening the tab is one refresh; the shown automation's runs load
+while its `runsState` is `idle` — at first, and after an action job on it or a refresh ends, both of
+which set loaded runs back to `idle` (a refresh spares runs that arrived while it ran). Apply is per
+automation; Description saves through `describe` (`/api/action`), never pushed. Local rows, details and
+actions are `gui_local_automations`' ([local-automations](local-automations.md)). Every POST needs our
+Origin: none of these routes is a `LOCAL_ACTIONS` entry.
+
 ## Rules
 
 - Opt-in: until `automations.token_source` is `claude_code`, nothing touches the keychain.
@@ -151,6 +175,10 @@ notes (oldest first, kind shown).
 - No automatic DST rewrites: a stored cron keeps its UTC time, so its local time moves with DST.
 - A chat that already runs gets nothing typed: `open` answers `attached` with the brief, which the CLI
   prints to paste by hand. The brief is claude's argument, never keystrokes.
+- Off and an expired token are states of the tab (`remote.state`), never an error toast; an action that
+  hits them answers quietly and the tab says what to do.
+- GUI network work runs on `gui_jobs` threads, never under the action mutex; `GET`s read only the local
+  files and what the last calls left in memory.
 - The house rules live only in `docs/automations-house-rules.md`; the brief embeds that file.
 
 ## Data

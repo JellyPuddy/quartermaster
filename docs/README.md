@@ -55,7 +55,8 @@ goes in the commit message.
   validation, or how qm edits and writes the file.
 - [automations](areas/automations.md) — read when you touch an automation's local files
   (`automations/<slug>.yml` and `.prompt.md`), its schedule (UTC cron ↔ local weekdays and time), the
-  claude.ai routines client, the `Automations` service or `qm automation`'s cloud subcommands.
+  claude.ai routines client, the `Automations` service, `qm automation`'s cloud subcommands or the GUI's
+  Automations tab (list, detail, Apply, drift, adopt).
 - [local-automations](areas/local-automations.md) — read when you touch `runner: local` automations:
   their yml fields and validation, local-time cron, the run log (`<slug>.runs.jsonl`), the tick and
   its launchd installer.

@@ -1,7 +1,7 @@
 # Local automations
 
-**Code:** `src/local_automations.rs`, `src/local_automation_command.rs`, `src/run_chats.rs`, `src/local_cron.rs`, `src/automation_flows.rs`, `src/chat_flow.rs`, `src/pr_review_flow.rs`, `src/automation_tick.rs`, `src/automation_guard.rs`, `src/run_lifecycle.rs`, `src/tick_installer.rs`, `src/run_log.rs`, `src/run_fold.rs`, `src/random_id.rs`
-**Tests:** `tests/local_automation_cli.rs`, `tests/tick_installer.rs`, `tests/run_chats.rs`, `tests/quiet_runs.rs`, `tests/automation_config.rs`, `tests/automation_flows.rs`, `tests/automation_guard.rs`, `tests/automation_tick.rs`, `tests/automation_run_lifecycle.rs`, `tests/local_cron.rs`, `tests/run_log.rs`, `tests/automation_store.rs`
+**Code:** `src/local_automations.rs`, `src/local_automation_command.rs`, `src/run_chats.rs`, `src/gui_local_automations.rs`, `src/local_cron.rs`, `src/automation_flows.rs`, `src/chat_flow.rs`, `src/pr_review_flow.rs`, `src/automation_tick.rs`, `src/automation_guard.rs`, `src/run_lifecycle.rs`, `src/tick_installer.rs`, `src/run_log.rs`, `src/run_fold.rs`, `src/random_id.rs`
+**Tests:** `tests/local_automation_cli.rs`, `tests/tick_installer.rs`, `tests/run_chats.rs`, `tests/gui_local_automations.rs`, `tests/quiet_runs.rs`, `tests/automation_config.rs`, `tests/automation_flows.rs`, `tests/automation_guard.rs`, `tests/automation_tick.rs`, `tests/automation_run_lifecycle.rs`, `tests/local_cron.rs`, `tests/run_log.rs`, `tests/automation_store.rs`
 **Depends on:** [automations](automations.md) (the store, the item; `local_schedule`'s DST rule), [work-items](work-items.md)
 
 ## What it does
@@ -26,12 +26,12 @@ held to it.
 nothing written) → `qm automation run SLUG` → read the run (`runs SLUG`, `qm show-session`) → refine. Its end
 is the cloud brief's `brief_tail` (decisions, house rules with "Local automations", notes).
 
-**Run chats** — `run_chats::chats(panes, dir, attention)` shapes the live `<slug>--run-<id>` tmux session
-names as the chats list's loose rows with a `run` field (`quiet` for a `notify: quiet` automation, so the
-page leaves them out of its whose-move count), titled "<automation name> · <subject>" with the session's
-state (`loose_chats::chats` lists them with the loose chats); `by_session(dir)` maps a session id to its run chat (tmux, automation, run, title, quiet) for
-attention's Runs group and run notifications, which open the run's own tmux. A pr-review run has no
-`--run-` chat: it shows as its Review item.
+**Run chats** — `run_chats::chats(panes, dir, attention)` shapes the live `<slug>--run-<id>` tmux session names
+as the chats list's loose rows with a `run` field (`quiet` for a `notify: quiet` automation, so the page
+leaves them out of its whose-move count), titled "<automation name> · <subject>" with the session's state
+(`loose_chats::chats` lists them with the loose chats); `by_session(dir)` maps a session id to its run chat
+(tmux, automation, run, title, quiet) for attention's Runs group and run notifications, which open the run's
+own tmux. A pr-review run has no `--run-` chat: it shows as its Review item.
 
 **Schedule** — `local_cron` reads a local automation's 5-field `cron` as wall-clock time in
 Europe/Amsterdam, not UTC as cloud crons are. Fields take `*`, numbers, lists, ranges and steps (`*/n`,
@@ -153,6 +153,18 @@ SLUG` read run logs (`list` skips the routines call when automations are off and
 `retry SLUG RUN_ID` then tick once and say why a run didn't start; `tick [--dry-run [SLUG]]` (silent when idle
 off a terminal; the dry run writes nothing); `install-tick [--print]` and `uninstall-tick` drive
 `TickInstaller`.
+
+**GUI** — `gui_local_automations` is the Automations tab's local part ([automations](automations.md) owns the
+tab), never the network. A row: the schedule from `local_cron` (`days`/`time` for the picker, else `raw`),
+next run, queued and live counts, last run. The `local` header: `installed` (the plist), `lastTickAt` and
+`held` from tick.json, `stale` after 15 minutes without a tick while one is enabled, `paused` (config). The
+detail adds guard, flow, cwd, notify, timeout, flags, the last guard error, the queue (with waiting reasons)
+and recent runs (`chat` = its live `--run-` tmux or a pr-review run's Review item; `resumable`,
+`retryable`). `apply` saves only (weekdays + time become a local cron, a raw one must pass
+`local_cron::error`); `pause`, `delete` answer at once; `resume` (`skipExisting` = mark existing as seen),
+`run` and `retry` are `automation-<slug>` jobs (one tick after queuing, saying why a run stayed queued);
+`resume-run` is `chat_flow::resume`; `install-tick`/`uninstall-tick` the `automation-tick` job;
+`local-pause` writes `automations.local_paused` through `ConfigFile`. The claude.ai verbs refuse a local slug.
 
 ## Rules
 
