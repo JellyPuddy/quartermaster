@@ -47,6 +47,8 @@ pub struct Entry {
     pub cache_warm_until: Option<f64>,
     pub last_assistant_at: Option<f64>,
     pub activity: Option<f64>,
+    /// Set on a Runs-group entry: the chat-flow run it stands for.
+    pub run: Option<crate::run_chats::Chat>,
 }
 
 fn state_index(state: &str) -> f64 {
@@ -115,6 +117,30 @@ impl ChatAttention {
         Ok(out)
     }
 
+    /// The Runs group: one entry per live chat-flow run of a local automation that isn't `notify: quiet`, named
+    /// by its own tmux and carrying the run. A pr-review run speaks through its Review item's row.
+    pub fn runs(&mut self) -> Vec<Entry> {
+        self.runs_of(crate::run_chats::by_session(&crate::automation_store::dir()))
+    }
+
+    pub fn runs_of(&mut self, chats: Vec<(String, crate::run_chats::Chat)>) -> Vec<Entry> {
+        let mut out = vec![];
+        for (_, chat) in chats {
+            if chat.quiet {
+                continue;
+            }
+            let Some(session) = self.sessions.iter().find(|s| s.id == chat.session_id && s.live).cloned() else { continue };
+            let turn = self.turn_for(&session);
+            let activity = session.last_ts_opt().and_then(|ts| clock::parse_f64(&ts));
+            out.push(Entry { slug: chat.tmux.clone(), session_id: Some(session.id.clone()), state: turn.state, since: turn.since, tool: turn.tool, snoozed: false, waiting_on: turn.waiting_on, context_tokens: None, cache_warm_until: None, last_assistant_at: None, activity, run: Some(chat) });
+        }
+        out.sort_by(|a, b| {
+            let (x, y) = (a.sort_key(), b.sort_key());
+            x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal).then(x.1.partial_cmp(&y.1).unwrap_or(std::cmp::Ordering::Equal))
+        });
+        out
+    }
+
     /// `entry_for(item).sort_key`, the chat view's attention order.
     pub fn sort_key_for(&mut self, item: &WorkItem) -> Res<(f64, f64)> {
         let live = self.live_sessions(item);
@@ -175,6 +201,7 @@ impl ChatAttention {
             cache_warm_until,
             last_assistant_at,
             activity,
+            run: None,
         })
     }
 

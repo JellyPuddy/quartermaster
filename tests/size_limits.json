@@ -11,7 +11,7 @@
   "src/gui_actions.rs": 1369,
   "src/gui_draft_actions.rs": 601,
   "src/gui_server.rs": 696,
-  "src/gui_state.rs": 559,
+  "src/gui_state.rs": 537,
   "src/issue_drafts.rs": 442,
   "src/prompt_diff.rs": 469,
   "src/psych.rs": 601,

@@ -142,6 +142,7 @@ pub mod list_command;
 pub mod local_automation_command;
 pub mod local_automations;
 pub mod local_cron;
+pub mod loose_chats;
 pub mod local_schedule;
 pub mod work_item;
 pub mod work_item_commands;

@@ -1,7 +1,7 @@
 # Chat attention
 
 **Code:** `src/event_log.rs`, `src/chat_attention.rs`, `src/turn_notifier.rs`, `src/transcript_vitals.rs`, `src/background_jobs.rs`, `src/chat_launch_commands.rs`, `gui/js/notify.js`
-**Tests:** `tests/event_prompts.rs`, `tests/quiet_runs.rs`, `tests/attention.rs`, `tests/attention_commands.rs`, `tests/chat_attention.rs`, `tests/chats.rs`
+**Tests:** `tests/event_prompts.rs`, `tests/quiet_runs.rs`, `tests/run_attention.rs`, `tests/attention.rs`, `tests/attention_commands.rs`, `tests/chat_attention.rs`, `tests/chats.rs`
 **Depends on:** [capture](capture.md), [chats](chats.md)
 
 ## What it does
@@ -16,14 +16,20 @@ Says whose move it is in every chat, and tells the user when one needs them.
   with a live chat (SessionLog liveness), never an automation, even with a live chat (so no
   rotate offer either). The item speaks through its most urgent live session. A `notify: quiet`
   local automation's run sessions (`RunLog::quiet_session_ids`) never speak for an item.
-  Order: 🔴 `blocked` → 🟠 `your_turn` → 🔵 `working` → ◐ `waiting` → ⚪ `none`, longest-waiting
+  `ChatAttention::runs` is the Runs group: one entry per live session of a local automation's
+  chat-flow run (`run_chats::by_session`, keyed by the session ids in the run logs), its `slug` the
+  run's own `<slug>--run-<id>` tmux and `run` the automation slug, run id and title (`<name> ·
+  <subject>`); quiet automations' runs stay out, and a pr-review run speaks through its Review
+  item's row. The GUI lists the same chats with the loose ones (`run_chats::chats`, see
+  [local-automations](local-automations.md)). Order: 🔴 `blocked` → 🟠 `your_turn` → 🔵 `working` → ◐ `waiting` → ⚪ `none`, longest-waiting
   (`since`) first; a snoozed your_turn ranks between waiting and none.
 - `TranscriptVitals` reads a transcript's tail (256 KB, grown ×4 until an assistant usage shows):
   context = the last assistant message's `input + cache_read + cache_creation` tokens (synthetic
   messages skipped); cache warm until that message's ts + 1 h when `usage.cache_creation` shows the
   1 h tier (newest message that created cache), else + 5 min; the newest interrupt entry.
 - `qm attention` lists the chats first (state, wait, pending tool, `ctx 182k · cache warm 41m`),
-  then the item nudges (degradation, staleness, merged PR — `Attention`, see [work-items](work-items.md)).
+  then the Runs group's (titled by their run), then the item nudges (degradation, staleness, merged PR —
+  `Attention`, see [work-items](work-items.md)).
 - `qm snooze SLUG turn` quiets the current your_turn (`turn_snoozed_at`): it sinks until a newer
   your_turn starts. `qm snooze SLUG clear` lifts it together with the date snooze. GUI: `z` on the row.
 - `TurnNotifier` (a watcher thread in `qm gui`) raises notifications; the page shows them as browser
@@ -104,19 +110,21 @@ Says whose move it is in every chat, and tells the user when one needs them.
 - Never: Esc interrupts, a turn that delegated to background work (`waiting`), a snoozed turn,
   asides, a `notify: quiet` local automation's runs. Every other session counts, GUI chat or not, loose chats included; an unlinked one is titled
   by its first prompt.
-- The chat a notification names (`TurnNotifier.chat_of`) is the item's `slug`, else `loose`: the loose
-  chat's tmux name (`loose--<id>`) for an unlinked session with a loose id. A plain unlinked session has neither.
+- The chat a notification names is the item's `slug`, else `run`, else `loose`. A chat-flow run's
+  session (`run_chats::by_session`) has no `slug` (its item is the automation) but `run`, its own
+  `<slug>--run-<id>` tmux, and is titled by its run; `loose` is the loose chat's tmux name
+  (`loose--<id>`) for an unlinked session with a loose id. A plain unlinked session has none.
 - Channel: a pulse (`/api/pulse?visible=&focused=&chat=`) younger than 3 s from a visible page means
   the page shows it — a browser `Notification` (a click focuses the window and opens that chat in chat
-  mode with its terminal focused: `openChat`, or `openLooseChat` for a loose one), or nothing when
+  mode with its terminal focused: `openChat`, or `openLooseChat` for a loose or run one), or nothing when
   focused on that very chat.
 - A hidden tab's pulse (`visible=0`) hands notifications back to macOS at once.
 - macOS goes through `CommandRunner`: `terminal-notifier` when installed (PATH plus
   `/opt/homebrew/bin`, `/usr/local/bin`), else `osascript` with title and body as argv, never
   spliced into the script. A click on an osascript notification opens Finder — hence terminal-notifier first.
-- terminal-notifier gets `-group qm-<slug>` (a newer notification replaces the older; an unlinked
-  session groups by session id) and, for an item or a loose chat, `-execute` running
-  `<this qm binary> open-chat <slug or loose name>` (an absolute path: the click runs with a bare PATH).
+- terminal-notifier gets `-group qm-<slug or run tmux>` (a newer notification replaces the older; an
+  unlinked session groups by session id) and, for an item, a run or a loose chat, `-execute` running
+  `<this qm binary> open-chat <the chat named above>` (an absolute path: the click runs with a bare PATH).
 - `qm open-chat` drives Arc (`company.thebrowser.Browser`) by AppleScript and never launches it: the
   first tab on `http://127.0.0.1:<port>/` or `http://localhost:<port>/` gets `…/#chat=<slug>`
   (hash-only, no reload), is selected, and Arc comes to the front. URLs go in via `on run argv`.

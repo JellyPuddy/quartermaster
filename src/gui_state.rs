@@ -398,28 +398,6 @@ pub(crate) fn loose_session(log: &SessionLog, id: &str) -> Option<Session> {
     newest(mine.iter().filter(|s| s.live).collect()).or_else(|| newest(mine.iter().collect()))
 }
 
-/// `LooseChat#chats`: the live loose chats among the tmux sessions, titled by their first prompt.
-fn loose_payload(panes: &[String], log: &SessionLog) -> Vec<Value> {
-    let mut attention = ChatAttention::new();
-    panes
-        .iter()
-        .filter_map(|name| {
-            let id = name.strip_prefix("loose--")?;
-            let session = loose_session(log, id);
-            let turn = session.as_ref().map(|s| attention.turn_for(s));
-            Some(json!({
-                "name": name, "id": id, "session": session.as_ref().map(|s| s.id.clone()),
-                "title": unlinked_title(session.as_ref(), "New loose chat"),
-                "project": session.as_ref().and_then(|s| s.project()),
-                "cwd": session.as_ref().and_then(|s| s.cwd()).map(|c| short_path(Some(&c))),
-                "state": turn.as_ref().map(|t| t.state.clone()).unwrap_or_else(|| "none".into()),
-                "since": turn.as_ref().and_then(|t| t.since).map(iso),
-                "tool": turn.as_ref().and_then(|t| t.tool.clone())
-            }))
-        })
-        .collect()
-}
-
 fn chat_attention() -> R<Vec<Value>> {
     let mut attention = ChatAttention::new();
     let entries = attention.entries().map_err(|_| Unported)?;
@@ -500,7 +478,7 @@ pub fn build(token: &str) -> R<Value> {
         ("defaultProject", default_project),
         ("looseStarters", Value::Array(config.loose_starters().iter().map(|s| json!({"key": s.key, "label": s.label})).collect())),
         ("attention", Value::Array(attention_rows)),
-        ("loose", Value::Array(loose_payload(&panes, &log))),
+        ("loose", Value::Array(crate::loose_chats::chats(&panes, &log))),
         ("pulse", json!(pulse_now)),
         ("refreshing", json!(crate::pr_status::refreshing())),
         ("distilling", json!(crate::gui_jobs::distilling_slugs())),
@@ -555,5 +533,5 @@ pub fn attention_payload() -> Option<Value> {
     let log = SessionLog::read();
     let attention = chat_attention().ok()?;
     let panes = crate::tmux::Tmux::new().sessions();
-    Some(json!({"attention": attention, "notifications": crate::turn_notifier::recent(), "loose": loose_payload(&panes, &log), "draftCounts": draft_counts()?}))
+    Some(json!({"attention": attention, "notifications": crate::turn_notifier::recent(), "loose": crate::loose_chats::chats(&panes, &log), "draftCounts": draft_counts()?}))
 }

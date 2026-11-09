@@ -1,6 +1,6 @@
 # Loose chats
 
-**Code:** `gui/js/loose.js`
+**Code:** `gui/js/loose.js`, `src/loose_chats.rs`
 **Tests:** `tests/gui.rs`
 **Depends on:** [chats](chats.md), [linking](linking.md), [attention](attention.md), [asides](asides.md)
 
@@ -31,7 +31,10 @@ pane without making an item first.
   them under a **Loose** group with its count, after the item chats; rows are titled by the session's
   first prompt (the notifier's unlinked-title rule, `TurnNotifier.unlinked_title`), "New loose chat"
   until a transcript has one. A row opens in the normal chat pane (`chatSlug` = the tmux name,
-  `renderLooseMain`): a header and the terminal, no item side panel, diff or history.
+  `renderLooseMain`): a header and the terminal, no item side panel, diff or history. The same
+  `loose` list (`loose_chats::chats`) carries live local automation run chats (`run_chats`, a `run`
+  field; see [local-automations](local-automations.md)), shown under their own **Runs** group whose one
+  button, ⚙ automation, opens the run's automation instead of → Work item and ✕.
 - **✕** (row and header, one click): `loose-close {id}` on a GuiJobs job keyed by the tmux name —
   types `/exit`, waits up to 5 s for claude to go, kills the tmux session, then dismisses every session
   of that id from the inbox (`SessionLog#dismiss`).

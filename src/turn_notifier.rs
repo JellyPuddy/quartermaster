@@ -129,7 +129,7 @@ pub(crate) fn announce(title: &str, body: &str, group: &str, click: Option<Vec<S
 }
 
 fn deliver(notification: &mut Map<String, Value>) {
-    let chat = notification.get("slug").filter(|v| !v.is_null()).or_else(|| notification.get("loose")).and_then(Value::as_str).map(String::from);
+    let chat = ["slug", "run", "loose"].iter().filter_map(|k| notification.get(*k).and_then(Value::as_str)).next().map(String::from);
     let visible;
     {
         let mut st = lock();
@@ -145,7 +145,7 @@ fn deliver(notification: &mut Map<String, Value>) {
         st.recent.drain(..excess);
     }
     if !visible {
-        let group = format!("qm-{}", notification.get("slug").filter(|v| !v.is_null()).or_else(|| notification.get("session")).and_then(Value::as_str).unwrap_or(""));
+        let group = format!("qm-{}", ["slug", "run", "session"].iter().filter_map(|k| notification.get(*k).and_then(Value::as_str)).next().unwrap_or(""));
         announce(
             notification["title"].as_str().unwrap_or(""),
             notification["body"].as_str().unwrap_or(""),
@@ -156,7 +156,7 @@ fn deliver(notification: &mut Map<String, Value>) {
     }
 }
 
-fn raise_for(session_id: &str, turn: &Value, log: &SessionLog, items: &[WorkItem]) {
+fn raise_for(session_id: &str, turn: &Value, log: &SessionLog, items: &[WorkItem], run: Option<&crate::run_chats::Chat>) {
     let session = log.session_for(session_id);
     if session.as_ref().is_some_and(|s| s.aside_for().is_some()) {
         return;
@@ -166,9 +166,10 @@ fn raise_for(session_id: &str, turn: &Value, log: &SessionLog, items: &[WorkItem
     if matches!(kind, Kind::YourTurn) && quiet_turn(session.as_ref(), item, turn) {
         return;
     }
-    let title = match item {
-        Some(i) => i.title(),
-        None => crate::gui_state::unlinked_title(session.as_ref(), "Unlinked session"),
+    let title = match (run, item) {
+        (Some(r), _) => r.title.clone(),
+        (None, Some(i)) => i.title(),
+        (None, None) => crate::gui_state::unlinked_title(session.as_ref(), "Unlinked session"),
     };
     let body = match kind {
         Kind::Blocked => match turn.get("tool").filter(|v| !matches!(v, Value::Null | Value::Bool(false))) {
@@ -178,9 +179,13 @@ fn raise_for(session_id: &str, turn: &Value, log: &SessionLog, items: &[WorkItem
         },
         Kind::YourTurn => format!("Your turn — after {}", duration(turn)),
     };
-    let loose = if item.is_none() { session.as_ref().and_then(|s| s.loose_id()).map(|l| format!("loose--{l}")) } else { None };
+    let loose = if item.is_none() && run.is_none() { session.as_ref().and_then(|s| s.loose_id()).map(|l| format!("loose--{l}")) } else { None };
     let mut notification = Map::new();
-    notification.insert("slug".into(), json!(item.map(|i| i.slug.clone())));
+    // a chat-flow run is named by its own tmux, not by its automation's slug
+    notification.insert("slug".into(), json!(if run.is_some() { None } else { item.map(|i| i.slug.clone()) }));
+    if let Some(run) = run {
+        notification.insert("run".into(), json!(run.tmux));
+    }
     notification.insert("loose".into(), json!(loose));
     notification.insert("session".into(), json!(session_id));
     notification.insert("kind".into(), json!(if matches!(kind, Kind::Blocked) { "blocked" } else { "your_turn" }));
@@ -210,7 +215,8 @@ pub fn check() {
             return;
         }
     };
+    let runs = crate::run_chats::by_session(&crate::automation_store::dir());
     for (id, turn) in changed {
-        raise_for(id, turn, &log, &items);
+        raise_for(id, turn, &log, &items, runs.iter().find(|(s, _)| s == id).map(|(_, c)| c));
     }
 }

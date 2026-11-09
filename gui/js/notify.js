@@ -20,22 +20,23 @@ function noticeTurns(notifications) {
 
 function browserNotification(n) {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
-  const chat = n.slug || n.loose;
+  const chat = n.slug || n.run || n.loose;
   if (document.hasFocus() && mode === "chat" && chat && chatSlug === chat) return;
   const note = new Notification(n.title, { body: n.body, tag: n.session, silent: n.kind !== "blocked" });
   note.onclick = () => {
     window.focus();
     const it = n.slug && items.find(i => i.slug === n.slug);
-    const lc = !n.slug && n.loose && looseOf(n.loose);
+    // A run chat (n.run) is listed with the loose chats.
+    const lc = !n.slug && (n.run || n.loose) && looseOf(n.run || n.loose);
     if (it) openChat(it);
     else if (lc) openLooseChat(lc);
     note.close();
   };
 }
 
-/* "(2) qm — work items": the chats whose move it is, loose ones included, a snoozed turn not among them. */
+/* "(2) qm — work items": the chats whose move it is, loose ones included, a snoozed turn and a quiet automation's run not among them. */
 function updateTitleCount() {
-  const count = [...attention, ...looseChats].filter(a => a.state === "blocked" || (a.state === "your_turn" && !a.snoozed)).length;
+  const count = [...attention, ...looseChats.filter(lc => !(lc.run && lc.run.quiet))].filter(a => a.state === "blocked" || (a.state === "your_turn" && !a.snoozed)).length;
   document.title = count ? `(${count}) ${BASE_TITLE}` : BASE_TITLE;
 }
 

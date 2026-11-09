@@ -51,7 +51,7 @@ fn print_chat_attention(chats: &[Entry], now: f64) -> String {
             }
             None => String::new(),
         };
-        let cells = [paint(&ljust(&label, 21), if entry.snoozed { 90 } else { color }), ljust(&entry.slug, width), ljust(&waiting, 24), context_label(entry, now)];
+        let cells = [paint(&ljust(&label, 21), if entry.snoozed { 90 } else { color }), ljust(&entry.slug, width), ljust(&waiting, 24), entry.run.as_ref().map_or_else(|| context_label(entry, now), |r| r.title.clone())];
         out.push_str(&puts(rstrip(&cells.join("  "))));
     }
     out
@@ -59,10 +59,11 @@ fn print_chat_attention(chats: &[Entry], now: f64) -> String {
 
 pub fn attention() -> Outcome {
     let mut chat = ChatAttention::new();
-    let chats = match chat.entries() {
+    let mut chats = match chat.entries() {
         Ok(c) => c,
         Err(e) => return abort(&format!("qm: {}", e.message)),
     };
+    chats.extend(chat.runs());
     let entries = match Attention::new(SystemTime::now()).entries() {
         Ok(e) => e,
         Err(e) => return abort(&format!("qm: {}", e.message)),

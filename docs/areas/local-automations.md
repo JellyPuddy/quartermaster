@@ -29,8 +29,9 @@ is the cloud brief's `brief_tail` (decisions, house rules with "Local automation
 **Run chats** — `run_chats::chats(panes, dir, attention)` shapes the live `<slug>--run-<id>` tmux session
 names as the chats list's loose rows with a `run` field (`quiet` for a `notify: quiet` automation, so the
 page leaves them out of its whose-move count), titled "<automation name> · <subject>" with the session's
-state; `by_session(dir)` maps a session id to its run chat (tmux, automation, run, title, quiet) for
-attention and notifications. A pr-review run has no `--run-` chat: it shows as its Review item.
+state (`loose_chats::chats` lists them with the loose chats); `by_session(dir)` maps a session id to its run chat (tmux, automation, run, title, quiet) for
+attention's Runs group and run notifications, which open the run's own tmux. A pr-review run has no
+`--run-` chat: it shows as its Review item.
 
 **Schedule** — `local_cron` reads a local automation's 5-field `cron` as wall-clock time in
 Europe/Amsterdam, not UTC as cloud crons are. Fields take `*`, numbers, lists, ranges and steps (`*/n`,
