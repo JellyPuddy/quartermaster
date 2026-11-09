@@ -23,6 +23,7 @@ pub mod drops;
 pub mod drafts;
 pub mod error;
 pub mod event_log;
+pub mod failure_log;
 pub mod feature_use;
 pub mod front_edit;
 pub mod gh_stack;

@@ -88,7 +88,10 @@ fn refresh_in_background() -> bool {
 pub fn refresh() {
     let now = crate::clock::now_f64() as i64;
     match fetch_via_gh() {
-        Ok(prs) => write_cache(&Map::from_iter([("prs".to_string(), Value::Array(prs)), ("ts".to_string(), json!(now)), ("error".to_string(), Value::Null)])),
+        Ok(prs) => {
+            write_cache(&Map::from_iter([("prs".to_string(), Value::Array(prs)), ("ts".to_string(), json!(now)), ("error".to_string(), Value::Null)]));
+            crate::failure_log::success("pr-inbox");
+        }
         Err(message) => {
             data_root::log_error("pr-inbox", "RuntimeError", &message);
             let mut cache = read_cache();

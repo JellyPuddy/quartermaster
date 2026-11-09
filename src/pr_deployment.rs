@@ -186,6 +186,7 @@ fn fetch_release(cache: &mut Map<String, Value>, repo: &str) {
     let result = gh(&["api", &format!("repos/{repo}/releases/latest"), "--jq", ".tag_name"]).map(|t| strip(&t).to_string()).and_then(|t| if t.is_empty() { Err(format!("{repo} has no latest release")) } else { Ok(t) });
     match result {
         Ok(tag) => {
+            crate::failure_log::success("pr-deployment");
             section(cache, "releases").insert(repo.to_string(), json!({"tag": tag, "ts": now()}));
         }
         Err(m) => {
@@ -209,6 +210,7 @@ fn fetch_pull(cache: &mut Map<String, Value>, url: &str) -> Option<Value> {
     let fetched = gh(&["pr", "view", url, "--json", "state,mergeCommit"]).and_then(|t| serde_json::from_str::<Value>(&t).map_err(|e| e.to_string()));
     match fetched {
         Ok(data) => {
+            crate::failure_log::success("pr-deployment");
             let merge = data.get("mergeCommit").and_then(|m| m.get("oid")).cloned().unwrap_or(Value::Null);
             let pull = json!({"state": data.get("state").cloned().unwrap_or(Value::Null), "mergeCommit": merge, "ts": now()});
             section(cache, "pulls").insert(url.to_string(), pull.clone());
@@ -235,6 +237,7 @@ fn check_entry(cache: &mut Map<String, Value>, entry: &Map<String, Value>) {
     let Some(tag) = get(cache, "releases", repo).and_then(|r| r.get("tag")).and_then(Value::as_str).map(String::from) else { return };
     match gh(&["api", &format!("repos/{repo}/compare/{tag}...{sha}"), "--jq", ".status"]) {
         Ok(status) => {
+            crate::failure_log::success("pr-deployment");
             let deployed = matches!(strip(&status), "behind" | "identical");
             section(cache, "verdicts").insert(sha, json!({"tag": tag, "deployed": deployed, "ts": now()}));
         }

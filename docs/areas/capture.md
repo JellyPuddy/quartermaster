@@ -1,7 +1,7 @@
 # Capture
 
-**Code:** `src/hook.rs`, `src/session_log.rs`, `src/project_map.rs`, `src/project_config.rs`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
-**Tests:** `tests/non_object_lines.rs`, `tests/sessions.rs`, `tests/characterization.rs`, `tests/chat_attention.rs`
+**Code:** `src/hook.rs`, `src/session_log.rs`, `src/project_map.rs`, `src/project_config.rs`, `src/failure_log.rs`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
+**Tests:** `tests/non_object_lines.rs`, `tests/sessions.rs`, `tests/characterization.rs`, `tests/chat_attention.rs`, `tests/failure_log.rs`
 **Depends on:** none
 
 ## What it does
@@ -50,12 +50,29 @@ fallback protocol for when the injection is missing.
   (`ProjectConfig`, plain path or `root:` mapping, [overview](../overview.md#configyml));
   a cwd inside a root, or a worktree whose `git rev-parse --git-common-dir` lies inside one,
   gets that project; everything else is `No project`.
+- **`qm.log`** (`data_root::log_error` → `failure_log`) is line-oriented. A header line
+  starts at column 0: `<iso8601> [<context>] <Class>: <message>` (the message folded onto
+  that one line). A **transient** failure — gh can't reach GitHub (`error connecting to
+  api.github.com`, `connection reset`, `dial tcp`, `read tcp`, `i/o timeout`, `TLS handshake
+  timeout`, `githubstatus.com`, a bare `EOF`), or a browser tab gone mid-response
+  (`Errno::EPIPE`, `Errno::ECONNRESET`) — reads `<iso8601> [<context>] transient <Class>:
+  <message>`. Only the contexts in `failure_log::SUCCESS_REPORTING` (`pr-inbox`,
+  `pr-deployment`, `pr-refresh`, `gui-client`: the ones that call `failure_log::success`)
+  write just the first failure of an outage; their next success ends it with `<iso8601>
+  [<context>] recovered after <n> failure(s)`. Every other context writes each transient
+  failure, since nothing would ever end its outage. A test holds the list equal to the
+  `success` call sites in `src/`.
 
 ## Rules
 
 - **Hooks never block or break a session.** The `hook-*` commands rescue everything, log
   to `qm.log` and exit 0 (`guard_hook` in `src/cli.rs`); the launcher exits 0 without a binary;
   the `sh` hooks wrap their body in `{ … } >/dev/null 2>&1` and always `exit 0`. Pinned by tests.
+- **Every `qm.log` line is a header starting at column 0**, and only headers carry
+  `[<context>] transient` or `[<context>] recovered`: a multi-line message is folded onto its
+  header. Non-transient failures are always written in full. Outage state is per process; a
+  fresh process may write one more first failure. A new `failure_log::success` call site takes
+  a literal context and joins `SUCCESS_REPORTING` in the same commit.
 - **Only SessionStart may print**, and only the injected context. SessionEnd and every error
   path stay silent — stray stdout would leak into Claude's context.
 - **Per-tool-call hooks are plain POSIX `sh`, not `qm`**: PostToolUse fires on every tool

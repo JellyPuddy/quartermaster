@@ -1,8 +1,6 @@
 use std::fs;
-use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
-use crate::clock;
 
 const CONFIG_SEED: &str = include_str!("config_seed.yml");
 
@@ -73,10 +71,7 @@ pub fn ensure_setup() -> std::io::Result<()> {
 }
 
 pub fn log_error(context: &str, class: &str, message: &str) {
-    let _ = ensure_setup();
-    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(root().join("qm.log")) {
-        let _ = writeln!(f, "{} [{}] {}: {}", clock::now_iso(), context, class, message);
-    }
+    crate::failure_log::failure(context, class, message);
 }
 
 #[cfg(test)]

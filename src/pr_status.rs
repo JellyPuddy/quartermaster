@@ -148,6 +148,9 @@ impl PrStatus {
             std::thread::spawn(move || {
                 let me = PrStatus { now, config: ProjectConfig::current() };
                 let fetched = me.fetch_in(project.as_deref(), &branch);
+                if fetched.is_some() {
+                    crate::failure_log::success("pr-refresh");
+                }
                 me.store(&key, fetched);
                 IN_FLIGHT.lock().unwrap().retain(|k| *k != key);
             });

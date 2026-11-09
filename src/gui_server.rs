@@ -550,8 +550,7 @@ fn handle(mut stream: TcpStream, guard: &Guard, token: &str) {
     };
     let (status, kind, payload) = reply;
     let head = format!("HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", payload.len());
-    let _ = stream.write_all(head.as_bytes());
-    let _ = stream.write_all(&payload);
+    crate::failure_log::client_write(stream.write_all(head.as_bytes()).and_then(|()| stream.write_all(&payload)));
 }
 
 fn open_browser(url: &str) {
