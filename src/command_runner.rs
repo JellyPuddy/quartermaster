@@ -70,6 +70,59 @@ pub fn call_in(argv: &[&str], chdir: &str) -> CmdResult {
     run(argv, Some(chdir))
 }
 
+/// As `call_in`, killing the command's process group after `seconds`; the result then fails with
+/// "timed out after N s" (`CommandRunner#call(argv, chdir:, timeout:)`).
+pub fn call_bounded(argv: &[&str], chdir: Option<&str>, seconds: u64) -> CmdResult {
+    use std::io::Read;
+    use std::os::unix::process::CommandExt;
+    let Some((first, rest)) = argv.split_first() else { return CmdResult { out: String::new(), err: "empty command".into(), success: false } };
+    let program = resolve(first);
+    let mut cmd = Command::new(&program);
+    cmd.args(rest).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).process_group(0);
+    if let Some(dir) = chdir {
+        cmd.current_dir(dir);
+    }
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => return CmdResult { out: String::new(), err: spawn_error(&e, &program), success: false },
+    };
+    let readers: Vec<_> = [child.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>), child.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send>)]
+        .into_iter()
+        .map(|stream| {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let mut bytes = vec![];
+                if let Some(mut s) = stream {
+                    let _ = s.read_to_end(&mut bytes);
+                }
+                let _ = sender.send(String::from_utf8_lossy(&bytes).into_owned());
+            });
+            receiver
+        })
+        .collect();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(seconds);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) if std::time::Instant::now() >= deadline => {
+                // SAFETY: SIGKILL to the process group this call created.
+                unsafe { libc::kill(-(child.id() as i32), libc::SIGKILL) };
+                let _ = child.wait();
+                break None;
+            }
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(10)),
+            Err(_) => break None,
+        }
+    };
+    // a grandchild may keep a pipe open past the command: wait a second for the rest, as Ruby does
+    let mut texts = readers.into_iter().map(|r| r.recv_timeout(std::time::Duration::from_secs(1)).unwrap_or_default());
+    let (out, err) = (texts.next().unwrap_or_default(), texts.next().unwrap_or_default());
+    match status {
+        Some(status) => CmdResult { out, err, success: status.success() },
+        None => CmdResult { out: String::new(), err: format!("timed out after {seconds} s"), success: false },
+    }
+}
+
 /// What Ruby's `SystemCallError#message` says for a command that would not start.
 fn spawn_error(e: &std::io::Error, name: &str) -> String {
     match e.kind() {

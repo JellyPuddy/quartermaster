@@ -4,7 +4,8 @@
 //! folds only the bytes appended since.
 //!
 //! A turn is {since, state, prompt_ts, stop_ts, before_block, tool, last_ts}: state is
-//! working | blocked | your_turn, `since` is when it entered that state.
+//! working | blocked | your_turn, `since` is when it entered that state; `prompts` counts the session's
+//! UserPromptSubmit events.
 
 use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::fs::MetadataExt;
@@ -14,7 +15,7 @@ use serde_json::{Map, Value};
 
 use crate::data_root;
 
-const FOLD_VERSION: i64 = 1;
+const FOLD_VERSION: i64 = 2;
 /// Sessions quiet this long drop out of the fold (they read as no turn, like a fresh chat).
 const FORGET_AFTER_SECS: i64 = 30 * 24 * 3600;
 
@@ -75,6 +76,8 @@ pub fn apply(sessions: &mut Map<String, Value>, event: &Value) {
         Some("UserPromptSubmit") => {
             enter(turn, "working", &ts, true);
             turn.insert("prompt_ts".into(), ts.clone());
+            let prompts = turn.get("prompts").and_then(Value::as_i64).unwrap_or(0) + 1;
+            turn.insert("prompts".into(), prompts.into());
         }
         Some("PostToolUse") | Some("PostToolUseFailure") => {
             if agent {
@@ -238,6 +241,6 @@ mod tests {
     fn key_order_follows_insertion() {
         let s = run(&[ev("UserPromptSubmit", "t1"), ev("PermissionRequest", "t2")]);
         let keys: Vec<&String> = s["s"].as_object().unwrap().keys().collect();
-        assert_eq!(keys, ["since", "state", "prompt_ts", "tool", "last_ts", "before_block"]);
+        assert_eq!(keys, ["since", "state", "prompt_ts", "prompts", "tool", "last_ts", "before_block"]);
     }
 }

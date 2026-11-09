@@ -1,7 +1,7 @@
 # GUI shell
 
 **Code:** `src/gui_server.rs`, `src/gui_action.rs`, `src/gui_actions.rs`, `src/gui_jobs.rs`, `src/gui_state.rs`, `src/command_runner.rs`, `src/pf.rs`, `src/transcript_search.rs`, `src/ask_command.rs`, `gui/page.html`, `gui/js/core.js`, `gui/js/server.js`, `gui/js/events.js`, `gui/js/board.js`, `gui/js/detail.js`, `gui/js/session-sheet.js`, `gui/js/search.js`, `gui/js/transcript-search.js`, `gui/js/popovers.js`, `gui/js/modals.js`, `gui/js/focus.js`, `gui/js/long-actions.js`, `gui/js/errors.js`, `gui/css/base.css`, `gui/css/board.css`, `gui/css/header.css`, `gui/css/overlays.css`, `gui/css/responsive.css`, `src/grep_command.rs`
-**Tests:** `tests/gui.rs`, `tests/error_log.rs`, `tests/grep.rs`, `tests/ask.rs`
+**Tests:** `tests/command_timeout.rs`, `tests/gui.rs`, `tests/error_log.rs`, `tests/grep.rs`, `tests/ask.rs`
 **Depends on:** [work-items](work-items.md), [attention](attention.md), [chats](chats.md), [worktrees](worktrees.md), [side-panel](side-panel.md)
 
 ## What it does
@@ -152,7 +152,7 @@ The Workspace buttons that drive both are in [side-panel](side-panel.md).
 - Actions call the model layer, never CLI `cmd_*`; the CLI and GUI share operations so they can't drift. `SystemExit` must become a JSON error, never a dead server.
 - A state build never blocks on gh or on spawning git per item; PR states refresh on threads.
 - `pf` status is cached 2 s (the fallback spawns `pf status`, the chat view builds state every second); a pf action forgets the cache.
-- Every external tool that changes state goes through `CommandRunner`, which also finds tools in `~/bin` when PATH lacks it. `Gui` takes `runner:`, `tmux:`, `caffeinate:`, `pf_live:` (default `live_root?`, so a test GUI is pf-fenced unless it passes `pf_live: true`); every test GUI gets `quiet_runner` and tmux on `QM_TMUX_SOCKET`.
+- Every external tool that changes state goes through `CommandRunner`, which also finds tools in `~/bin` when PATH lacks it and can bound a command (`call_bounded`: its process group is killed after N seconds, the result failing with "timed out after N s"). `Gui` takes `runner:`, `tmux:`, `caffeinate:`, `pf_live:` (default `live_root?`, so a test GUI is pf-fenced unless it passes `pf_live: true`); every test GUI gets `quiet_runner` and tmux on `QM_TMUX_SOCKET`.
 - Scripts are classic `<script>` tags in load order, not ES modules: shared globals and inline `onclick=` need it. A file calls another at load time only if that one loads earlier; `events.js` (boot) loads last.
 - A pane's render keeps its scroll via `keepScroll` (core.js), so every caller (poll, job end, click) does; it resets only when the subject changes (another item, issue or detail sheet), and nothing outside the render saves or restores it.
 - A new asset needs its tag in page.html; `/assets/` serves only `css/NAME.css` and `js/NAME.js` (an allowlist pattern, so no traversal).

@@ -1,7 +1,7 @@
 # Chat attention
 
 **Code:** `src/event_log.rs`, `src/chat_attention.rs`, `src/turn_notifier.rs`, `src/transcript_vitals.rs`, `src/background_jobs.rs`, `src/chat_launch_commands.rs`, `gui/js/notify.js`
-**Tests:** `tests/attention.rs`, `tests/attention_commands.rs`, `tests/chat_attention.rs`, `tests/chats.rs`
+**Tests:** `tests/event_prompts.rs`, `tests/attention.rs`, `tests/attention_commands.rs`, `tests/chat_attention.rs`, `tests/chats.rs`
 **Depends on:** [capture](capture.md), [chats](chats.md)
 
 ## What it does
@@ -11,7 +11,7 @@ Says whose move it is in every chat, and tells the user when one needs them.
 - `hooks/record-event.sh` (see [capture](capture.md)) appends one slim line per
   `UserPromptSubmit`, `PostToolUse`/`PostToolUseFailure`, `PermissionRequest`, `Stop`/`StopFailure`
   to `events.jsonl`. `EventLog` folds it per session into a turn: state, `since`, tool,
-  `prompt_ts`, `stop_ts`.
+  `prompt_ts`, `stop_ts`, `prompts` (how many prompts the session has had).
 - `ChatAttention` turns the fold into one entry per item, for in-progress items plus any item
   with a live chat (SessionLog liveness), never an automation, even with a live chat (so no
   rotate offer either). The item speaks through its most urgent live session.
@@ -130,7 +130,8 @@ Says whose move it is in every chat, and tells the user when one needs them.
 
 - `events.jsonl`: `{v, ts, session_id, event, tool, agent}` per line (`agent` = sub-agent id, empty
   on the main thread). Append-only, never rewritten.
-- `events-fold.json`: `{v, inode, offset, sessions: {id: {state, since, tool, prompt_ts, stop_ts, last_ts, before_block}}}`.
+- `events-fold.json`: `{v, inode, offset, sessions: {id: {state, since, tool, prompt_ts, stop_ts, prompts, last_ts, before_block}}}`;
+  a fold of another `v` is refolded from 0.
 - Item frontmatter: `turn_snoozed_at` (turn snooze), `snooze_until` (date snooze).
 
 ## Known limits
