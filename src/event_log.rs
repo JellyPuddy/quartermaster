@@ -128,8 +128,7 @@ fn save_fold(fold: &mut Map<String, Value>) {
         });
     }
     let path = fold_path();
-    let tmp = PathBuf::from(format!("{}.{}.tmp", path.display(), std::process::id()));
-    let result = std::fs::write(&tmp, Value::Object(fold.clone()).to_string()).and_then(|_| std::fs::rename(&tmp, &path));
+    let result = crate::atomic_file::write(&path, &Value::Object(fold.clone()).to_string());
     if let Err(e) = result {
         data_root::log_error("event-fold", "IOError", &e.to_string());
     }

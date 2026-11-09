@@ -98,7 +98,8 @@ Says whose move it is in every chat, and tells the user when one needs them.
   `qm doctor`) reads only the file's last 8 KB and touches no fold.
 - A partial last line waits for its newline; a replaced (new inode) or shrunk log refolds from 0.
   A complete line that isn't a JSON object is skipped and the offset moves past it, so one stray
-  line never stalls the fold.
+  line never stalls the fold. The fold is saved through `atomic_file` (a temp file named by pid
+  and thread), since the GUI folds from many threads at once.
 - Sessions quiet for 30 days are dropped from the fold (`FORGET_AFTER`).
 
 **Notifications** (`TurnNotifier`)
