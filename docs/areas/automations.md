@@ -1,8 +1,8 @@
 # Automations
 
-**Code:** `src/automation_store.rs`, `src/local_schedule.rs`
-**Tests:** `tests/automation_store.rs`, `tests/local_schedule.rs`
-**Depends on:** [work-items](work-items.md) (an automation is a work item of `kind: automation`)
+**Code:** `src/automation_store.rs`, `src/local_schedule.rs`, `src/automation_chat.rs`
+**Tests:** `tests/automation_store.rs`, `tests/local_schedule.rs`, `tests/automation_chat.rs`
+**Depends on:** [work-items](work-items.md) (an automation is a work item of `kind: automation`), [chats](chats.md) (its chat is the item's pane)
 
 ## What it does
 
@@ -31,6 +31,21 @@ for the current offset: a local time near midnight moves its weekdays back a day
 become `*`. Any other cron is `raw`: no days or time, labelled as itself plus "UTC", and edited as raw
 cron.
 
+**New and its chat** — `automation_chat::create(title, project, description, runner)` makes a `kind:
+automation` item (its `runner`, state `in_progress`, no `routine` until the first push) and its local
+files under the work-item lock: an empty prompt and a yml with `name`, `runner` and `enabled` (`true`;
+`false` for local); a slug whose files already exist is refused, and so is any runner but `cloud` or
+`local`. `open(slug)` starts the item's chat the way the GUI pane does: fresh when the item has no
+session, else its newest one resumed — a local one's run sessions (`RunLog`) never count, live or ended —
+either way with the brief as claude's last argument (`plan`); a live pane is only shown again, answering
+`attached` with the brief for the caller to print. **The brief** (`brief`; a local one's loop →
+[local automations](local-automations.md)) holds the item's title, slug, project and routine (or that the
+first push creates it), the absolute paths of both files, the loop (edit the files → `qm automation push` →
+`qm automation run` → read the run via its claude.ai link or RemoteTrigger `get_run_log` → refine), the
+rule never to call RemoteTrigger create/update itself, decisions recorded with `qm note SLUG --kind
+decision`, the house rules verbatim from `docs/automations-house-rules.md`, and the item's description and
+notes (oldest first, kind shown).
+
 ## Rules
 
 - The local files are the source of truth for what a routine or a local run does.
@@ -39,6 +54,9 @@ cron.
 - Schedule: no TZ switching (process-wide, races GUI threads): the EU rule is built in — CEST from the
   last Sunday of March 01:00 UTC to the last Sunday of October 01:00 UTC.
 - No automatic DST rewrites: a stored cron keeps its UTC time, so its local time moves with DST.
+- A chat that already runs gets nothing typed: `open` answers `attached` with the brief, which the CLI
+  prints to paste by hand. The brief is claude's argument, never keystrokes.
+- The house rules live only in `docs/automations-house-rules.md`; the brief embeds that file.
 
 ## Data
 

@@ -334,7 +334,7 @@ impl WorkItem {
 
     /// Re-reads the file under the lock, lets `edit` change the front lines and body (returning
     /// whether to save), validates the result parses, and writes it.
-    fn edit(&mut self, edit: impl FnOnce(&WorkItem, &mut Vec<String>, &mut String) -> Res<bool>) -> Res<bool> {
+    pub(crate) fn edit(&mut self, edit: impl FnOnce(&WorkItem, &mut Vec<String>, &mut String) -> Res<bool>) -> Res<bool> {
         Self::with_lock(|| {
             let fresh = Self::find(&self.slug)?;
             let mut lines: Vec<String> = fresh.front_text.lines().map(String::from).collect();
@@ -472,7 +472,7 @@ impl WorkItem {
         Ok(())
     }
 
-    fn set_pair(lines: &mut Vec<String>, key: &str, value: &str) -> Res<()> {
+    pub(crate) fn set_pair(lines: &mut Vec<String>, key: &str, value: &str) -> Res<()> {
         let emitted = psych::pair(key, value).ok_or_else(|| QmError::new(UNEMITTABLE, format!("the {key} value")))?;
         front_edit::set(lines, key, emitted);
         Ok(())

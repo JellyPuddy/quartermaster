@@ -1,4 +1,5 @@
 pub mod ask_command;
+pub mod automation_chat;
 pub mod automation_flows;
 pub mod automation_guard;
 pub mod automation_item;
@@ -70,6 +71,7 @@ pub mod doctor;
 pub mod random_id;
 pub mod rotation;
 pub mod run_fold;
+pub mod run_chats;
 pub mod run_lifecycle;
 pub mod run_log;
 pub mod benchmark_report;

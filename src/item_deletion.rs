@@ -12,7 +12,7 @@ use crate::outcome::{abort, done, Outcome};
 use crate::work_item::WorkItem;
 
 /// The Description `qm new` writes when given none.
-const PLACEHOLDER: &str = "_TODO_";
+pub(crate) const PLACEHOLDER: &str = "_TODO_";
 
 /// Why a delete did not happen.
 pub enum Refused {

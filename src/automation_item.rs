@@ -22,3 +22,15 @@ impl WorkItem {
         self.kind().as_deref() == Some("automation")
     }
 }
+
+impl WorkItem {
+    /// Makes the item an automation of this runner: `kind: automation`, `runner: <runner>`.
+    pub fn make_automation(&mut self, runner: &str) -> crate::error::Res<()> {
+        self.edit(|_, lines, _| {
+            Self::set_pair(lines, "kind", "automation")?;
+            Self::set_pair(lines, "runner", runner)?;
+            Ok(true)
+        })
+        .map(|_| ())
+    }
+}

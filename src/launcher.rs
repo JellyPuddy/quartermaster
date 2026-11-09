@@ -79,8 +79,9 @@ pub enum Resume {
 
 /// The newest attached session whose transcript and cwd both still exist; a live one is never resumed
 /// (that would fork it); with nothing resumable, a fresh session seeded through `QM_ITEM`.
+/// A session picked by id is resumed even when it is a run.
 pub fn resume_plan(item: &WorkItem, session_id: Option<&str>) -> Resume {
-    let ids = item.session_ids();
+    let ids = if session_id.is_some() { item.session_ids() } else { chat_session_ids(item) };
     let log = SessionLog::read();
     let sessions = log.sessions();
     let mut mine: Vec<&Session> = sessions.iter().filter(|s| ids.contains(&s.id) && session_id.is_none_or(|w| s.id == w)).collect();
@@ -110,7 +111,7 @@ pub fn session_resume_plan(session_id: &str) -> Result<String, bool> {
 /// `Launcher#chat_plan`; `None` when `QM_CHAT_COMMAND` is quoted in a way only Ruby reads.
 pub fn chat_plan(item: &WorkItem, fresh: bool, session_id: Option<&str>, prompt: Option<&str>) -> Option<Plan> {
     let command = chat_command()?;
-    let ids = item.session_ids();
+    let ids = chat_session_ids(item);
     let log = SessionLog::read();
     let sessions = log.sessions();
     if sessions.iter().any(|s| ids.contains(&s.id) && s.live) {
@@ -125,4 +126,11 @@ pub fn chat_plan(item: &WorkItem, fresh: bool, session_id: Option<&str>, prompt:
         Resume::Live { .. } => Some(Plan { mode: Mode::Live, cwd: String::new(), argv: vec![], env: vec![] }),
         Resume::Rehydrate { .. } => Some(fresh_plan()),
     }
+}
+
+/// The item's attached sessions that can be its chat: all of them, less a local automation's runs, which are
+/// never live-checked or resumed.
+fn chat_session_ids(item: &WorkItem) -> Vec<String> {
+    let runs = crate::run_log::RunLog::session_ids_for(item, &crate::automation_store::dir());
+    item.session_ids().into_iter().filter(|id| !runs.contains(id)).collect()
 }
