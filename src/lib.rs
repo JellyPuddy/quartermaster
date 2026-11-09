@@ -13,6 +13,7 @@ pub mod attention_command;
 pub mod background_jobs;
 pub mod cli;
 pub mod command_runner;
+pub mod config_bools;
 pub mod config_check;
 pub mod config_command;
 pub mod config_emit;

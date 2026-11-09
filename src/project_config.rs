@@ -203,7 +203,7 @@ impl ProjectConfig {
     }
 
     pub fn parse(source: &str) -> ProjectConfig {
-        let (data, failure) = match serde_yaml::from_str::<Value>(source) {
+        let (data, failure) = match crate::config_bools::parse(source) {
             Ok(v @ Value::Mapping(_)) => (v, None),
             Ok(Value::Null) => (Value::Null, None),
             Ok(_) => (Value::Null, Some(LoadFailure::NotMapping)),

@@ -209,7 +209,7 @@ fn descend<'a>(node: &'a mut Mapping, keys: &[String], pattern: String, create: 
 }
 
 fn parse(source: &str) -> (Value, Option<String>) {
-    match serde_yaml::from_str::<Value>(source) {
+    match crate::config_bools::parse(source) {
         Ok(Value::Null) => (Value::Mapping(Mapping::new()), None),
         Ok(v @ Value::Mapping(_)) => (v, None),
         Ok(_) => (Value::Mapping(Mapping::new()), Some("is not a mapping of keys".into())),

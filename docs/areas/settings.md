@@ -1,6 +1,6 @@
 # Settings
 
-**Code:** `src/config_schema.rs`, `src/config_features.rs`, `src/config_check.rs`, `src/config_file.rs`, `src/config_emit.rs`, `src/config_reader.rs`, `src/config_command.rs`, `src/gui_settings.rs`, `gui/js/settings.js`, `gui/js/settings-render.js`, `gui/js/settings-widgets.js`, `gui/css/settings.css`
+**Code:** `src/config_schema.rs`, `src/config_features.rs`, `src/config_check.rs`, `src/config_file.rs`, `src/config_bools.rs`, `src/config_emit.rs`, `src/config_reader.rs`, `src/config_command.rs`, `src/gui_settings.rs`, `gui/js/settings.js`, `gui/js/settings-render.js`, `gui/js/settings-widgets.js`, `gui/css/settings.css`
 **Tests:** `tests/config_file.rs`, `tests/config_cli.rs`, `tests/config_reads.rs`, `tests/gui_settings.rs`
 **Depends on:** [capture](capture.md) (`ProjectConfig` reads the same file through `ConfigReader`), [gui-shell](gui-shell.md) (the router and its Origin guard)
 
@@ -36,6 +36,7 @@ dev-server or test-DB command not on `PATH` (or `~/bin`), an `ide_label` without
 folder and PATH checks go through a `Probe`; tests pass a stub.
 
 **File** — `config_file::load` holds the text, the parsed mapping and the text's SHA-256 digest.
+The file is read by `config_bools::parse` (also what `ProjectConfig` loads with): on a schema `bool` key, at any depth and in block or flow form, a *plain* `yes`/`no`/`on`/`off` (any case; `y`/`n` are not booleans) is the boolean Psych read, so the check, the writer and every reader see one value and a hand-written `local_paused: yes` never blocks a write (it is written back as `true`); a quoted `'yes'` stays a string and is flagged. serde_yaml cannot tell the two apart, so a small scanner of the raw text lists the plain scalars by key path.
 `get` / `set` / `unset` take dotted paths (opening a shorthand into its mapping); `set` refuses a
 path the schema doesn't know, `unset` also takes an unknown key under a governed mapping (to
 drop a typo). `parse_value` reads a CLI value as YAML (`[dev, ngrok]` a list, `true` a bool (on a `bool` key `yes`/`no`/`on`/`off` are bools too, `config_file::typed_for`), `4` a
