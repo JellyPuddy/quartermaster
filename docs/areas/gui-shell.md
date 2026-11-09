@@ -10,9 +10,11 @@
 view (`p`), an Issues view (`I`) and the Settings view (`,` or the header's ⚙ button, not a mode
 tab; [settings](settings.md)). It is a stdlib `TCPServer`, no web framework.
 
-**Server lifecycle** (`Gui#run`). Binds `127.0.0.1` on the fixed port 49737 (`QM_GUI_PORT`
-overrides) so the URL is stable and the browser keeps one tab. If the port is taken, it
-assumes another `qm gui`, opens that tab and returns. It opens the page with `open` unless
+**Server lifecycle** (`gui_server::run`). Binds `127.0.0.1` on the fixed port 49737 (`QM_GUI_PORT`
+overrides, read like Ruby's `to_i`; 0 takes an ephemeral port and the URL printed names the real
+one; outside 0–65535 is refused by name) so the URL is stable and the browser keeps one tab. If the
+port is taken, it assumes another `qm gui`, opens that tab and returns; any other bind error is
+printed as it is and exits 1. It opens the page with `open` unless
 `QM_GUI_NO_OPEN` is set, serves each connection on its own thread, and runs until Ctrl-C.
 Two server threads start with it: the turn watcher (`TurnNotifier`, reacts to
 `events.jsonl` growing, every 1.5 s) and the auto-caffeinate watcher (every 15 s).

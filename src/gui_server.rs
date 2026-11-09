@@ -572,18 +572,21 @@ fn random_token() -> String {
 pub fn run() -> Outcome {
     let port = match port() {
         Ok(p) => p,
-        Err(Failed::Unsupported) | Err(Failed::Abort(_)) => return Outcome::Refused,
+        Err(Failed::Unsupported) => return Outcome::Refused,
+        Err(Failed::Abort(message)) => return crate::outcome::abort(&message),
     };
-    let url = format!("http://127.0.0.1:{port}");
     let listener = match TcpListener::bind(("127.0.0.1", port)) {
         Ok(l) => l,
-        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && port != 0 => {
+            let url = format!("http://127.0.0.1:{port}");
             println!("qm gui already running → {url}   (opening the existing tab)");
             open_browser(&url);
             return done(String::new());
         }
-        Err(_) => return Outcome::Refused,
+        Err(e) => return crate::outcome::abort(&format!("qm gui: can't listen on 127.0.0.1:{port}: {e}")),
     };
+    let port = listener.local_addr().map(|a| a.port()).unwrap_or(port);
+    let url = format!("http://127.0.0.1:{port}");
     println!("qm gui → {url}   (Ctrl-C to stop)");
     open_browser(&url);
     extern "C" fn stop(_: libc::c_int) {

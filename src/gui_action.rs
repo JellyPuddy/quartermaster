@@ -16,12 +16,13 @@ pub enum Failed {
     Unsupported,
 }
 
-/// `Gui.port`: `QM_GUI_PORT` (default 49737) through `to_i`. Only plain 1–65535 is read here.
+/// `Gui.port`: `QM_GUI_PORT` (default 49737) through `to_i`, so 0 is the server's own pick (`qm gui` prints
+/// the one it got); a value outside 0–65535 is refused by name.
 pub fn port() -> Result<u16, Failed> {
-    match std::env::var("QM_GUI_PORT") {
-        Err(_) => Ok(49737),
-        Ok(v) => v.parse::<u16>().ok().filter(|p| *p > 0 && v.bytes().all(|b| b.is_ascii_digit())).ok_or(Failed::Unsupported),
-    }
+    let Ok(v) = std::env::var("QM_GUI_PORT") else { return Ok(49737) };
+    let digits: String = v.trim_start().trim_start_matches('+').chars().take_while(char::is_ascii_digit).collect();
+    let n = if digits.is_empty() { 0 } else { digits.parse::<u64>().unwrap_or(u64::MAX) };
+    u16::try_from(n).ok().filter(|_| !v.trim_start().starts_with('-')).ok_or_else(|| Failed::Abort(format!("qm: QM_GUI_PORT must be a port from 0 to 65535, not '{v}'")))
 }
 
 fn decode_chunked(mut body: &[u8]) -> Option<Vec<u8>> {
