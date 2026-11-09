@@ -163,6 +163,24 @@ pub fn refuse(stream: &mut TcpStream, why: &str) {
 }
 
 /// Handshake, then serve the connection until it ends.
+/// A pseudo-terminal's master and slave. Both are close-on-exec the moment they exist: the server spawns git, gh and
+/// tmux from other threads, and a child that inherited either would hold the terminal open past its connection.
+pub fn open_pty(cols: u16, rows: u16) -> Option<(OwnedFd, OwnedFd)> {
+    let (mut master, mut slave) = (0i32, 0i32);
+    let mut size = libc::winsize { ws_row: rows, ws_col: cols, ws_xpixel: 0, ws_ypixel: 0 };
+    // macOS takes `*mut` for the terminal settings and the size where Linux takes `*const`; `*mut` fits both
+    if unsafe { libc::openpty(&mut master, &mut slave, std::ptr::null_mut(), std::ptr::null_mut(), &mut size) } != 0 {
+        return None;
+    }
+    let fds = unsafe { (OwnedFd::from_raw_fd(master), OwnedFd::from_raw_fd(slave)) };
+    for fd in [&fds.0, &fds.1] {
+        if unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) } != 0 {
+            return None;
+        }
+    }
+    Some(fds)
+}
+
 pub fn serve(mut stream: TcpStream, mut reader: BufReader<TcpStream>, key: &str, session: &str, cols: i64, rows: i64) {
     let response = format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {}\r\n\r\n", accept_key(key));
     if stream.write_all(response.as_bytes()).is_err() {
@@ -171,14 +189,7 @@ pub fn serve(mut stream: TcpStream, mut reader: BufReader<TcpStream>, key: &str,
     let socket = Socket { out: Arc::new(Mutex::new(stream)) };
     let (cols, rows) = (cols.clamp(1, 500) as u16, rows.clamp(1, 200) as u16);
     let tmux = crate::tmux::Tmux::new();
-    let mut master: i32 = 0;
-    let mut slave: i32 = 0;
-    let mut size = libc::winsize { ws_row: rows, ws_col: cols, ws_xpixel: 0, ws_ypixel: 0 };
-    // macOS takes `*mut` for the terminal settings and the size where Linux takes `*const`; `*mut` fits both
-    if unsafe { libc::openpty(&mut master, &mut slave, std::ptr::null_mut(), std::ptr::null_mut(), &mut size) } != 0 {
-        return;
-    }
-    let (master_fd, slave_fd) = unsafe { (OwnedFd::from_raw_fd(master), OwnedFd::from_raw_fd(slave)) };
+    let Some((master_fd, slave_fd)) = open_pty(cols, rows) else { return };
     let attach = ["-L".to_string(), tmux.socket(), "attach-session".to_string(), "-t".to_string(), format!("={session}")];
     let mut command = Command::new("tmux");
     command.args(&attach).env("TERM", "xterm-256color").env_remove("TMUX");

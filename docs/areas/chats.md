@@ -88,6 +88,8 @@ blocked + unsnoozed your_turn chats.
   `{cols, rows}` resizes (the PTY winsize, clamped to 1–500 × 1–200, plus a SIGWINCH to that client).
 - The 60 s read timeout (`QM_GUI_REQUEST_TIMEOUT_MS` shortens it, for tests) covers reading a request only: a
   WebSocket clears it before `serve`, since an idle terminal sends nothing (no ping) and would be dropped.
+  Both PTY fds are close-on-exec (`open_pty`): the server spawns git, gh and tmux from other threads, and
+  a child holding the PTY would keep it open past its connection.
 - `window-size latest` sizes the window to the client that attached, resized or typed last, so a
   second tab or Warp attach on the same chat takes it and a pane shows only its top rows. An unchanged
   winsize sends no SIGWINCH, so the bridge signals one itself, and a page re-sends its terminals' sizes
