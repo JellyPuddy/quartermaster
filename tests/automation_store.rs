@@ -205,3 +205,58 @@ fn refuses_a_slug_that_is_not_a_plain_name() {
     assert!(w.store().read("a/b").is_ok_and(|e| e.is_none()), "a path is no automation, so it reads as absent");
     assert!(w.store().yml_path("a/b").is_err());
 }
+
+fn digest() -> Value {
+    let list: Value = serde_json::from_str(include_str!("fixtures/routines-list-response.json")).unwrap();
+    list["data"][0].clone()
+}
+
+#[test]
+fn maps_a_routine_from_the_api_to_a_record_and_prompt() {
+    let (record, prompt) = quartermaster::automation_store::from_routine(&digest()).unwrap();
+    assert_eq!(prompt, "PROMPT");
+    assert_eq!(
+        Value::Object(record),
+        json!({
+            "routine": "trig_01AAAAAAAAAAAAAAAAAAAAAAAA", "runner": "cloud", "name": "Shipped digest (DM)", "cron": "0 7 * * 1,4", "model": "claude-sonnet-5-5",
+            "sources": [{"git_repository": {"url": "https://github.com/example-org/example-app"}}],
+            "connectors": [{"clear_tool_policy_overrides": false, "connector_uuid": "00000000-0000-4000-8000-000000000002", "name": "Slack", "permitted_tools": [], "tool_policy_overrides": [], "url": "https://mcp.slack.com/mcp"}],
+            "allowed_tools": ["Bash", "Read", "Glob", "Grep"], "environment_id": "env_01BBBBBBBBBBBBBBBBBBBBBBBB", "enabled": true, "remote_updated_at": "2026-10-27T12:21:01.911143Z"
+        })
+    );
+}
+
+#[test]
+fn takes_prompt_and_model_from_derived_state_when_the_job_config_lacks_them() {
+    let mut routine = digest();
+    routine["job_config"] = json!({"ccr": {}});
+    routine["derived_state"] = json!({"prompt": "from derived", "model": "claude-derived"});
+    let (record, prompt) = quartermaster::automation_store::from_routine(&routine).unwrap();
+    assert_eq!((prompt.as_str(), &record["model"]), ("from derived", &json!("claude-derived")));
+}
+
+#[test]
+fn refuses_to_map_something_that_is_not_a_routine() {
+    assert!(quartermaster::automation_store::from_routine(&json!([])).is_err());
+    assert!(quartermaster::automation_store::from_routine(&json!({"name": "no id"})).is_err());
+}
+
+#[test]
+fn a_fixture_routine_maps_back_to_its_own_job_config() {
+    let routine = digest();
+    let (record, prompt) = quartermaster::automation_store::from_routine(&routine).unwrap();
+    let mut fields = record;
+    fields.insert("prompt".into(), json!(prompt));
+    let uuid = routine["job_config"]["ccr"]["events"][0]["data"]["uuid"].as_str().unwrap();
+    let body = quartermaster::routines_client::request_body(&fields, uuid);
+    assert_eq!(body["job_config"], routine["job_config"]);
+    assert_eq!(body["mcp_connections"], routine["mcp_connections"]);
+}
+
+#[test]
+fn the_remote_sync_stamp_sits_after_the_known_fields() {
+    let w = World::new();
+    w.store().write("digest", &with(cloud(), json!({"my_note": "x"})), "p").unwrap();
+    let yml = w.file("digest.yml");
+    assert!(yml.find("remote_updated_at").unwrap() < yml.find("my_note").unwrap(), "{yml}");
+}

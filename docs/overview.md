@@ -105,7 +105,8 @@ cache_read, output}` ([side panel](areas/side-panel.md)), `overview_artifact` ([
 - **Rust, one static binary** (`cargo build --release`, toolchain pinned in `.tool-versions`),
   so a hook fires the same in any repo whatever its asdf pins, and starts fast. The only
   dependencies are `serde_json`, `serde_yaml`, `regex`, `chrono` and `libc`; a new crate needs a
-  reason.
+  reason. HTTPS (the claude.ai routines API) is `curl` through `command_runner`, as `pf` and the GUI
+  probes already are: a TLS crate would cost more than the one place that speaks it.
 - **The status line is `qm statusline`**, which Claude Code's `statusLine` setting runs: it needs no
   system Ruby.
 - **The skills qm drives ship in `skills/`** (rotate, work-items, branch-stats, adopt-worktree,

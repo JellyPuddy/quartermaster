@@ -70,6 +70,7 @@ pub mod distill;
 pub mod doctor;
 pub mod random_id;
 pub mod rotation;
+pub mod routines_client;
 pub mod run_fold;
 pub mod run_chats;
 pub mod run_lifecycle;

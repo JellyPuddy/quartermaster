@@ -13,9 +13,9 @@ use crate::error::{QmError, Res};
 use crate::{atomic_file, config_emit, data_root};
 
 pub const VERSION: i64 = 1;
-const FIELDS: [&str; 17] = [
+const FIELDS: [&str; 18] = [
     "routine", "runner", "name", "cron", "when", "flow", "repos", "cwd", "model", "sources", "connectors", "allowed_tools", "permission_mode", "environment_id", "enabled", "timeout_minutes",
-    "notify",
+    "notify", "remote_updated_at",
 ];
 const NOTIFY: [&str; 2] = ["attention", "quiet"];
 
@@ -95,6 +95,24 @@ pub fn validate_local(record: &Record) -> Res<()> {
         problems.push("repos must be a list of owner/name strings".into());
     }
     if problems.is_empty() { Ok(()) } else { Err(QmError::argument(problems.join("; "))) }
+}
+
+/// A routine as the API returns it, as `(record, prompt)`, read through `routines_client::fields`.
+pub fn from_routine(routine: &Value) -> Res<(Record, String)> {
+    let fields = crate::routines_client::fields(routine)?;
+    let mut record = Record::new();
+    record.insert("routine".into(), fields["id"].clone());
+    record.insert("runner".into(), json!("cloud"));
+    for key in ["name", "cron", "model", "sources", "connectors", "allowed_tools", "environment_id", "enabled"] {
+        record.insert(key.into(), fields[key].clone());
+    }
+    record.insert("remote_updated_at".into(), fields["updated_at"].clone());
+    let prompt = match &fields["prompt"] {
+        Value::Null => String::new(),
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    };
+    Ok((record, prompt))
 }
 
 fn checked(slug: &str) -> Res<&str> {

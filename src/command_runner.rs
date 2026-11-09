@@ -62,6 +62,31 @@ pub fn call(argv: &[&str]) -> CmdResult {
     run(argv, None)
 }
 
+/// As `call`, with `input` on the command's stdin (for what must stay out of its argument list, which any
+/// local user can read with `ps`).
+pub fn call_with_input(argv: &[&str], input: &str) -> CmdResult {
+    use std::io::Write;
+    let Some((first, rest)) = argv.split_first() else { return CmdResult { out: String::new(), err: "empty command".into(), success: false } };
+    let program = resolve(first);
+    let mut child = match Command::new(&program).args(rest).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
+        Ok(c) => c,
+        Err(e) => return CmdResult { out: String::new(), err: spawn_error(&e, &program), success: false },
+    };
+    let mut stdin = child.stdin.take();
+    let bytes = input.as_bytes().to_vec();
+    let writer = std::thread::spawn(move || {
+        if let Some(pipe) = stdin.as_mut() {
+            let _ = pipe.write_all(&bytes); // a command that exits unread closes the pipe
+        }
+    });
+    let output = child.wait_with_output();
+    let _ = writer.join();
+    match output {
+        Ok(o) => CmdResult { out: String::from_utf8_lossy(&o.stdout).into_owned(), err: String::from_utf8_lossy(&o.stderr).into_owned(), success: o.status.success() },
+        Err(e) => CmdResult { out: String::new(), err: e.to_string(), success: false },
+    }
+}
+
 /// As `call`, in `chdir` (Ruby's `CommandRunner#call(argv, chdir:)`).
 pub fn call_in(argv: &[&str], chdir: &str) -> CmdResult {
     if FENCED.load(std::sync::atomic::Ordering::SeqCst) && changes_server(argv) {
