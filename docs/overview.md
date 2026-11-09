@@ -102,9 +102,9 @@ cache_read, output}` ([side panel](areas/side-panel.md)), `overview_artifact` ([
 
 ## Tech decisions
 
-- **Ruby, through an `sh` launcher**: `ruby` resolves through asdf shims to the version in
-  `ruby-version` when pinned (`qm pin-ruby`), else to whatever the session's cwd pins, which
-  needs a user-level asdf default (`~/.tool-versions`) outside pinned repos ([cli](areas/cli.md)).
+- **Ruby, through an `sh` launcher**: `ruby` resolves via asdf shims to `ruby-version` if pinned
+  (`qm pin-ruby`), else the cwd's pin, so outside pinned repos it needs `~/.tool-versions`
+  ([cli](areas/cli.md)). `lib/quartermaster.rb` defaults to UTF-8, as the launchd tick has no `LANG`.
 - **Stdlib only** (yaml, json, open3, optparse, socket, …), no gems: gems install per Ruby
   version, so a hook firing in a repo pinned to another Ruby would not find them.
 - **Ruby 3.3 is the syntax floor** for the same reason — no 4.x-only features. The launcher

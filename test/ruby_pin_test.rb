@@ -127,6 +127,20 @@ class RubyPinTest < Minitest::Test
     assert_equal "3.4.7\n", File.read(pin_file)
   end
 
+  # The launchd tick runs qm with only PATH set, so no LANG or LC_* reaches Ruby.
+  def test_the_launcher_reads_non_ascii_work_items_without_a_locale
+    stub_ruby_passing_through
+    item = Quartermaster::WorkItem.create("Tick fix", project: "MyApp")
+    path = Quartermaster::WorkItem.path_for(item.slug)
+    File.write(path, "#{File.read(path)}\nReviews PRs — even at night.\n")
+    out, err, status = Open3.capture3({ "QM_ROOT" => Quartermaster::ROOT, "HOME" => Dir.home,
+                                        "PATH" => "#{@bin}:/usr/bin:/bin" },
+                                      QM_BIN, "list", unsetenv_others: true)
+
+    assert status.success?, err
+    assert_match(/tick-fix/, out)
+  end
+
   def test_pin_ruby_defaults_to_the_running_ruby
     FileUtils.mkdir_p(File.join(@asdf, "installs", "ruby", RUBY_VERSION))
     _out, err, status = run_qm("pin-ruby")
