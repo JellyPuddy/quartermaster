@@ -84,8 +84,12 @@ fn retag(a: &[String]) -> Outcome {
     let [slug, position, kind, ..] = a else {
         return abort(&format!("usage: qm retag SLUG POSITION KIND ({}) — POSITION is the number qm show prints", NOTE_KINDS.join(" | ")));
     };
-    // `String#to_i`: leading digits, anything else is 0 (and no note has that position)
-    let position: usize = position.trim_start().chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse().unwrap_or(0);
+    // `Integer(position, exception: false) || 0`: the whole text must be an integer (`3x`, `3.5` and `3,` are not
+    // one, so they name no note), and `+3`, ` 3 `, `0x3` and `-3` are
+    let position = match crate::ruby_text::kernel_integer_text(position) {
+        Ok(n) => n.unwrap_or(0),
+        Err(()) => return Outcome::Refused,
+    };
     let mut item = tri!(WorkItem::find(slug));
     let note = tri!(item.update_note_kind(position, kind));
     done(format!("{}\n", note_line(&note)))

@@ -59,7 +59,7 @@ pub fn kernel_integer(v: &serde_json::Value) -> Result<Option<i64>, ()> {
     }
 }
 
-fn kernel_integer_text(text: &str) -> Result<Option<i64>, ()> {
+pub fn kernel_integer_text(text: &str) -> Result<Option<i64>, ()> {
     let t = text.trim_matches([' ', '\t', '\n', '\u{b}', '\u{c}', '\r']);
     if t.contains('\0') {
         return Ok(None);

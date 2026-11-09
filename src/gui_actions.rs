@@ -1037,7 +1037,7 @@ fn retag(slug: &str, args: &Args) -> R<Value> {
         _ => return Err(Stop::Unsupported),
     };
     let kind = args.string("kind")?;
-    item.update_note_kind(position, &kind).map_err(error)?;
+    item.update_note_kind(position as i64, &kind).map_err(error)?;
     Ok(ok())
 }
 

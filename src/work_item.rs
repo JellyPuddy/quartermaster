@@ -706,17 +706,17 @@ impl WorkItem {
     }
 
     /// Retags the note at 1-based `position`; every stored note line is rewritten in its normal form.
-    pub fn update_note_kind(&mut self, position: usize, kind: &str) -> Res<Note> {
+    pub fn update_note_kind(&mut self, position: i64, kind: &str) -> Res<Note> {
         Self::validate_kind(kind)?;
         let mut retagged = None;
         self.edit(|fresh, _, body| {
             let stored = fresh.notes();
             let note = stored
                 .iter()
-                .find(|n| n.position == position)
+                .find(|n| n.position as i64 == position)
                 .ok_or_else(|| QmError::argument(format!("note #{position} does not exist ({} note(s))", stored.len())))?;
             let new = note.with_kind(kind);
-            *body = sections::rewrite_notes(body, |n| if n.position == position { new.clone() } else { n });
+            *body = sections::rewrite_notes(body, |n| if n.position as i64 == position { new.clone() } else { n });
             retagged = Some(new);
             Ok(true)
         })?;

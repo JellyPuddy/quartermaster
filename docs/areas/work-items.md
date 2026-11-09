@@ -49,7 +49,7 @@ editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
   - `open` — unresolved and user-facing: a decision the user owes, a blocked dependency, a gap.
   - `decision` — a choice made or a finding about how the system is. The default.
   - `history` — how it got done: commits, rebases, push status, specs green.
-  `qm retag SLUG POSITION KIND` (and the GUI's chip select) changes a kind afterwards;
+  `qm retag SLUG POSITION KIND` (and the GUI's chip select) changes a kind afterwards; POSITION is read like Ruby's `Integer(..)`: all of it must be an integer (`3x`, `3.5` name no note);
   POSITION is the note's 1-based place in the file, shown as `#n` by `qm show` and the
   injected digest.
 - **The injected digest** (`HookHandler#item_digest`, every session start on a linked item or
