@@ -1,7 +1,7 @@
 # Local automations
 
 **Code:** `src/local_cron.rs`, `src/automation_flows.rs`, `src/chat_flow.rs`, `src/pr_review_flow.rs`, `src/automation_tick.rs`, `src/automation_guard.rs`, `src/run_lifecycle.rs`, `src/run_log.rs`, `src/run_fold.rs`, `src/random_id.rs`
-**Tests:** `tests/automation_config.rs`, `tests/automation_flows.rs`, `tests/automation_guard.rs`, `tests/automation_tick.rs`, `tests/automation_run_lifecycle.rs`, `tests/local_cron.rs`, `tests/run_log.rs`, `tests/automation_store.rs`
+**Tests:** `tests/quiet_runs.rs`, `tests/automation_config.rs`, `tests/automation_flows.rs`, `tests/automation_guard.rs`, `tests/automation_tick.rs`, `tests/automation_run_lifecycle.rs`, `tests/local_cron.rs`, `tests/run_log.rs`, `tests/automation_store.rs`
 **Depends on:** [automations](automations.md) (the store, the item; `local_schedule`'s DST rule), [work-items](work-items.md)
 
 ## What it does
@@ -130,6 +130,8 @@ and flow as a new `retry` run, past dedupe; refuses unknown, queued or live runs
   run the user typed into; a typed-into run is theirs until its session ends.
 - Lifecycle runs every tick, paused or not; `local_paused` holds every start, `enabled: false` only cron and
   guard runs (its `manual`/`retry` ones start, under hold and cap, to try it by hand).
+- `notify: quiet` keeps a run out of attention and notifications (`RunLog::quiet_session_ids`); a timeout
+  notification still fires, since a timeout is a failure to fix.
 - Guards and tmux go through `command_runner` and `Tmux`; tests run the real tmux on a `qm-test-…` socket
   with a stand-in for claude, a stand-in `gh` and `terminal-notifier` on PATH, never a real guard target,
   claude, GitHub or notification.

@@ -79,17 +79,20 @@ fn truthy(v: Option<&Value>) -> Option<&Value> {
 
 pub struct ChatAttention {
     sessions: Vec<Session>,
+    quiet: std::cell::OnceCell<std::collections::HashSet<String>>,
     turns: Option<Map<String, Value>>,
     vitals: HashMap<String, Option<Vitals>>,
 }
 
 impl ChatAttention {
     pub fn new() -> ChatAttention {
-        ChatAttention { sessions: SessionLog::read().sessions(), turns: None, vitals: HashMap::new() }
+        ChatAttention { sessions: SessionLog::read().sessions(), quiet: std::cell::OnceCell::new(), turns: None, vitals: HashMap::new() }
     }
 
+    /// A quiet automation's runs (a pr-review run lives in its Review item's chat) count for nothing.
     fn live_sessions(&self, item: &WorkItem) -> Vec<Session> {
-        item.session_ids().iter().filter_map(|id| self.sessions.iter().find(|s| s.id == *id)).filter(|s| s.live).cloned().collect()
+        let quiet = self.quiet.get_or_init(|| crate::run_log::RunLog::quiet_session_ids(&crate::automation_store::dir()));
+        item.session_ids().iter().filter(|id| !quiet.contains(*id)).filter_map(|id| self.sessions.iter().find(|s| s.id == *id)).filter(|s| s.live).cloned().collect()
     }
 
     /// In-progress items plus anything with a live chat, by attention.

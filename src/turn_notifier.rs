@@ -200,6 +200,8 @@ pub fn check() {
     if changed.is_empty() {
         return;
     }
+    let quiet = crate::run_log::RunLog::quiet_session_ids(&crate::automation_store::dir());
+    let changed: Vec<(&String, &Value)> = changed.into_iter().filter(|(id, _)| !quiet.contains(*id)).collect();
     let log = SessionLog::read();
     let items = match WorkItem::all() {
         Ok(i) => i,

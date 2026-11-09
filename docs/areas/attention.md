@@ -1,7 +1,7 @@
 # Chat attention
 
 **Code:** `src/event_log.rs`, `src/chat_attention.rs`, `src/turn_notifier.rs`, `src/transcript_vitals.rs`, `src/background_jobs.rs`, `src/chat_launch_commands.rs`, `gui/js/notify.js`
-**Tests:** `tests/event_prompts.rs`, `tests/attention.rs`, `tests/attention_commands.rs`, `tests/chat_attention.rs`, `tests/chats.rs`
+**Tests:** `tests/event_prompts.rs`, `tests/quiet_runs.rs`, `tests/attention.rs`, `tests/attention_commands.rs`, `tests/chat_attention.rs`, `tests/chats.rs`
 **Depends on:** [capture](capture.md), [chats](chats.md)
 
 ## What it does
@@ -14,7 +14,8 @@ Says whose move it is in every chat, and tells the user when one needs them.
   `prompt_ts`, `stop_ts`, `prompts` (how many prompts the session has had).
 - `ChatAttention` turns the fold into one entry per item, for in-progress items plus any item
   with a live chat (SessionLog liveness), never an automation, even with a live chat (so no
-  rotate offer either). The item speaks through its most urgent live session.
+  rotate offer either). The item speaks through its most urgent live session. A `notify: quiet`
+  local automation's run sessions (`RunLog::quiet_session_ids`) never speak for an item.
   Order: 🔴 `blocked` → 🟠 `your_turn` → 🔵 `working` → ◐ `waiting` → ⚪ `none`, longest-waiting
   (`since`) first; a snoozed your_turn ranks between waiting and none.
 - `TranscriptVitals` reads a transcript's tail (256 KB, grown ×4 until an assistant usage shows):
@@ -101,7 +102,7 @@ Says whose move it is in every chat, and tells the user when one needs them.
 - Triggers: entering `blocked` always notifies, with sound; a Stop notifies, silently, only when
   that turn ran ≥ 30 s (`prompt_ts` → `stop_ts`, `LONG_TURN`).
 - Never: Esc interrupts, a turn that delegated to background work (`waiting`), a snoozed turn,
-  asides. Every other session counts, GUI chat or not, loose chats included; an unlinked one is titled
+  asides, a `notify: quiet` local automation's runs. Every other session counts, GUI chat or not, loose chats included; an unlinked one is titled
   by its first prompt.
 - The chat a notification names (`TurnNotifier.chat_of`) is the item's `slug`, else `loose`: the loose
   chat's tmux name (`loose--<id>`) for an unlinked session with a loose id. A plain unlinked session has neither.
