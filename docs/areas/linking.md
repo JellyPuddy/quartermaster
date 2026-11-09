@@ -7,7 +7,7 @@
 ## What it does
 
 Attaches each session to the work item it serves, and opens sessions for items. The
-SessionStart hook (`HookHandler#linked_work_item`) picks the item, in order:
+SessionStart hook (`hook::linked_work_item`) picks the item, in order:
 
 1. **Already attached** — an item whose `sessions:` lists this id wins first, even over
    `QM_ITEM`: a resume must recognise its own history, and the launch env var outlives a
@@ -42,7 +42,7 @@ branch to ask something unrelated). The linked protocol offers the same three-wa
 continues another item → `qm attach <other>`; new work → `qm new --session`; trivial →
 `qm detach SLUG --session ID` and stop mentioning tracking.
 
-**Launching** (`Launcher`):
+**Launching** (`launcher`):
 - `qm start SLUG` / the viewer's ^N / GUI Start: a fresh `claude` with `QM_ITEM=<slug>` in
   `start_cwd` — the worktree checked out on the item's branch (newest branch first), else the
   project root, else the last session's cwd, else home.
@@ -66,7 +66,7 @@ is manual.
 ## Rules
 
 - **A session belongs to one item.** Every attach (CLI `attach`, `new --session`, GUI attach,
-  item-from-session) detaches it everywhere else (`WorkItem.detach_session_elsewhere`): a
+  item-from-session) detaches it everywhere else (`work_item::detach_session_elsewhere`): a
   resume links to the *first* item listing the id, so a stale attachment is wrong.
 - **`QM_ITEM` with an unknown slug falls through, never unlinks**: the var leaks from a
   launched session's env into everything it spawns — which is also why the tests unset it
@@ -75,7 +75,7 @@ is manual.
   not even by branch. `QM_LOOSE` likewise skips `QM_ITEM` and the branch match, unless the
   loose chat was promoted (its session, or an earlier one of the same id, is on an item).
 - **A local automation's runs are never its chat** (`chat_session_ids`, through
-  `RunLog::session_ids_for`): they attach to the item through `QM_ITEM`, but `resume_plan` and
+  `run_log::session_ids_for`): they attach to the item through `QM_ITEM`, but `resume_plan` and
   `chat_plan` neither live-check nor pick them, so every caller — `qm resume` and the viewer,
   the GUI pane, Edit with Claude, adopt/restack/issue/PR-review starts — skips them. Only a
   session picked by id (`--session`, a session row) is resumed even when it is a run.

@@ -23,7 +23,7 @@ editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
 - **Created** by `qm new "Title" [--project P] [--session ID] [--description …]` (slug from
   the title by `slug::slug_words`: accents transliterated, `Café` → `cafe`, then only `a-z0-9`
   runs joined by `-`; state `in_progress`, `created` today, empty sections), or from a captured
-  session (`WorkItem.from_session`: project and branch from its start event, a mainline
+  session (`gui_actions::from_session`: project and branch from its start event, a mainline
   branch `main|master|develop` left off, the session claimed). `qm retitle` never changes
   the slug; `qm describe SLUG TEXT` (or stdin) replaces the Description; `qm move` changes
   the project.
@@ -52,9 +52,9 @@ editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
   `qm retag SLUG POSITION KIND` (and the GUI's chip select) changes a kind afterwards; POSITION is read like Ruby's `Integer(..)`: all of it must be an integer (`3x`, `3.5` name no note);
   POSITION is the note's 1-based place in the file, shown as `#n` by `qm show` and the
   injected digest.
-- **The injected digest** (`HookHandler#item_digest`, every session start on a linked item or
+- **The injected digest** (`hook::item_digest`, every session start on a linked item or
   aside): the frontmatter minus the session-id list (just a count), the full Description,
-  `WorkItem#injectable_notes` oldest-first with their `#n`, a "(N of M …)" pointer to
+  `work_item::injectable_notes` oldest-first with their `#n`, a "(N of M …)" pointer to
   `qm show` when notes were left out, and Snapshots by count only.
 - **`injectable_notes`**: drop `history`, then the newest `INJECTED_OPEN_NOTES` (3) `open`
   notes regardless of age, plus the newest `INJECTED_NOTES` (5) non-history notes.
@@ -70,7 +70,7 @@ editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
   a degradation warning — one action clears an item's expiry warnings — else the newest
   resumable session. Not run automatically at session end (cost). In the GUI it
   runs on a server thread ([gui-shell](gui-shell.md)).
-- **Resumability tiers** per session (`Session#tier`, [capture](capture.md)): live,
+- **Resumability tiers** per session (`session_log::tier`, [capture](capture.md)): live,
   resumable (`claude --resume` works from the recorded cwd), expired (only notes and any
   snapshot remain; resume = rehydrate, [linking](linking.md)).
 - **Attention nudges** (`Attention`, shown by `qm attention` after the chats, in `qm show`,
@@ -89,7 +89,7 @@ editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
 ## Rules
 
 - **Every mutation runs under one global exclusive flock** (`work-items/.lock`,
-  `WorkItem.with_lock` / `#locked`) spanning the whole read-modify-write, re-reading the file
+  `work_item::with_lock` / `#locked`) spanning the whole read-modify-write, re-reading the file
   before applying; reentrant per thread so compound moves (`claim_session`) nest. Without it
   a bulk distill's stale copy clobbered a concurrent note. A caller's own `find` before the
   mutation is only a handle: the mutator never writes from that copy, and an item deleted
@@ -129,7 +129,7 @@ editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
   every line that names the slug, and the guard check and the file removal run under the
   work-item lock, so a note landing meanwhile is seen.
 - **A slug is never empty**: a title with no letter or digit left after transliterating
-  (`日本語`) is an `ArgumentError` from `WorkItem::create`, so every creation path (CLI, GUI new
+  (`日本語`) is an `ArgumentError` from `work_item::create`, so every creation path (CLI, GUI new
   item, loose chat → item, issue start) refuses it before writing a file; the issue-start branch
   name uses the non-raising `slugify`, so such a title still gets the plain `issue/<n>`. A slug is
   made once: changing the slug rules never renames existing items, and nothing re-slugifies a

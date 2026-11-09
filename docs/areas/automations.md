@@ -35,7 +35,7 @@ work item of the same slug (`routine:`, `runner: cloud` in its frontmatter), ove
 - `pause` / `resume` — a local edit of `enabled`, then push. `run` — run it now.
 - `adopt(id, project, slug)` — a routine no store entry holds becomes an entry plus an item (title the
   routine's name, slug by default its slug, description the name and the prompt's first paragraph), state from
-  `enabled`. `WorkItem::create_automation` makes such an item under any slug (made under the slug as its title,
+  `enabled`. `automation_item::create_automation` makes such an item under any slug (made under the slug as its title,
   then retitled, in one move).
 - `delete` — the API's delete removes the routine and the local files; without one (`Unsupported`) the routine
   is paused and its files stay, so it isn't "unmanaged"; when that pause finds the routine already gone it

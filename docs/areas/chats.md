@@ -19,11 +19,11 @@ blocked + unsnoozed your_turn chats.
 - **Centre**: the item's chat pane — a live terminal on its tmux chat — with the read-only history of
   earlier sessions above it and its sessions collapsed underneath (open when there is no live pane).
 - **Right**: the digest (description, branches, the notes a new session is told about — `injected`
-  positions from `WorkItem#injectable_notes`), `i` for the full detail sheet; see [side-panel](side-panel.md).
-- **Chat pane**: `Tmux` runs each chat on the `qm` socket; `TerminalBridge` bridges `/ws/terminal` to a
+  positions from `work_item::injectable_notes`), `i` for the full detail sheet; see [side-panel](side-panel.md).
+- **Chat pane**: `tmux` runs each chat on the `qm` socket; `terminal_bridge` bridges `/ws/terminal` to a
   PTY running a fresh `tmux attach` per connection (`GET /ws/terminal?session=&token=&cols=&rows=`;
   xterm.js + fit, unicode11 and web-links addons).
-  `Launcher#chat_plan`: **Start** = `QM_ITEM=<slug> claude` at `start_cwd`; **Resume** = `resume_plan`
+  `launcher::chat_plan`: **Start** = `QM_ITEM=<slug> claude` at `start_cwd`; **Resume** = `resume_plan`
   (`claude --resume <id>` in its cwd, else the same fresh start). A first prompt rides as claude's
   last argument (issue kickoff, an automation's brief via `automation_chat`), never typed; a live pane
   is only shown again ([automations](automations.md)).
@@ -32,7 +32,7 @@ blocked + unsnoozed your_turn chats.
   `pane` flag and `terminalToken`. The chat view's Resume/Start, `r`/`n` and session rows' Resume go to
   the pane; the kanban card and detail sheet keep their Warp actions. `QM_CHAT_COMMAND` swaps the program
   (`claude --model haiku` for an end-to-end check).
-- **History above the chat**: every item session that isn't live, oldest first (`ChatHistory#timeline`),
+- **History above the chat**: every item session that isn't live, oldest first (`chat_history::timeline`),
   dark like the terminal under an **EARLIER** bar (Hide/Show, `qm-history-collapsed` in localStorage).
   Per session (`TranscriptHistory`): the user's prompts and Claude's text in full (one message's text
   blocks joined by message id), each `tool_use` as one line ("Bash  bin/rspec …", the input named by
@@ -49,7 +49,7 @@ blocked + unsnoozed your_turn chats.
   `paste`s the path (as Warp does), so claude attaches it.
 - **Driving the pane from the CLI** (the phone, via a Remote Control chat): `qm pane-start SLUG`,
   `qm pane-resume SLUG [--session ID]` and `qm rotate SLUG [--close]` POST the GUI's existing actions
-  to `QM_GUI_PORT` without an Origin (`CLI#gui_action`, shared with `qm caffeinate`). Same refusals;
+  to `QM_GUI_PORT` without an Origin (`gui_action`, shared with `qm caffeinate`). Same refusals;
   no GUI → says so, exits 1; a refusal exits 1 with the action's error; a live pane answers "already running".
 
 ## Rules
@@ -96,7 +96,7 @@ blocked + unsnoozed your_turn chats.
   (`claimSize`) on window focus, becoming visible and focus inside a terminal: that pane wins the window back.
 - An upgrade needs our Host, an `Origin` equal to our own (required, unlike POSTs — browsers always send
   one here), the per-start token, and a live tmux session by that name; otherwise 403
-  (`TerminalBridge#refusal`). Any site can open a WebSocket to 127.0.0.1, and this one types into a chat.
+  (`terminal_bridge::refusal`). Any site can open a WebSocket to 127.0.0.1, and this one types into a chat.
 - The token is embedded in the page and also in `/api/state` (same-origin only), so a tab from before a
   GUI restart reattaches without a reload. It is compared in constant time.
 - The WebSocket server is a hand-rolled RFC 6455 (`WebSocket`) — stdlib only.

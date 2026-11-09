@@ -74,6 +74,7 @@ fn every_code_file_is_owned_by_exactly_one_page() {
     let mut all = files("src", "rs");
     all.extend(files("gui/js", "js"));
     all.extend(files("hooks", "sh"));
+    all.extend(files("gui/css", "css"));
     assert!(!all.is_empty());
     let unowned: Vec<&String> = all.iter().filter(|f| !owners.contains_key(*f)).collect();
     assert!(unowned.is_empty(), "these files belong on some docs/areas page's **Code:** line: {unowned:?}");

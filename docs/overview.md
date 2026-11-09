@@ -95,7 +95,7 @@ checkout path, `PATH` inside a longer one, e.g. a `zsh -ic` script, the shell-es
 (default `IDE`) enable Open in <label>, Work on this's IDE half, the PRs view's IDE button and `qm ide`; unset
 or `PATH`-less, they are hidden and `qm ide` refuses naming `ide_command`. `default_project` (where a bare
 issue number starts; default the first), `loose_starters.<key>.{label, prompt}` (loose-chat presets, none by
-default; a prompt ends mid-sentence and `LooseChat.kickoff` appends " answer my question about them: …"
+default; a prompt ends mid-sentence and `gui_actions::loose_kickoff` appends " answer my question about them: …"
 or " ask me what I want to know about them."), `prices.<model>.{input, cache_write_5m, cache_write_1h,
 cache_read, output}` ([side panel](areas/side-panel.md)), `overview_artifact` ([phone page](areas/phone-page.md)),
 `automations.token_source` (`claude_code` turns on claude.ai routines; unset is off, [automations](areas/automations.md)), `automations.local_{paused, max_running, hold_five_hour, hold_seven_day}` ([local automations](areas/local-automations.md)).
@@ -127,10 +127,10 @@ cache_read, output}` ([side panel](areas/side-panel.md)), `overview_artifact` ([
   honor `QM_SKIP`, and only append. All derivation happens in qm at read time.
 - **Append-only logs are read incrementally** from a persisted byte offset (`event_log`,
   `board_mirror`, `transcript_usage`); rewriting earlier lines is invisible, only a shrink refolds.
-- **Work-item writes go through one global flock** (`WorkItem.with_lock`) spanning the whole
+- **Work-item writes go through one global flock** (`work_item::with_lock`) spanning the whole
   read-modify-write, re-reading the file first; reentrant per thread.
-- **External tools that change state go through `CommandRunner`** (the dev server, the IDE, `git worktree
-  add`, the test-DB command, `osascript`). Tests pass a stub runner and never start real servers,
+- **External tools that change state go through `command_runner`** (the dev server, the IDE, `git worktree
+  add`, the test-DB command, `osascript`). Tests put stand-ins on `PATH` and never start real servers,
   IDEs, worktrees or notifications.
 - **Scripts first**: every integration is deterministic code; a model runs only where real
   summarising happens (the chat itself, distill, ask, build progress, a benchmark's plan and

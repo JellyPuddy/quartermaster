@@ -8,20 +8,20 @@
 
 `qm gui` is a loopback web UI over the work items: a kanban board, a chat view (`v`), a PRs
 view (`p`), an Issues view (`I`) and the Settings view (`,` or the header's ⚙ button, not a mode
-tab; [settings](settings.md)). It is a stdlib `TCPServer`, no web framework.
+tab; [settings](settings.md)). It is a plain `TcpListener` server, no web framework.
 
 **Server lifecycle** (`gui_server::run`). Binds `127.0.0.1` on the fixed port 49737 (`QM_GUI_PORT`
-overrides, read like Ruby's `to_i`; 0 takes an ephemeral port and the URL printed names the real
+overrides, read like Ruby's `to_i` did; 0 takes an ephemeral port and the URL printed names the real
 one; outside 0–65535 is refused by name) so the URL is stable and the browser keeps one tab. If the
 port is taken, it assumes another `qm gui`, opens that tab and returns; any other bind error is
 printed as it is and exits 1. It opens the page with `open` unless
 `QM_GUI_NO_OPEN` is set, serves each connection on its own thread, and runs until Ctrl-C.
-Two server threads start with it: the turn watcher (`TurnNotifier`, reacts to
+Two server threads start with it: the turn watcher (`turn_notifier`, reacts to
 `events.jsonl` growing, every 1.5 s) and the auto-caffeinate watcher (every 15 s).
 
-**Router** (`Gui#respond`, pure request → response, unit-tested; sockets in
-`#handle_client`). Host check → 403, foreign Origin → 403, Origin-less POST outside
-`LOCAL_ACTIONS` → 403, unknown route → 404. A `websocket` upgrade goes to `TerminalBridge`;
+**Router** (`gui_server::respond`, pure request → response, unit-tested; sockets in
+`gui_server::handle`). Host check → 403, foreign Origin → 403, Origin-less POST outside
+`LOCAL_ACTIONS` → 403, unknown route → 404. A `websocket` upgrade goes to `terminal_bridge`;
 a body over `Drops::MAX_BYTES` is refused unread with 413. Routes: `GET /`, `/assets/…`,
 `/api/state`, `/api/pulse`, `/api/root`, `/api/attention`, `/api/session/<id>`, `/api/asides/<slug>`,
 `/api/history/<slug>`, `/api/workspace/<slug>`, `/api/diff/<slug>`, `/api/diff-file/<slug>`,
@@ -31,17 +31,17 @@ a body over `Drops::MAX_BYTES` is refused unread with 413. Routes: `GET /`, `/as
 answers `{root}`, `data_root::root_id`: a SHA256 of the realpath'd data root, never the path, which the CLI's
 hand-off checks before it POSTs ([cli](cli.md)).
 
-**Actions** (`GuiActions#dispatch`, `POST /api/action {cmd, slug, args}`). Each web action
-maps to the WorkItem / Launcher / SessionLog / Workspace / Tmux / Rotation operation the CLI
-uses too, never to a CLI `cmd_*` (those `abort` and read stdin). `SystemExit` is rescued into
-a JSON error; `AlreadyDistilledError` returns `needs_confirmation` and a refused `delete`
+**Actions** (`gui_actions::dispatch`, `POST /api/action {cmd, slug, args}`). Each web action
+maps to the `work_item` / `launcher` / `session_log` / `workspace` / `tmux` / `rotation` operation the CLI
+uses too, never to a CLI command function (those exit and read stdin). A halting operation becomes
+a JSON error; an already-distilled item returns `needs_confirmation` and a refused `delete`
 returns `needs_force`, which the page turns into a confirm (no failure toast) and retries with `force: true`. The page refetches `/api/state` after every action.
 
-**Long actions** (`GuiJobs`). work-on, pf-switch, ide, terminal, pf-stop, cleanup, rotation,
+**Long actions** (`gui_jobs`). work-on, pf-switch, ide, terminal, pf-stop, cleanup, rotation,
 review posting, issue start, the PRs view's pf/IDE buttons and build-progress run on
-server threads via `GuiJobs#background(key, label, pf:)`: one job per key (the slug, `sweep`,
+server threads via `gui_jobs::background(key, label, pf:)`: one job per key (the slug, `sweep`,
 `pf`, `progress:<slug>`), at most one pf job at a time. `jobs` in the state drives each
-item's badge (`#relabel` updates it, e.g. `cleaning up n/total…`); `finished` hands each
+item's badge (`gui_jobs::relabel` updates it, e.g. `cleaning up n/total…`); `finished` hands each
 outcome over once (a toast, plus the bin/update offer after a pf switch). Distill plans under
 the action mutex (its guards answer at once), then distills per session on a thread; the state
 reports `distilling` slugs and one-shot `distilled` results. The page polls state every
@@ -55,7 +55,7 @@ and runs the chosen ids on a job. Resolving through the State menu opens the sam
 from the plan its reply carries ("Resolved. Clean up N worktrees?"). The header's ⋯ menu has
 **Sweep orphan worktrees…**.
 
-**State** (`GuiState#build`, `/api/state`): `items`, `inbox`, `projects`, `attention` (the
+**State** (`gui_state::build`, `/api/state`): `items`, `inbox`, `projects`, `attention` (the
 chat view's list, already in attention order), `pulse`, `refreshing`, `distilling`,
 `distilled`, `pf`, `jobs`, `finished`, `buildActive`, `buildProgress`, `panes`,
 `terminalToken`, `asideModels`, `caffeinate`, `notifications`, `rateLimits`, `benchmark`, `errors` (the header's ⚠ badge: the unseen qm.log errors' count and newest 20 entries, from `ErrorLog` in [capture](capture.md); clicking it lists them, and **Mark seen** posts the `errors-seen` action, which takes the normal Origin rule: it is not a local action). Per item: slug,
@@ -71,7 +71,7 @@ refetched on threads and `refreshing` tells the page to poll until they land.
 caffeinate held flag, the drafts and issue-drafts signatures and the notifier's sequence.
 The page fetches full state only when it changes. Off the chat view the page watches the
 cheaper events pulse and `/api/attention` (attention, notifications, draft counts) for the
-tab title's count. The pulse also tells `TurnNotifier` whether the page is visible/focused.
+tab title's count. The pulse also tells `turn_notifier` whether the page is visible/focused.
 
 **The page.** `gui/page.html` holds the markup plus two server-injected constants
 (`TAXONOMIES`, substituted from the Rust taxonomies so JS and server can't drift, and
@@ -120,7 +120,7 @@ A menu under the box offers the two explicit searches:
   ranked `{slug, why}` via `--json-schema`; the board shows them across all states with the
   reason on each card, Esc clears. On `#1234` alone Enter starts work on that issue instead.
 - **Transcript search** (⇧⏎; `qm grep`): `TranscriptSearch` runs `rg --files-with-matches
-  --fixed-strings --ignore-case --max-depth 2` through `CommandRunner` over the transcripts
+  --fixed-strings --ignore-case --max-depth 2` through `command_runner` over the transcripts
   dir (the phrase JSON-escaped first, as it sits on disk), newest first, then parses each
   candidate and counts only user prompts and assistant text. Stops after 60 matching
   sessions and counts the rest as `more`. Results open in a modal grouped by work item
@@ -134,8 +134,8 @@ is the cleanup guard; switch/stop run `<command> switch PATH MODE` / `<command> 
 `pf` carries `command` (nil hides the header badge); the header shows "<command>: <mode> @
 <worktree>" with **Stop**; items whose checkout it serves get 🖥 on card and chat row. It is the
 user's one real dev server whatever `QM_ROOT` says, so a GUI off the live data root
-(`Quartermaster.live_root?`: `QM_ROOT` is not `~/.claude/quartermaster`) fences its runner
-(`PfFence`): every configured dev-server command but `status` is refused before it runs, and
+(`command_runner::live_root`: `QM_ROOT` is not `~/.claude/quartermaster`) fences its runner
+(`command_runner::set_fenced`): every configured dev-server command but `status` is refused before it runs, and
 `pf.off` in the state disables Stop, Switch, Work on this and the PRs view's dev-server button. A safe
 smoke-test GUI is therefore just `QM_ROOT=<tmpdir> QM_GUI_PORT=<free port> qm gui`. The IDE
 opens via the configured `ide_command:` argv ([config](../overview.md#configyml)).
@@ -149,14 +149,14 @@ The Workspace buttons that drive both are in [side-panel](side-panel.md).
 - Page-like test posts send our Origin (the `host` / `ok_host` helpers); page seams are tested through `served_page(gui, host)`, the page plus its assets.
 - The terminal WebSocket and `/api/drop` need the per-start `terminalToken` as well as our Origin — they type into a live chat (details in [chats](chats.md)).
 - No self-shutdown, ever: the server runs until Ctrl-C. A heartbeat/bye scheme closed the server under backgrounded tabs and let a stale tab kill a newer server; don't reintroduce a liveness timer.
-- The ~1 s pulse is the page asking for news; nothing on the server reacts to it stopping (a stale pulse only makes `TurnNotifier` notify via macOS). Server threads react only to files.
-- Mutating actions run under one action mutex; anything that takes seconds hands off to `GuiJobs` and never holds it — distill used to queue every other action behind it.
-- Read-only routes (ask, grep, diff, history, workspace, cleanup-plan, PRs, issues, threads) and `gui_actions::runs_unlocked` (issue-preview, pr-thread-resolve, review-preview, and the benchmark-* actions, which have BenchmarkRun's own locks) skip the mutex.
+- The ~1 s pulse is the page asking for news; nothing on the server reacts to it stopping (a stale pulse only makes `turn_notifier` notify via macOS). Server threads react only to files.
+- Mutating actions run under one action mutex; anything that takes seconds hands off to `gui_jobs` and never holds it — distill used to queue every other action behind it.
+- Read-only routes (ask, grep, diff, history, workspace, cleanup-plan, PRs, issues, threads) and `gui_actions::runs_unlocked` (issue-preview, pr-thread-resolve, review-preview, and the benchmark-* actions, which have `benchmark_run`'s own locks) skip the mutex.
 - Only one pf job at a time: pf is one shared server. A second job on a busy key is refused with the running job's label.
-- Actions call the model layer, never CLI `cmd_*`; the CLI and GUI share operations so they can't drift. `SystemExit` must become a JSON error, never a dead server.
+- Actions call the model layer, never a CLI command function; the CLI and GUI share operations so they can't drift. A halting operation must become a JSON error, never a dead server.
 - A state build never blocks on gh or on spawning git per item; PR states refresh on threads.
 - `pf` status is cached 2 s (the fallback spawns `pf status`, the chat view builds state every second); a pf action forgets the cache.
-- Every external tool that changes state goes through `CommandRunner`, which also finds tools in `~/bin` when PATH lacks it and can bound a command (`call_bounded`: its process group is killed after N seconds, the result failing with "timed out after N s"). `Gui` takes `runner:`, `tmux:`, `caffeinate:`, `pf_live:` (default `live_root?`, so a test GUI is pf-fenced unless it passes `pf_live: true`); every test GUI gets `quiet_runner` and tmux on `QM_TMUX_SOCKET`.
+- Every external tool that changes state goes through `command_runner`, which also finds tools in `~/bin` when PATH lacks it and can bound a command (`call_bounded`: its process group is killed after N seconds, the result failing with "timed out after N s"). A GUI off the live data root is pf-fenced (`command_runner::live_root`); tests put stand-in tools on `PATH` and use tmux on `QM_TMUX_SOCKET`.
 - Scripts are classic `<script>` tags in load order, not ES modules: shared globals and inline `onclick=` need it. A file calls another at load time only if that one loads earlier; `events.js` (boot) loads last.
 - A pane's render keeps its scroll via `keepScroll` (core.js), so every caller (poll, job end, click) does; it resets only when the subject changes (another item, issue or detail sheet), and nothing outside the render saves or restores it.
 - A new asset needs its tag in page.html; `/assets/` serves only `css/NAME.css` and `js/NAME.js` (an allowlist pattern, so no traversal).

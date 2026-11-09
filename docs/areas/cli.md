@@ -83,15 +83,14 @@ Internal, called by the viewer's fzf bindings: `viewer-rows`, `sessions-view`, `
 `choose-snooze`, `attach-session`, `item-from-session`. Internal, spawned by the GUI: `bench-run
 <run dir>`, a benchmark run's detached pipeline ([benchmarks](benchmarks.md)).
 
-**Command groups.** `CLI` keeps the work-item commands; the rest live in modules mixed into it,
-one file each: `CliViewer` (viewer rows and pickers, `show`, sessions), `CliAttention` (inbox,
-attention, overview, ack, snooze, distill), `CliChats` (commands acting on the running GUI),
-`CliPrs` (pr, pr-requires, draft), `CliCleanup` (cleanup, sweep), `CliWorkspace` (resume, start,
-pf, IDE, terminal), and `CliFormat` (shared output helpers and the help text). Each group's frozen
-`COMMANDS` maps a word to the method `CLI#run` calls with argv; `CLI.commands` merges them and
-refuses a word claimed twice. A new command touches only its group's file (and `qm help`). Hooks
-and commands called otherwise (no argv, extra arguments, another class) stay explicit `when`
-branches in `CLI#run`.
+**Command groups.** `cli::dispatch` normalises the options (`opt_parse`), then routes the word to a
+group: `work_item_commands`, `session_commands`,
+`item_deletion`, then the viewer rows and pickers (`viewer_commands`, `show_command`), attention
+(`attention_command`, `overview`), commands acting on the running GUI (`chats_commands`), `pr`,
+`pr-requires` and `draft` (`pr_requires_command`, `draft_command`), `cleanup_command`, `workspace_commands`,
+with `cli_format` holding the shared output helpers and the help text. A new command touches its group's
+file and `qm help`. Hooks and commands called otherwise (no argv, extra arguments) stay explicit branches
+in `cli::dispatch`.
 
 **The viewer** (`Viewer`, bare `qm`). One fzf list of items: a state badge, ▶ when a session is
 live, attention reasons; items with attention entries first, then by activity. The preview pane
@@ -106,10 +105,8 @@ item from session, `^D` dismiss), `^S` state, `^P` project, `^O` PR, `^T` distil
 runs), every GUI action (by `cmd`; other POST routes by route) and every GUI `/api/` read
 except the `/api/state` and `/api/pulse` polls and the CLI's `/api/root` probe (by route, cut to `/api/<word>`) appends one
 `{v, at, kind, name}` line to `feature-use.jsonl`: the evidence for deleting unused features.
-`qm feature-use` reads it back. Its never-used lists come from the dispatchers themselves —
-`GuiActions#dispatch` and `Gui#respond`'s other POST routes, `Gui#respond`'s `/api/` GET routes,
-`CLI.commands` and `CLI#run`'s explicit words — read by `FeatureUse.known_names`, so a new action, route or
-command shows up without touching a list.
+`qm feature-use` reads it back. Its never-used lists are hand-kept in `feature_use` (`KNOWN_ACTIONS`, `KNOWN_GETS`,
+`KNOWN_CLI`): a new action, route or command is added there too.
 
 **Live sessions.** SessionStart records the claude pid; SessionEnd clears it. `qm sessions`
 marks `● live` sessions; the viewer and GUI show a live badge. Resuming a live session is
@@ -127,7 +124,6 @@ refused ("switch to its Warp tab"): it would fork the conversation.
 - The viewer's actions are plain `qm` subcommands, so the viewer, the GUI and Claude share one implementation; mouse support is double-click resume only — fzf's `click-header` + `execute` handoff didn't reliably hand the terminal to picker actions, so clickable actions live in the GUI.
 - The feature-use log holds a kind and a name only — never a slug, argument, path or session id — is only appended to, and recording is best-effort: a failed write goes to `qm.log` and never fails the command or request.
 - `qm doctor` writes nothing, not even a feature-use line, so a missing data root stays missing and fails its check: `events.jsonl` is read from its tail through `event_log::last_ts`, never folded, so not even `events-fold.json` changes.
-- `FeatureUse.known_names` reads `CLI.commands`, plus `when "…" then` branches and `method == … && route …` conditions; a dispatcher reshaped away from that loses its names from the never-used lists (the known-names test pins a few).
 - A bad option from any command becomes `qm: <message>` (`qm: invalid option: --bogus`) and exit 1, never a backtrace (an option of multi-byte text, `-é`, included: it is split by characters).
 - Free text may start with a dash: for `new`, `note` and `loose` (`opt_parse`) an argument that starts with `-` and holds whitespace (`qm note SLUG "- a bullet"`) is text, never an option or an abbreviation of one (`"-d does stuff"` is not `--description`), unless it is an inline `--flag=value`; right after a flag that takes a value it is that value; `--` ends options there and is dropped before the text of `retitle`, `describe`, `board-answer`, `ask` and `grep` (`opt_parse::words`). A one-word dash text needs the `--`: `qm new -- -x`.
 

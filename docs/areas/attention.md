@@ -10,13 +10,13 @@ Says whose move it is in every chat, and tells the user when one needs them.
 
 - `hooks/record-event.sh` (see [capture](capture.md)) appends one slim line per
   `UserPromptSubmit`, `PostToolUse`/`PostToolUseFailure`, `PermissionRequest`, `Stop`/`StopFailure`
-  to `events.jsonl`. `EventLog` folds it per session into a turn: state, `since`, tool,
+  to `events.jsonl`. `event_log` folds it per session into a turn: state, `since`, tool,
   `prompt_ts`, `stop_ts`, `prompts` (how many prompts the session has had).
 - `ChatAttention` turns the fold into one entry per item, for in-progress items plus any item
-  with a live chat (SessionLog liveness), never an automation, even with a live chat (so no
+  with a live chat (`session_log` liveness), never an automation, even with a live chat (so no
   rotate offer either). The item speaks through its most urgent live session. A `notify: quiet`
-  local automation's run sessions (`RunLog::quiet_session_ids`) never speak for an item.
-  `ChatAttention::runs` is the Runs group: one entry per live session of a local automation's
+  local automation's run sessions (`run_log::quiet_session_ids`) never speak for an item.
+  `chat_attention::runs` is the Runs group: one entry per live session of a local automation's
   chat-flow run (`run_chats::by_session`, keyed by the session ids in the run logs), its `slug` the
   run's own `<slug>--run-<id>` tmux and `run` the automation slug, run id and title (`<name> ·
   <subject>`); quiet automations' runs stay out, and a pr-review run speaks through its Review
@@ -32,12 +32,12 @@ Says whose move it is in every chat, and tells the user when one needs them.
   `Attention`, see [work-items](work-items.md)).
 - `qm snooze SLUG turn` quiets the current your_turn (`turn_snoozed_at`): it sinks until a newer
   your_turn starts. `qm snooze SLUG clear` lifts it together with the date snooze. GUI: `z` on the row.
-- `TurnNotifier` (a watcher thread in `qm gui`) raises notifications; the page shows them as browser
+- `turn_notifier` (a watcher thread in `qm gui`) raises notifications; the page shows them as browser
   notifications and keeps the tab title `(n) qm — work items`, n = blocked + unsnoozed your_turn.
 - `qm open-chat SLUG` (`ChatOpener`) brings the GUI's tab in Arc to that chat — what a click on a
   macOS notification runs. `--benchmark BRANCH` adds `&benchmark=<branch>` to the `#chat=` hash,
   so the page opens that branch's benchmark modal too ([benchmarks](benchmarks.md)).
-- `TurnNotifier#announce` raises a macOS notification straight away for news from outside the
+- `turn_notifier::announce` raises a macOS notification straight away for news from outside the
   GUI (a finished benchmark run), on the same channel and click rules as a turn's.
 
 ## Rules
@@ -52,7 +52,7 @@ Says whose move it is in every chat, and tells the user when one needs them.
 - A sub-agent's tool call (`agent` set) only resolves a block, back to the state before it:
   background sub-agents run on after the main Stop, and that is still the user's turn.
 - **Esc fires no hook**: a working/blocked turn whose transcript holds a `[Request interrupted by user…]`
-  entry newer than its last Stop and last prompt is your_turn since that entry (`ChatAttention#turn_for`).
+  entry newer than its last Stop and last prompt is your_turn since that entry (`chat_attention::turn_for`).
   Event stamps are whole seconds, so a prompt in the same second as an interrupt can misread — accepted.
 - Esc is read from the transcript, never from keystrokes in the terminal bridge: it also catches an
   Esc typed in a Warp attach, and the bridge stays a dumb pipe.
@@ -92,8 +92,8 @@ Says whose move it is in every chat, and tells the user when one needs them.
   notification, and a forgotten dev server can't hold `waiting` forever.
 - The fold is incremental per transcript, a process-wide cache by byte offset.
 
-**EventLog**
-- Read `events.jsonl` only through `EventLog`: it grows forever, and the fold persists with its
+**event_log**
+- Read `events.jsonl` only through `event_log`: it grows forever, and the fold persists with its
   byte offset in `events-fold.json`, so a read parses only appended bytes. `last_ts` (for
   `qm doctor`) reads only the file's last 8 KB and touches no fold.
 - A partial last line waits for its newline; a replaced (new inode) or shrunk log refolds from 0.
@@ -102,9 +102,9 @@ Says whose move it is in every chat, and tells the user when one needs them.
   and thread), since the GUI folds from many threads at once.
 - Sessions quiet for 30 days are dropped from the fold (`FORGET_AFTER`).
 
-**Notifications** (`TurnNotifier`)
+**Notifications** (`turn_notifier`)
 - The watcher stats `events.jsonl` every 1.5 s and, when it grew, folds it through its own
-  `EventLog` and diffs each session's (state, since). The first check only takes stock.
+  `event_log` and diffs each session's (state, since). The first check only takes stock.
 - It reacts only to hook output, never to a page's absence — not a liveness timer.
 - Triggers: entering `blocked` always notifies, with sound; a Stop notifies, silently, only when
   that turn ran ≥ 30 s (`prompt_ts` → `stop_ts`, `LONG_TURN`).
@@ -120,7 +120,7 @@ Says whose move it is in every chat, and tells the user when one needs them.
   mode with its terminal focused: `openChat`, or `openLooseChat` for a loose or run one), or nothing when
   focused on that very chat.
 - A hidden tab's pulse (`visible=0`) hands notifications back to macOS at once.
-- macOS goes through `CommandRunner`: `terminal-notifier` when installed (PATH plus
+- macOS goes through `command_runner`: `terminal-notifier` when installed (PATH plus
   `/opt/homebrew/bin`, `/usr/local/bin`), else `osascript` with title and body as argv, never
   spliced into the script. A click on an osascript notification opens Finder — hence terminal-notifier first.
 - terminal-notifier gets `-group qm-<slug or run tmux>` (a newer notification replaces the older; an

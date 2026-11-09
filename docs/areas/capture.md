@@ -13,7 +13,7 @@ stdout is injected into Claude's context, so the tracking protocol announces its
 session (what is injected: [linking](linking.md)). Global `~/.claude/CLAUDE.md` carries a
 fallback protocol for when the injection is missing.
 
-- **SessionStart** → `qm hook-session-start` (`HookHandler#session_started`): derives the
+- **SessionStart** → `qm hook-session-start` (`hook::session_started`): derives the
   branch and project from `cwd`, links the session to a work item if one matches
   ([linking](linking.md)), appends a `start` event to `sessions.jsonl` and prints the
   injected context. A linked session working in a `.claude/worktrees/*` checkout on a
@@ -28,9 +28,9 @@ fallback protocol for when the injection is missing.
 - **Appenders** (plain `sh`, per tool call / per prompt):
   - `record-event.sh` — `PermissionRequest`, `Stop`, `StopFailure`, `UserPromptSubmit`,
     `PostToolUse`, `PostToolUseFailure` (all tools) → one slim line in `events.jsonl`;
-    read through `EventLog` ([attention](attention.md)).
+    read through `event_log` ([attention](attention.md)).
   - `record-board-write.sh` — `PostToolUse` matcher `ArtifactData` → the full payload in
-    `board-writes.jsonl`, sub-agents' calls included; folded by `BoardMirror`
+    `board-writes.jsonl`, sub-agents' calls included; folded by `board_mirror`
     ([side-panel](side-panel.md)).
   - `snapshot-worktree.sh` — `UserPromptSubmit`, registered after `record-event.sh` → the
     session's worktree as a git tree in `prompt-snapshots.jsonl`; read by `PromptSnapshots`
@@ -43,7 +43,7 @@ fallback protocol for when the injection is missing.
   into `Session` objects — the only reader of the event schema. A session's `tier`:
   `live` (running; never resume, it would fork), `resumable` (transcript exists),
   `expired` (transcript pruned), `uncaptured` (an item lists it, the log never saw it).
-- **The inbox** (`SessionLog#inbox`): captured sessions no work item claims, not launched
+- **The inbox** (`session_log::inbox`): captured sessions no work item claims, not launched
   for an item (`QM_ITEM`), not an aside, not dismissed. Unlinked sessions (loose chats included)
   sit there silently and age out with their transcripts.
 - **Project derivation** (`ProjectMap`): `config.yml` maps project names to repo roots
@@ -102,7 +102,7 @@ fallback protocol for when the injection is missing.
 - **The snapshot's git work is capped** at `QM_SNAPSHOT_TIMEOUT` seconds (default 5) by a
   watchdog subshell; a killed snapshot writes no line. The watchdog is killed, never waited
   for. Nothing is written outside git.
-- **Never trust a hook's `transcript_path` alone** (`Quartermaster.locate_transcript`): it
+- **Never trust a hook's `transcript_path` alone** (`transcripts::locate`): it
   is derived from the cwd and can be wrong (`claude --worktree --resume` reports the
   worktree's slug directory while the transcript lives under the original project's). Fall
   back to globbing `~/.claude/projects/*/<session-id>.jsonl` — ids are globally unique.
@@ -115,7 +115,7 @@ fallback protocol for when the injection is missing.
   on a crash. The start event records the claude pid, found by walking `ps` ancestry from
   the hook process (up to 6 levels, first command matching `claude`, else the parent);
   `SessionLog` checks it with `kill(0, pid)` (EPERM counts as alive).
-- **Path comparisons go through realpath on both sides** (`ProjectMap#normalize`): macOS
+- **Path comparisons go through realpath on both sides** (`project_map::normalize`): macOS
   `/var` → `/private/var` and git returning realpaths would otherwise miss matches.
 - **`sessions.jsonl` is append-only** under an exclusive `flock`, every event stamped with
   `v`. A dismissal is another appended event, never an edit; a line that isn't a JSON object, or isn't UTF-8, is skipped
@@ -129,7 +129,7 @@ fallback protocol for when the injection is missing.
   `head`; a loose chat has `loose`); `end`: `{v, event, session_id, reason, duration_s, commits, diff_stat, ts,
   empty?}`; `dismissed`: `{v, event, session_id, ts}`.
 - `events.jsonl` — `{v, ts, session_id, event, tool, agent}`; `agent` is the sub-agent's id,
-  empty for the main thread. Grows forever: read it only through `EventLog`.
+  empty for the main thread. Grows forever: read it only through `event_log`.
 - `board-writes.jsonl` — `{v, ts, payload}`, the raw hook payload with newlines folded to
   spaces (JSON strings never hold raw newlines). Only ever appended to.
 - `prompt-snapshots.jsonl` — `{v, session_id, cwd, toplevel, tree, at}` (`at` UTC, whole

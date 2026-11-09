@@ -1,6 +1,6 @@
 # Settings
 
-**Code:** `src/config_schema.rs`, `src/config_features.rs`, `src/config_check.rs`, `src/config_file.rs`, `src/config_emit.rs`, `src/config_reader.rs`, `src/config_command.rs`, `src/gui_settings.rs`, `gui/js/settings.js`, `gui/js/settings-render.js`, `gui/js/settings-widgets.js`
+**Code:** `src/config_schema.rs`, `src/config_features.rs`, `src/config_check.rs`, `src/config_file.rs`, `src/config_emit.rs`, `src/config_reader.rs`, `src/config_command.rs`, `src/gui_settings.rs`, `gui/js/settings.js`, `gui/js/settings-render.js`, `gui/js/settings-widgets.js`, `gui/css/settings.css`
 **Tests:** `tests/config_file.rs`, `tests/config_cli.rs`, `tests/config_reads.rs`, `tests/gui_settings.rs`
 **Depends on:** [capture](capture.md) (`ProjectConfig` reads the same file through `ConfigReader`), [gui-shell](gui-shell.md) (the router and its Origin guard)
 
@@ -35,7 +35,7 @@ keys without a command. Warnings: a root, benchmark skill or state-file folder m
 dev-server or test-DB command not on `PATH` (or `~/bin`), an `ide_label` without `ide_command`. The
 folder and PATH checks go through a `Probe`; tests pass a stub.
 
-**File** — `ConfigFile::load` holds the text, the parsed mapping and the text's SHA-256 digest.
+**File** — `config_file::load` holds the text, the parsed mapping and the text's SHA-256 digest.
 `get` / `set` / `unset` take dotted paths (opening a shorthand into its mapping); `set` refuses a
 path the schema doesn't know, `unset` also takes an unknown key under a governed mapping (to
 drop a typo). `parse_value` reads a CLI value as YAML (`[dev, ngrok]` a list, `true` a bool (on a `bool` key `yes`/`no`/`on`/`off` are bools too, `config_file::typed_for`), `4` a
@@ -48,8 +48,8 @@ number; unreadable text stays a string). `replace` swaps in a whole mapping (the
 **Read** — `ConfigReader` is how code reads config: a reader over a mapping at a schema pattern
 hands out `get(key)` (the raw value, null reads as unset), `section(key)` (a reader one level
 down, opening a shorthand) and `entries()` (a map's names and readers); a non-mapping reads as
-empty. `ProjectConfig` (and its `ProjectSettings`) read only through it, and `PriceTable::load`
-and `qm overview --url` ask `ProjectConfig::current` (`prices()`, `overview_artifact()`) instead of
+empty. `ProjectConfig` (and its `ProjectSettings`) read only through it, and `price_table::load`
+and `qm overview --url` ask `project_config::current` (`prices()`, `overview_artifact()`) instead of
 parsing the file; `failure()` says why a broken file read as empty, so the callers still log it.
 Asking for a key the schema doesn't list panics while `QM_CONFIG_STRICT=1` (`tests/common` sets it
 for every `qm` it runs) and otherwise logs `[config-read]` to `qm.log` and reads nothing.

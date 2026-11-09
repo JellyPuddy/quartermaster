@@ -15,14 +15,14 @@ bloated or cold context.
 - The list row shows **rotate?** at the threshold; the chat header shows a meter bar plus **rotate?**
   whenever there is an offer, and on a `cold` offer a banner ("The cache is cold… Rotate?" /
   **Not now**, which holds until the chat answers again) — so reopening a cold item offers it.
-- `Rotation#plan` checks and refuses at once; `Rotation#run` then runs as the item's background job
-  (`GuiJobs`). Four modes:
-- **Live chat in its pane** (`wrap_up`): types `Rotation::WRAP_UP_PROMPT` ("Wrap up for a context
+- `rotation::plan` checks and refuses at once; `rotation::run` then runs as the item's background job
+  (`gui_jobs`). Four modes:
+- **Live chat in its pane** (`wrap_up`): types `rotation::WRAP_UP_PROMPT` ("Wrap up for a context
   rotation: record any decisions and open items not yet in the work item with qm note / qm retag, then
   reply DONE."), waits up to 20 min for a `UserPromptSubmit` at/after the send followed by a `Stop`
   (a permission prompt for `qm note` is answered in the pane), then the hand-off: `remain-on-exit` on,
   `/exit`, wait for the pane to die (60 s), record the rotation, `respawn-pane` a fresh `QM_ITEM`
-  session (`Launcher#fresh_chat_plan`) in the same window, `remain-on-exit` off. Attached panes stay attached.
+  session (`launcher::fresh_chat_plan`) in the same window, `remain-on-exit` off. Attached panes stay attached.
 - **Dead chat** (`distill`): the newest captured session gets the Haiku distill when its transcript
   survives and has no snapshot yet; the rotation is recorded and a fresh chat opens in a new tmux session.
 - **Wrap up & close** (`rotate` with `close: true`, live chat in its pane only): the same
@@ -30,9 +30,9 @@ bloated or cold context.
   works and gets the notes the usual way. For saving decisions while the cache is hot without starting
   the next chat. Offered in the chat header next to **rotate?**, in the cold banner and in the ⋯ menu.
 - **Finish** (`rotate` with `finish: true`, which implies `close`): Wrap up & close with
-  `Rotation::FINISH_PROMPT` ("This work item is done: record any remaining decisions with qm note, retag
+  `rotation::FINISH_PROMPT` ("This work item is done: record any remaining decisions with qm note, retag
   open notes that are handled with qm retag, then reply DONE.") instead, then the item is set `resolved`
-  (`WorkItem#update_state`) — only after the hand-off succeeded. One click, no confirm, no worktree or
+  (`work_item::update_state`) — only after the hand-off succeeded. One click, no confirm, no worktree or
   branch cleanup (the cleanup sweep owns that). Offered beside Wrap up & close in the chat header and the
   ⋯ menu, not in the cold banner; GUI only, no CLI flag.
 - **Self-rotation** (`rotate` with `self: true`, optional `session`; mode `:self`): the chat
@@ -41,7 +41,7 @@ bloated or cold context.
   `your_turn` with a `Stop` at/after the request and after its latest prompt, then the same hand-off
   with `via: "self"` (or the kill, with close).
 - The CLI resolves the self-rotating caller: the live session whose claude pid is an ancestor of the
-  `qm` process (`Session#pid`, `CLI#caller_pids`), its item `WorkItem.for_session`, else `QM_ITEM`. It
+  `qm` process (`session_log::pid`, the caller's ancestor pids), its item the session's item, else `QM_ITEM`. It
   prints "rotating after this turn ends" and returns at once.
 - The job message reports what was carried: "rotated — carried N decisions, M open"; Finish's reports
   what is left: "resolved — N open notes remain" (every open note, re-read after the wrap-up; no tail at 0).
@@ -69,14 +69,14 @@ bloated or cold context.
   (`disable-model-invocation: true`) — keep it that way, or a chat could rotate itself unasked.
 - Self-rotation needs the item's chat live in its GUI pane; a named session must be among the item's live
   ones; and the session must be the one the pane runs — its claude pid is the pane's `pane_pid` or a
-  descendant (`Rotation#in_pane?`; an unknown pid passes), so a second live chat of the item in a Warp tab
+  descendant (`rotation::in_pane`; an unknown pid passes), so a second live chat of the item in a Warp tab
   never sends `/exit` into the pane. Without a named session it takes the pane's own.
 - An aside (`QM_ASIDE`) and a process that is no item's chat are refused before anything is sent.
-- **Background work before `/exit`** (`Rotation#await_background`): claude answers `/exit` with
+- **Background work before `/exit`** (`rotation::await_background`): claude answers `/exit` with
   a confirmation about running background agents/shells, which swallows the typed `/exit`. A click
-  refuses up front; after the Stop it waited for, both live modes poll `ChatAttention#turn_for`.
+  refuses up front; after the Stop it waited for, both live modes poll `chat_attention::turn_for`.
 - While the chat is `waiting` (non-watcher `BackgroundJobs` pending) nothing is typed and the job badge
-  becomes "rotating: waiting for background work…" (`GuiJobs#relabel`).
+  becomes "rotating: waiting for background work…" (`gui_jobs::relabel`).
 - It proceeds once the state is `your_turn`/`none` and, if it was ever seen waiting, a turn ended after
   that — a newer `Stop` than the one seen while waiting, or an Esc (`since`) — because the notification
   wakes the chat for one more turn without a `UserPromptSubmit`.
@@ -85,7 +85,7 @@ bloated or cold context.
 - A rotation is recorded just before the fresh session starts, so `carried` is exactly what its
   SessionStart injects (`injectable_notes`, read under the lock, so notes the wrap-up wrote count).
 - `carried` records note *positions*: it relies on notes being append-only.
-- A session a rotation was recorded from reports no context (`WorkItem#rotated_from?`): a closed chat's row
+- A session a rotation was recorded from reports no context (`work_item::rotated_from`): a closed chat's row
   shows no size and offers no second rotate.
 - Nothing rewrites a running chat's earlier context (it would break the prompt cache); a mid-session
   context update, should one be added, goes in append-only (hook `additionalContext`). None exists today.
@@ -93,7 +93,7 @@ bloated or cold context.
 ## Data
 
 - Item frontmatter `rotations:`, oldest first: `{at, from, via: wrap-up|distill|self, carried: [note positions],
-  decisions, open}` (`WorkItem#record_rotation`). The counts are frozen at rotation time; note texts are
+  decisions, open}` (`work_item::record_rotation`). The counts are frozen at rotation time; note texts are
   resolved by position when rendered.
 - **Rotation dividers** in the chat history ([chats](chats.md)) sort between sessions by time and read
   "── rotated 14:02 · carried: 6 decisions, 2 open ──", expanding (collapsed by default) to the carried notes.

@@ -12,13 +12,13 @@ ones, "n of m", plus **+ Add note**), and Usage pinned at the bottom. The header
 chip, the ☕ toggle and a ⋯ menu (see [gui-shell](gui-shell.md) for pf and sweep).
 
 **Workspace** — where "work on this" lands. `GET /api/workspace/SLUG?branch=` resolves
-`TargetWorktree` for the item's selected branch (target, whether it gets created, a warning)
+`workspace` for the item's selected branch (target, whether it gets created, a warning)
 plus `chatBranch` and `defaultBranch`; it is fetched per item and selection, not per state
 build, because it asks tmux and git where the chat runs, and it creates nothing. **One
 selected branch per item** drives both this target and the diff pane: picked on a rail node
 or in the diff bar, remembered per slug for the tab (`qm-branch-picks` in sessionStorage);
 without a pick, the chat's branch when a chain holds it, else the top of the first chain
-(`Gui#default_selection`). The diff pane asks for no branch while the default is the chat's
+(`workspace`'s `defaultBranch`). The diff pane asks for no branch while the default is the chat's
 own, so the default costs no reload. Rails under the heading show the item's chains (one rail
 per stack or loose branch; node facts, folding and ⟳ restack are in [stacks](stacks.md)); a
 click only selects, and the selected node gets 📊, 🏁 and **Diff ›**. A branch without a checkout reads
@@ -49,7 +49,7 @@ Buttons, each sending the selected branch as `branch` and running as a GUI job:
 `open_terminal`, the PRs view's `switch_pf_to_branch` / `open_ide_on_branch`, `stop_pf`):
 each returns a report of steps; a failure raises `ArgumentError` with the tool's own message
 and keeps the steps that already ran. The dev server runs only for projects that configure one,
-the IDE (`Ide#argv`) only with an `ide_command:` — `open_ide` refuses before creating anything,
+the IDE (`project_config::argv`) only with an `ide_command:` — `open_ide` refuses before creating anything,
 `work_on` skips the missing half and refuses only when both are missing.
 
 **Board** — the item's status-board rows (`boardRows`: status, title, note, dependsOn),
@@ -60,7 +60,7 @@ box when the item has a `board_answers_dir`. **Check build progress** heads the 
 
 The board is mirrored because claude.ai refuses to be iframed (`frame-ancestors 'self'`) and
 headless `claude -p` has no `ArtifactData`; the artifact itself keeps working for the phone.
-`BoardMirror` folds `board-writes.jsonl` (every `ArtifactData` call, appended by the
+`board_mirror` folds `board-writes.jsonl` (every `ArtifactData` call, appended by the
 PostToolUse hook, sub-agents included) into rows per board, mirroring the database: set
 replaces, update deep-merges (`{"__delete__": true}` drops a field), str_replace edits one
 string field (only when `old_str` occurs exactly once, or at least once with `replace_all`),
@@ -88,7 +88,7 @@ doing}]}`). Rendered one line per active agent in qm's order ("≈60% · x · bu
 skipped label shows "no estimate", an invented one is dropped, a non-schema answer shows raw.
 Nothing running → "nothing running", no model call. The `build-progress` action is a job keyed
 `progress:<slug>`; the result (failures included) replaces the previous one in
-`GuiJobs#progress`, served as `buildProgress` with the time it was taken. Every state build
+`gui_jobs::progress`, served as `buildProgress` with the time it was taken. Every state build
 lists items with an active task (`buildActive`, file reads only) — only they show the button —
 and drops lines of tasks no longer active, and the whole estimate once none is left.
 
@@ -110,7 +110,7 @@ row tooltip).
   file there that doesn't parse as a ledger reads as empty, but a save never overwrites it: it
   moves it to `usage-cache.json.corrupt-<UTC time>` and logs a `[usage-ledger]` error first.
 - `PriceTable`: defaults from the official pricing page (cited in the class), overridable per
-  model and field under `prices:` in `config.yml` (`PriceTable::load` takes `ProjectConfig::current().prices()`;
+  model and field under `prices:` in `config.yml` (`price_table::load` takes `project_config::current().prices()`;
   a broken config reads as no overrides). A bucket falls back `x:fast:long` → `x:fast`
   → `x`. Unknown models still count tokens; the cost is marked **partial** and names them.
 - `ItemUsage` sums the sessions plus every aside session (`aside_for` the slug). A session
@@ -121,7 +121,7 @@ row tooltip).
 **Rate limits chip** (`gui/js/limits.js`, beside the pf badge): `5h 42% · 2h15m │ wk 61% ·
 3d4h`, each percentage coloured at 50/80% like the status line, countdowns from `resetsAt`
 ("reset" once passed), re-rendered every minute; greyed with its age ("8h old") once
-`capturedAt` is over 6 h old; hidden without a snapshot. `RateLimits#payload` turns
+`capturedAt` is over 6 h old; hidden without a snapshot. `gui_state::rate_limits` turns
 `rate-limits.json` into `{fiveHour: {usedPercentage, resetsAt}, sevenDay: {…}, capturedAt}`
 (ISO times; a missing window is nil), or nil without a usable snapshot (no file, bad JSON, no
 `captured_at`, no window). It is `rateLimits` in `/api/state` and in `qm overview --json`.
@@ -139,9 +139,9 @@ log not modified since `errors-seen-at` (or the last day) is not read at all.
 `/usr/bin/caffeinate -i -w <gui pid>` (idle sleep only; the display may still sleep and lock)
 and keeps its pid in memory; off sends TERM and reaps it; a second on keeps the running child;
 a child that died on its own reads as off. **Auto** holds the child only while some session is
-busy — any live session, linked or not, whose `ChatAttention#turn_for` state is `working` or
-`waiting` (background work out). The `watch_for_caffeinate` thread calls `Caffeinate#sync` every
-15 s with `GuiActions#sessions_busy?`; switching to auto applies the verdict at once. The click
+busy — any live session, linked or not, whose `chat_attention::turn_for` state is `working` or
+`waiting` (background work out). The `watch_for_caffeinate` thread calls `caffeinate::sync` every
+15 s with `gui_actions::sessions_busy`; switching to auto applies the verdict at once. The click
 cycles off → auto → on; auto shows an "A" and a dashed ring, coloured while held
 (`aria-pressed="mixed"`, `.held`). State: `caffeinate: {on, pid, mode}`; the held flag is part
 of the pulse so a server-side flip repaints. `qm caffeinate on|off|auto|status` POSTs the
@@ -151,11 +151,11 @@ of the pulse so a server-side flip repaints. `qm caffeinate on|off|auto|status` 
 
 - A state poll never re-renders the panel while one of its inputs, textareas or selects has focus, so a half-typed board answer survives.
 - The workspace payload is fetched per item and selection, never in the state build: it lists worktrees and asks tmux and git.
-- A selected branch must be one the item links (`TargetWorktree.require_linked`); actions refuse it before starting a job. qm never checks out a branch in an existing worktree.
+- A selected branch must be one the item links (`workspace::require_linked`); actions refuse it before starting a job. qm never checks out a branch in an existing worktree.
 - Adopt is delegated to the `/adopt-worktree` skill through the chat, never reimplemented.
 - Only a currently blocked row can be answered: a file left for a running task would be read as the answer to its next question.
 - An answer is written to `<board_answers_dir>/<doc_id>.md` via temp + rename, so the agent's `[ -f ]` wait never sees half a file; the doc id must be one plain path segment.
-- `board-writes.jsonl` is only appended to; `BoardMirror` folds new complete lines from its offset and refolds only when the file shrinks.
+- `board-writes.jsonl` is only appended to; `board_mirror` folds new complete lines from its offset and refolds only when the file shrinks.
 - Build progress runs only on a click: no periodic runs, no always-on numbers; tool-call counts are never shown or fed in as a measure.
 - A crashed session's unterminated run never counts as running: liveness of the session is required.
 - `usage-cache.json` is a record, not a cache: once a transcript is pruned its tally is the only trace. Never prune or rebuild it, and never save over a file that isn't a ledger: set it aside first. qm never deletes a `.corrupt-*` copy, and only a save moves one aside, never a read.

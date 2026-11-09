@@ -14,7 +14,7 @@ instead of `cloud`. This page owns what only local ones have.
 `enabled`, `when` (the guard: a shell command), `flow` (default `chat`), `cwd` (default the project's root),
 `model`, `allowed_tools` (a list), `permission_mode`, `timeout_minutes` (30), `notify` (`attention` or
 `quiet`, default `attention`) and `repos` (`owner/name` list, pr-review); no `routine` or `remote_*`.
-`local_settings(record)` fills unset defaults without writing them; `AutomationStore::write` checks a local
+`local_settings(record)` fills unset defaults without writing them; `automation_store::write` checks a local
 record with `validate_local` and writes nothing when it fails: an error naming every bad field
 (`bypassPermissions`, an unknown `notify`, an empty `flow`, a `timeout_minutes` not a positive whole number,
 `allowed_tools` not a list of strings, `repos` not a list of `owner/name` strings). Cloud records are never
@@ -53,7 +53,7 @@ cron run's null item lacks every field); `start` fails with it, and for a yml th
 pass claude `--session-id` (qm's uuid), then `--model`, `--permission-mode`, `--allowedTools=<a,b>` (one `=` value, so
 the variadic flag can't swallow the prompt) when set.
 - `chat` (`chat_flow`): tmux `<slug>--run-<run id>` on qm's socket running the chat command
-  (`QM_CHAT_COMMAND` swaps it) with `QM_ITEM=<automation slug>`, `CLAUDE*` unset by `Tmux`; cwd the yml's
+  (`QM_CHAT_COMMAND` swaps it) with `QM_ITEM=<automation slug>`, `CLAUDE*` unset by `tmux`; cwd the yml's
   `cwd`, else the project root, else home. The prompt is `<slug>.prompt.md`, plus for an item a final
   `## Item`: JSON pretty-printed, or a guard's plain line as the line.
 - `pr-review` (`pr_review_flow`, needs `url`): reviews only a PR whose repo `repos` lists (any case; no
@@ -68,7 +68,7 @@ with a 60 s limit (`call_bounded` kills the process group). Each non-empty stdou
 object with a string `key` as is, any non-JSON line `{key: line, line: line}`; a JSON object without one is
 a problem for that line. A non-zero exit or timeout fails the whole guard ("guard failed: <stderr tail>").
 
-**Tick** — `AutomationTick::call(now)` is one scheduler pass. It takes `automations/tick.lock` with a
+**Tick** — `automation_tick::call(now)` is one scheduler pass. It takes `automations/tick.lock` with a
 non-blocking flock (held: answers `Tick::Locked` and does nothing), then:
 1. Unless `automations.local_paused`, for each local automation not `enabled: false` with a valid `cron`: a
    scheduled minute in (its last `checked`, or the previous tick, or 300 s ago; now] runs its guard, or
@@ -82,7 +82,7 @@ non-blocking flock (held: answers `Tick::Locked` and does nothing), then:
    weekly ≥ `automations.local_hold_seven_day` (90) holds every start ("5h at 84%"); a reset five-hour
    window, or no snapshot, holds nothing. Guards still run.
 4. Lifecycle (`run_lifecycle`), paused, held or disabled alike, for every started run. A run is busy while
-   its session (`SessionLog`, by qm's `session_id`) is live and `ChatAttention::turn_for` says working,
+   its session (`SessionLog`, by qm's `session_id`) is live and `chat_attention::turn_for` says working,
    waiting or none (no prompt yet); before its SessionStart hook ran, while its tmux lives. A run is typed
    into once its session had a second prompt (the event fold's `prompts`).
    - A live run whose turn says `your_turn` (Stop, no background work) gets `finished`; one whose chat is
@@ -120,7 +120,7 @@ reinstall picks up a changed plist), then `launchctl bootstrap gui/<uid> <plist>
 the plist and fails with launchctl's message. `uninstall` boots out and removes the plist. `installed` = the
 plist exists.
 
-**Run log** — `RunLog::new(slug, dir)` is `automations/<slug>.runs.jsonl`, one `{v: 1, at, event, …}` line
+**Run log** — `run_log::new(slug, dir)` is `automations/<slug>.runs.jsonl`, one `{v: 1, at, event, …}` line
 per event, appended under a flock; a writer that decides from the fold (`enqueue_item`, `enqueue_cron`,
 `retry`, `waiting`, `refuse_item`) re-reads it and appends under that one flock, so a tick and a CLI or GUI
 write never both queue a key. Events:
@@ -146,7 +146,7 @@ and flow as a new `retry` run, past dedupe; refuses unknown, queued or live runs
 local rows from `overview`, and `push`/`pull`/`adopt` refuse them: "<slug> runs locally — nothing on
 claude.ai". `run` with a guard runs it now (`queue_guard`, trigger `manual`), else queues one item-less run
 keyed `manual:<UTC ISO>`; `pause`/`resume` move the item to `fridge`/`active` with a history note,
-`resume(skip_existing)` first `mark_seen`s the guard's current keys; `retry` is `RunLog::retry`, refused while
+`resume(skip_existing)` first `mark_seen`s the guard's current keys; `retry` is `run_log::retry`, refused while
 its flow refuses the item (`refusal`); `delete` refuses while a run is live ("stop or finish its runs first"),
 else removes files and run log and resolves the item. `local_automation_command`: `list`, `show` and `runs
 SLUG` read run logs (`list` skips the routines call when automations are off and no row is cloud); `run` and
@@ -179,9 +179,9 @@ and recent runs (`chat` = its live `--run-` tmux or a pr-review run's Review ite
   in any case (`yaml_scalar::psych_bool`); a non-boolean counts as off (`enabled`) or paused, never as on.
 - Lifecycle runs every tick, paused or not; `local_paused` holds every start, `enabled: false` only cron and
   guard runs (its `manual`/`retry` ones start, under hold and cap, to try it by hand).
-- `notify: quiet` keeps a run out of attention and notifications (`RunLog::quiet_session_ids`), not a timeout's.
+- `notify: quiet` keeps a run out of attention and notifications (`run_log::quiet_session_ids`), not a timeout's.
 - The LaunchAgent changes only on the user's command or button; `installed` reads only the plist.
-- Guards and tmux go through `command_runner` and `Tmux`; tests run the real tmux on a `qm-test-…` socket
+- Guards and tmux go through `command_runner` and `tmux`; tests run the real tmux on a `qm-test-…` socket
   with stand-ins for claude, `gh`, `terminal-notifier` and `launchctl` on PATH and a temp LaunchAgents
   directory, never a real guard target, claude, GitHub, notification or launchd.
 - No TZ switching (`local_schedule::offset_minutes`); cron search is bounded: 8 days back, nine years ahead.
@@ -196,5 +196,5 @@ and recent runs (`chat` = its live `--run-` tmux or a pr-review run's Review ite
 - `automations/tick.json` — the last tick (`v: 1`), replaced each tick; `tick.lock` — its flock.
 - `automations/<slug>.runs.jsonl` — a local automation's run log, `v: 1` per line, append-only.
 - config.yml `automations.local_paused`, `local_max_running`, `local_hold_five_hour`, `local_hold_seven_day`
-  (`config_schema`, read through `ProjectConfig::local_automations`: `paused`, `max_running`,
+  (`config_schema`, read through `project_config::local_automations`: `paused`, `max_running`,
   `hold_five_hour`, `hold_seven_day`; defaults 2, 80, 90).
