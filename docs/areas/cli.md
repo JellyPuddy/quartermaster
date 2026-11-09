@@ -73,6 +73,11 @@ settings snippet) — see [capture](capture.md).
   day, from the log's last 256 KB; [capture](capture.md) owns it); and capture (`!` when
   neither `sessions.jsonl` nor `events.jsonl`'s tail has an event from the last day).
 
+**Settings**
+- `qm config get [PATH]` / `qm config set PATH VALUE` / `qm config unset PATH` / `qm config path` —
+  config.yml by dotted path (VALUE is YAML); errors refuse the write with exit 1, warnings don't;
+  unsetting a project warns with its work-item count ([settings](settings.md) owns `config_command`).
+
 Internal, called by the viewer's fzf bindings: `viewer-rows`, `sessions-view`, `inbox-view`,
 `cycle-filter`, `session-rows`, `inbox-rows`, `choose-state`, `choose-project`,
 `choose-snooze`, `attach-session`, `item-from-session`. Internal, spawned by the GUI: `bench-run

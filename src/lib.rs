@@ -5,6 +5,7 @@ pub mod background_jobs;
 pub mod cli;
 pub mod command_runner;
 pub mod config_check;
+pub mod config_command;
 pub mod config_emit;
 pub mod config_features;
 pub mod config_file;

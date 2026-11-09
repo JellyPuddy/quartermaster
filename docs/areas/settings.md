@@ -1,7 +1,7 @@
 # Settings
 
-**Code:** `src/config_schema.rs`, `src/config_features.rs`, `src/config_check.rs`, `src/config_file.rs`, `src/config_emit.rs`
-**Tests:** `tests/config_file.rs`
+**Code:** `src/config_schema.rs`, `src/config_features.rs`, `src/config_check.rs`, `src/config_file.rs`, `src/config_emit.rs`, `src/config_command.rs`
+**Tests:** `tests/config_file.rs`, `tests/config_cli.rs`
 **Depends on:** [capture](capture.md) (`ProjectConfig` reads the same file)
 
 ## What it does
@@ -55,6 +55,18 @@ multi-line text is a `|` block; lines are never folded; paths stay unquoted. `co
 spells scalars through `psych` (a string it can't spell exactly like Psych is double-quoted) and
 lays out the YAML itself; it is the same emitter for any value, with no header. The first-run seed
 (`CONFIG_SEED`) is exactly what `emit` writes for `projects: {}`.
+
+**CLI** — `qm config` (`config_command`, a [cli](cli.md) command) loads, changes and writes in
+one go, so a CLI write is never stale unless the file changes mid-command. `get` with no path
+prints the file as it is; with a path, a scalar prints bare (shell-usable) and a subtree as
+`dump`ed YAML; an unset key prints nothing and exits 1. `set PATH VALUE` reads VALUE with
+`parse_value` and echoes `PATH: value` as written; `unset PATH` of an absent key says so and
+writes nothing; `path` prints the file's location. A path the schema doesn't know (`set`, `get`,
+`unset`, even when absent) fails as `qm: unknown config key: …`. Every error the edited file has
+goes to stderr as `qm: error: <path>: <message>`, exit 1, nothing written; warnings about the
+changed path (at, under or above it) go to stderr as `qm: warning: …` after the write, exit 0.
+`unset projects.X` warns how many work items still have `project: X` (they keep it; `qm move`
+reassigns).
 
 ## Rules
 

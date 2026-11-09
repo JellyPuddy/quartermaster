@@ -50,6 +50,7 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
         "help" | "--help" | "-h" => done(USAGE.to_string()),
         "install-hooks" => install_hooks(),
         "doctor" => crate::doctor::run(),
+        "config" => crate::config_command::run(args),
         _ => return None,
     })
 }
