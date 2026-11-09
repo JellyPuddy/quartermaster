@@ -4,6 +4,7 @@
 //! only spare a long-lived GUI process work, and a CLI run reads each file once.
 
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use serde_json::{json, Map, Value};
 
@@ -38,10 +39,20 @@ fn truthy(v: &Value) -> bool {
 }
 
 /// `<common git dir>/gh-stack` of the repo at `root`, if it is one.
+///
+/// Remembered per root for the life of the process, a root that is no repo included: a state build asks once
+/// per item, and each miss would spawn git.
 pub fn file_for(root: &str) -> Option<PathBuf> {
-    let out = git(Some(root), &["rev-parse", "--git-common-dir"])?;
-    let common = if Path::new(&out).is_absolute() { data_root::expand_path(&out) } else { data_root::expand_path(&format!("{root}/{out}")) };
-    Some(common.join(FILE_NAME))
+    static FILES: Mutex<Vec<(String, Option<PathBuf>)>> = Mutex::new(Vec::new());
+    if let Some((_, known)) = FILES.lock().unwrap_or_else(|p| p.into_inner()).iter().find(|(r, _)| r == root) {
+        return known.clone();
+    }
+    let found = git(Some(root), &["rev-parse", "--git-common-dir"]).map(|out| {
+        let common = if Path::new(&out).is_absolute() { data_root::expand_path(&out) } else { data_root::expand_path(&format!("{root}/{out}")) };
+        common.join(FILE_NAME)
+    });
+    FILES.lock().unwrap_or_else(|p| p.into_inner()).push((root.to_string(), found.clone()));
+    found
 }
 
 /// Bottom → top, as gh-stack stores them. Anything not shaped like a stack of named branches is skipped.

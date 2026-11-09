@@ -142,14 +142,11 @@ fn same_checkout(path: &str, paths: &[String]) -> bool {
 /// `GuiState#items_checked_out_at`: the items with a branch checked out at `path`.
 pub fn items_checked_out_at(path: &str) -> Vec<WorkItem> {
     let target = real(path);
-    let mut cache: Vec<(String, Vec<(String, String)>)> = vec![];
+    let listing = crate::worktree_listing::WorktreeListing::default();
     let mut out = vec![];
     for item in WorkItem::all().unwrap_or_default() {
         let Some(root) = crate::project_map::root_for(item.project().as_deref()) else { continue };
-        if !cache.iter().any(|(r, _)| *r == root) {
-            cache.push((root.clone(), crate::branch_diff::branch_worktrees(&root)));
-        }
-        let by_branch = &cache.iter().find(|(r, _)| *r == root).unwrap().1;
+        let by_branch = listing.get(&root);
         let found = item.branches().iter().any(|b| by_branch.iter().find(|(k, _)| k == b).is_some_and(|(_, p)| std::path::Path::new(p).is_dir() && real(p) == target));
         if found {
             out.push(item);
@@ -250,13 +247,14 @@ struct Context<'a> {
     aside_counts: Vec<(String, usize)>,
     /// every benchmark run, newest first, read once per build
     bench: Vec<Value>,
+    worktrees: crate::worktree_listing::WorktreeListing,
 }
 
 fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> Value {
     // first, so the payload's branches already include auto-linked ones
     crate::gh_stack::sync(item);
     let root = crate::project_map::root_for(item.project().as_deref());
-    let by_branch = root.as_deref().map(crate::branch_diff::branch_worktrees).unwrap_or_default();
+    let by_branch = root.as_deref().map(|r| c.worktrees.get(r)).unwrap_or_default();
     let branches = item.branches();
     let checkouts: Vec<(String, String)> = branches.iter().filter_map(|b| by_branch.iter().find(|(k, _)| k == b).filter(|(_, p)| std::path::Path::new(p).is_dir()).map(|(k, p)| (k.clone(), p.clone()))).collect();
     let worktrees: Map<String, Value> = checkouts.iter().map(|(b, p)| (b.clone(), json!(short_path(Some(p))))).collect();
@@ -426,7 +424,7 @@ pub fn build(token: &str) -> Value {
         }
     }
     let mut work_items = soft::readable_items();
-    let context = Context { log: &log, attention: &attention, live_ids, pf: &status, panes: &panes, prices: &prices, aside_counts, bench: crate::benchmark_run::all() };
+    let context = Context { log: &log, attention: &attention, live_ids, pf: &status, panes: &panes, prices: &prices, aside_counts, bench: crate::benchmark_run::all(), worktrees: Default::default() };
     let mut guard = LEDGER.lock().unwrap();
     let ledger = guard.get_or_insert_with(UsageLedger::new);
     let mut items = vec![];

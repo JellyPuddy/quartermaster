@@ -30,6 +30,7 @@ pub mod chat_launch_commands;
 pub mod chat_review_drafts;
 pub mod chats_commands;
 pub mod branch_diff;
+pub mod worktree_listing;
 pub mod cleanup;
 pub mod cleanup_command;
 pub mod cleanup_run;
