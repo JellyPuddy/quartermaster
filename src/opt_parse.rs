@@ -183,9 +183,9 @@ fn canonical(args: &[String], opts: &[Opt], free_text: bool) -> Result<Vec<Strin
                 out.push(found.name.to_string());
             }
         } else if a.len() > 1 && a.starts_with('-') {
-            let short = &a[..2];
+            let split = a.char_indices().nth(2).map_or(a.len(), |(i, _)| i);
+            let (short, attached) = a.split_at(split);
             let Some(found) = opts.iter().find(|o| o.name == short) else { return Err(format!("invalid option: {a}")) };
-            let attached = &a[2..];
             let value = if !attached.is_empty() {
                 attached.to_string()
             } else {

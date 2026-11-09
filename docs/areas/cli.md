@@ -128,7 +128,7 @@ refused ("switch to its Warp tab"): it would fork the conversation.
 - The feature-use log holds a kind and a name only — never a slug, argument, path or session id — is only appended to, and recording is best-effort: a failed write goes to `qm.log` and never fails the command or request.
 - `qm doctor` writes nothing, not even a feature-use line, so a missing data root stays missing and fails its check: `events.jsonl` is read from its tail through `event_log::last_ts`, never folded, so not even `events-fold.json` changes.
 - `FeatureUse.known_names` reads `CLI.commands`, plus `when "…" then` branches and `method == … && route …` conditions; a dispatcher reshaped away from that loses its names from the never-used lists (the known-names test pins a few).
-- A bad option from any command becomes `qm: <message>` (`qm: invalid option: --bogus`) and exit 1, never a backtrace.
+- A bad option from any command becomes `qm: <message>` (`qm: invalid option: --bogus`) and exit 1, never a backtrace (an option of multi-byte text, `-é`, included: it is split by characters).
 - Free text may start with a dash: for `new`, `note` and `loose` (`opt_parse`) an argument that starts with `-` and holds whitespace (`qm note SLUG "- a bullet"`) is text, never an option or an abbreviation of one (`"-d does stuff"` is not `--description`), unless it is an inline `--flag=value`; right after a flag that takes a value it is that value; `--` ends options there and is dropped before the text of `retitle`, `describe`, `board-answer`, `ask` and `grep` (`opt_parse::words`). A one-word dash text needs the `--`: `qm new -- -x`.
 
 ## Data
