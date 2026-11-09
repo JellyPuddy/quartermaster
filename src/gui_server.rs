@@ -494,6 +494,7 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
             None => text_reply("501 Not Implemented", "unsupported input: this action"),
         };
     }
+    if let Some(reply) = crate::gui_settings::respond(method, route, body, token) { return reply; }
     text_reply("501 Not Implemented", &format!("unsupported input: {method} {route}"))
 }
 

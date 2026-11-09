@@ -23,7 +23,8 @@ a body over `Drops::MAX_BYTES` is refused unread with 413. Routes: `GET /`, `/as
 `/api/state`, `/api/pulse`, `/api/attention`, `/api/session/<id>`, `/api/asides/<slug>`,
 `/api/history/<slug>`, `/api/workspace/<slug>`, `/api/diff/<slug>`, `/api/diff-file/<slug>`,
 `/api/prs`, `/api/pr-threads`, `/api/issues[/<slug>]`; `POST /api/action`, `/api/drop`,
-`/api/ask`, `/api/grep`, `/api/cleanup-plan`.
+`/api/ask`, `/api/grep`, `/api/cleanup-plan`. `GET /api/settings` and `POST
+/api/settings/check|save` are [settings](settings.md)' (`gui_settings`, tried before the 501).
 
 **Actions** (`GuiActions#dispatch`, `POST /api/action {cmd, slug, args}`). Each web action
 maps to the WorkItem / Launcher / SessionLog / Workspace / Tmux / Rotation operation the CLI
