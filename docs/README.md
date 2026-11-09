@@ -67,6 +67,8 @@ goes in the commit message.
 
 ## Also here
 
+- `../README.md` is for users: a user-visible change updates it too, and anything new qm reads or sends
+  goes in its "What qm does on your machine".
 - `automations-house-rules.md` — the rules every automation's prompt follows; the automation chat brief includes it verbatim.
 - `gui-mockup.html` — the GUI's design-reference prototype (fake data).
 - `tests/docs_shape.rs` checks these pages' shape: headers, code ownership, links, sizes.
