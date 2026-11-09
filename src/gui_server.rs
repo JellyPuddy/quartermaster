@@ -18,7 +18,7 @@ use crate::gui_action::{port, Failed};
 use crate::outcome::{done, Outcome};
 use crate::work_item::WorkItem;
 
-const LOCAL_ACTIONS: [&str; 7] = ["caffeinate", "pane-start", "pane-resume", "rotate", "issue-start", "loose-start", "page-annotations"];
+const LOCAL_ACTIONS: [&str; 8] = ["caffeinate", "pane-start", "pane-resume", "rotate", "issue-start", "loose-start", "automation-chat", "page-annotations"];
 const POLLS: [&str; 3] = ["/api/state", "/api/pulse", "/api/root"];
 const MAX_BYTES: usize = 1_000_000;
 const MAX_LINES: usize = 20_000;

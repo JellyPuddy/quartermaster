@@ -1,7 +1,7 @@
 # Automations
 
-**Code:** `src/routines_client.rs`, `src/automation_store.rs`, `src/local_schedule.rs`, `src/automation_chat.rs`
-**Tests:** `tests/routines_client.rs`, `tests/routines_curl.rs`, `tests/automation_store.rs`, `tests/local_schedule.rs`, `tests/automation_chat.rs`
+**Code:** `src/automations.rs`, `src/automation_fields.rs`, `src/automation_command.rs`, `src/routines_client.rs`, `src/automation_store.rs`, `src/local_schedule.rs`, `src/automation_chat.rs`
+**Tests:** `tests/automations.rs`, `tests/automation_cli.rs`, `tests/automation_new_cli.rs`, `tests/routines_client.rs`, `tests/routines_curl.rs`, `tests/automation_store.rs`, `tests/local_schedule.rs`, `tests/automation_chat.rs`
 **Depends on:** [work-items](work-items.md) (an automation is a work item of `kind: automation`), [settings](settings.md) (`automations.token_source`), [chats](chats.md) (its chat is the item's pane)
 
 ## What it does
@@ -9,6 +9,48 @@
 Automations are scheduled Claude Code runs. A cloud automation is a claude.ai routine; a local one is a
 run qm starts on this machine → [local automations](local-automations.md). Each records its `runner`:
 `cloud` or `local`. This page owns what both kinds share (the local files and the schedule's DST rule) and the cloud side: the routines client.
+
+**Service** — `Automations` (the CLI's one entry point) pairs each store entry with the `kind: automation`
+work item of the same slug (`routine:`, `runner: cloud` in its frontmatter), over a `Routines` client.
+- `local` — the store's entries and their items, no network. `overview(rows)` adds one `list` call: each row's
+  routine (`remote`, none when it isn't on claude.ai) and `drift` (its `updated_at` differs from the stored
+  `remote_updated_at`), plus `unmanaged` routines (no local files). `detail(slug, limit)` — one entry, its
+  routine and its last runs.
+- `push(slug, force, recreate)` — the one path that changes a routine. No `routine` yet: create, then merge the
+  created routine (through `from_routine`, so the API's defaults such as `enabled` and `model` land locally;
+  the local prompt stays) into the store and write the id to the item, so a second push has nothing to send.
+  Else `get` the routine, refuse with `Stale` when it drifted (unless forced), and `update` only what differs
+  from it: changed name / cron / enabled as they are, the stored connectors always, and all job fields when any
+  of prompt / model / repos / tools / environment differs. A field unset locally is no change. Stores the
+  answer's `updated_at`; nothing differing writes nothing. A routine gone from claude.ai (`RoutineMissing`)
+  fails the push with "<slug>: routine … isn't on claude.ai any more — delete the automation in qm (`qm
+  automation delete <slug>`) or re-create it (`qm automation push <slug> --recreate`)", writing nothing.
+  `recreate` acts only when that `get` answers `RoutineMissing`: it takes the create path (connectors
+  explicit, the new routine merged into the yml, its id on the item, `remote_updated_at` stored, state
+  synced); on a routine still there, or one never pushed, it refuses and writes nothing.
+- Each push with changes appends one `history` note (`pushed: schedule → Mon 07:00 (0 6 * * 1 UTC); prompt
+  changed`, `paused`, `resumed`, `created routine trig_…`, `re-created routine trig_new (was trig_old)`), and
+  the item's state follows `enabled`: `active`, or `fridge` while paused (`in_progress` until the first push).
+- `pull` — the routine overwrites both local files (each kept as `.bak`), notes what changed.
+- `pause` / `resume` — a local edit of `enabled`, then push. `run` — run it now.
+- `adopt(id, project, slug)` — a routine no store entry holds becomes an entry plus an item (title the
+  routine's name, slug by default its slug, description the name and the prompt's first paragraph), state from
+  `enabled`. `WorkItem::create_automation` makes such an item under any slug (made under the slug as its title,
+  then retitled, in one move).
+- `delete` — the API's delete removes the routine and the local files; without one (`Unsupported`) the routine
+  is paused and its files stay, so it isn't "unmanaged"; when that pause finds the routine already gone it
+  counts as deleted; never pushed, only the files go. The item is resolved either way, its notes kept.
+- `runner: local` slugs go to `LocalAutomations` ([local automations](local-automations.md)); `push`, `pull` and
+  `adopt` refuse them ("<slug> runs locally — nothing on claude.ai").
+
+**CLI** — `qm automation list | show | adopt | push | pull | pause | resume | run | delete` (`automation_command`;
+the local-only subcommands are `local_automation_command`'s). `list` prints every row (slug, project, state,
+schedule, enabled, runner) before its one list call (cloud rows only), then a status line per routine (last
+run, next run, drift) and the routines "Not managed by qm"; `show` adds repos, connectors, links and runs;
+`push --recreate` re-creates a routine deleted on claude.ai. `delete` asks y/N on stdin unless `--yes`; without
+an API delete it prints "paused; delete it on claude.ai: <routine url>". An error is its message on stderr as
+`qm: …`, exit 1; a slug command with a stray word prints the usage and does nothing. `qm automation tick` is
+not recorded by feature use (launchd runs it every five minutes).
 
 **Turning it on** — `automations.token_source` in `config.yml` (enum, one value: `claude_code`). Unset,
 automations are off: nothing reads the keychain, and every call fails with `NotEnabled`, whose message names
@@ -77,7 +119,7 @@ for the current offset: a local time near midnight moves its weekdays back a day
 become `*`. Any other cron is `raw`: no days or time, labelled as itself plus "UTC", and edited as raw
 cron.
 
-**New and its chat** — `automation_chat::create(title, project, description, runner)` makes a `kind:
+**New and its chat** — `qm automation new TITLE --project P [--description TEXT] [--runner cloud|local]` and `qm automation edit SLUG` open the item's chat through the running GUI's `automation-chat` action (a local action, so the CLI may post it without an Origin; it also needs the GUI to serve this data root), then bring the GUI page up on it; without a GUI they print the `cd … && QM_ITEM=… claude …` line to run. `automation_chat::create(title, project, description, runner)` makes a `kind:
 automation` item (its `runner`, state `in_progress`, no `routine` until the first push) and its local
 files under the work-item lock: an empty prompt and a yml with `name`, `runner` and `enabled` (`true`;
 `false` for local); a slug whose files already exist is refused, and so is any runner but `cloud` or

@@ -143,7 +143,7 @@ The Workspace buttons that drive both are in [side-panel](side-panel.md).
 
 - Bind `127.0.0.1` only; a request whose Host isn't `127.0.0.1:<port>` / `localhost:<port>` gets 403 — cheap DNS-rebinding defence, no auth needed (`LoopbackGuard`).
 - A POST whose `Origin` isn't ours is refused: a cross-site no-cors POST arrives with our own Host, and actions remove worktrees and run bin/update.
-- A POST without `Origin` passes only for `LoopbackGuard::LOCAL_ACTIONS` (caffeinate, pane-start, pane-resume, rotate, issue-start, loose-start, page-annotations); a new local caller adds its action there.
+- A POST without `Origin` passes only for `LoopbackGuard::LOCAL_ACTIONS` (caffeinate, pane-start, pane-resume, rotate, issue-start, loose-start, automation-chat, page-annotations); a new local caller adds its action there.
 - Page-like test posts send our Origin (the `host` / `ok_host` helpers); page seams are tested through `served_page(gui, host)`, the page plus its assets.
 - The terminal WebSocket and `/api/drop` need the per-start `terminalToken` as well as our Origin — they type into a live chat (details in [chats](chats.md)).
 - No self-shutdown, ever: the server runs until Ctrl-C. A heartbeat/bye scheme closed the server under backgrounded tabs and let a stale tab kill a newer server; don't reintroduce a liveness timer.

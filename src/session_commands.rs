@@ -51,6 +51,7 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
         "install-hooks" => install_hooks(),
         "doctor" => crate::doctor::run(),
         "config" => crate::config_command::run(args),
+        "automation" => crate::automation_command::run(args),
         _ => return None,
     })
 }

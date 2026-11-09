@@ -24,7 +24,7 @@ const KNOWN: &[&str] = &[
     "review-post", "thread-reply-put", "pr-thread-resolve", "review-preview", "draft-place", "issue-comment-put", "draft-edit", "draft-delete", "drafts-discard",
     "drafts-send", "issues-clear-created", "issue-acknowledge", "issues-create", "build-progress", "branch-stats-commentary", "board-answer", "issue-preview",
     "issue-start", "pr-chat", "pr-review", "pr-pf", "pr-ide", "pr-unrequire", "cleanup", "caffeinate", "errors-seen", "benchmark-start", "benchmark-cancel", "benchmark-rerun",
-    "loose-start", "loose-close", "loose-promote", "delete",
+    "loose-start", "loose-close", "loose-promote", "delete", "automation-chat",
 ];
 
 type R<T> = Result<T, Stop>;
@@ -268,6 +268,7 @@ fn run(payload: &Value) -> R<Value> {
             Ok(ok())
         }
         "caffeinate" => caffeinate(&args),
+        "automation-chat" => crate::automation_chat::open(&slug, &crate::automation_store::AutomationStore::current()).map_err(error),
         "errors-seen" => crate::error_log::mark_seen_reply().map_err(fail),
         "adopt" => adopt(&slug, &args),
         "restack" => restack(&slug, &args),

@@ -8,7 +8,7 @@
   "src/build_progress.rs": 450,
   "src/cleanup.rs": 495,
   "src/draft_messages.rs": 441,
-  "src/gui_actions.rs": 1368,
+  "src/gui_actions.rs": 1369,
   "src/gui_draft_actions.rs": 601,
   "src/gui_server.rs": 696,
   "src/gui_state.rs": 559,

@@ -76,6 +76,11 @@ fn spec(command: &str, args: &[String]) -> Option<Spec> {
         "list" => plain(opts![val("--kind")], false),
         "viewer-rows" => plain(opts![val("--state")], false),
         "pr-requires" => Some(Spec { opts: opts![val("--pr"), flag("--remove"), flag("--list"), val("--session"), val("--note")], slug_first: false, say: Say::WithUsage("qm", PR_REQUIRES_USAGE), free_text: false }),
+        "automation" => match args.first().map(String::as_str) {
+            Some("new") => text(opts![val("--project"), val("--description"), val("--runner")], false),
+            Some("adopt") => plain(opts![val("--project"), val("--slug")], false),
+            _ => None,
+        },
         "draft" => match args.first().map(String::as_str) {
             Some("add") => Some(Spec {
                 opts: opts![val("--path"), num("--line"), num("--start-line"), val("--side"), val("--commit"), flag("--file"), val("--reply-to"), val("--pr"), val("--branch"), val("--body"), val("--body-file")],
@@ -95,7 +100,7 @@ fn spec(command: &str, args: &[String]) -> Option<Spec> {
 pub fn normalize(command: &str, args: &[String]) -> Option<Result<Vec<String>, Outcome>> {
     let spec = spec(command, args)?;
     // `draft add|list` keeps its subcommand word out of the way
-    let (head, rest): (&[String], &[String]) = if command == "draft" { (&args[..1], &args[1..]) } else { (&[], args) };
+    let (head, rest): (&[String], &[String]) = if matches!(command, "draft" | "automation") { (&args[..1], &args[1..]) } else { (&[], args) };
     let (first, rest): (&[String], &[String]) = if spec.slug_first && !rest.is_empty() { (&rest[..1], &rest[1..]) } else { (&[], rest) };
     Some(match canonical(rest, spec.opts, spec.free_text) {
         Ok(out) => Ok(head.iter().chain(first).cloned().chain(out).collect()),

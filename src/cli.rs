@@ -92,7 +92,8 @@ pub fn run(raw: Vec<OsString>) -> i32 {
             return match outcome {
                 Outcome::Delegate => delegate::refuse(&raw),
                 Outcome::Done { code, stdout, stderr } => {
-                    if command != Some("feature-use") {
+                    // the launchd tick is plumbing, not a use
+                    if command != Some("feature-use") && !(command == Some("automation") && rest.first().map(String::as_str) == Some("tick")) {
                         feature_use::command(command);
                     }
                     out(&stdout);

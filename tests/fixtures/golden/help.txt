@@ -76,3 +76,20 @@ Settings:
   qm config set PATH VALUE                                        set a key; VALUE is YAML ([dev, ngrok] a list, true, 4); errors refuse the write (exit 1), warnings don't
   qm config unset PATH                                            remove a key or a whole project (warns how many work items still name it)
   qm config path                                                  print config.yml's location
+
+Automations (claude.ai routines, on with automations.token_source; runner: local ones run on this machine):
+  qm automation new TITLE --project P                             create a claude.ai routine as a kind: automation item with empty local files, then open its chat with qm's brief (--description TEXT; --runner local: one that runs on this machine, created disabled)
+  qm automation edit SLUG                                         open or resume the automation's chat with the brief; a running chat gets nothing typed, the brief is printed
+  qm automation list                                              every automation; local ones' queue and last run, the tick; each routine's last and next run, drift, and routines not managed by qm
+  qm automation show SLUG                                         one automation: schedule, repos, connectors, links and its last 10 runs (local: guard, flow, queue, runs)
+  qm automation adopt ID --project P [--slug S]                   take a routine under qm: local files + a kind: automation work item
+  qm automation push SLUG [--force]                               send the local files (creates the routine the first time); refuses a routine changed outside qm unless --force
+  qm automation pull SLUG                                         the routine overwrites the local files (kept as .bak)
+  qm automation pause|resume|run SLUG                             pause or resume (a local edit, then push), or run it now; local: queue a run (its guard's new items) and tick
+  qm automation resume SLUG --skip-existing                       local: mark the guard's current items seen, then enable; only later items queue runs
+  qm automation delete SLUG [--yes]                               delete the routine (or pause it when the API can't) and resolve the item; local: refused while a run is live
+  qm automation runs SLUG                                         a local automation's queued runs and its last 20 runs with their status
+  qm automation retry SLUG RUN_ID                                 queue an ended local run's item again, then tick
+  qm automation tick [--dry-run [SLUG]]                           one local scheduler pass (launchd runs it every 5 min); --dry-run only runs guards and writes nothing
+  qm automation install-tick [--print]                            install the LaunchAgent that ticks every 5 min (--print: show its plist, write nothing)
+  qm automation uninstall-tick                                    remove that LaunchAgent

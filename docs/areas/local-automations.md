@@ -1,7 +1,7 @@
 # Local automations
 
-**Code:** `src/run_chats.rs`, `src/local_cron.rs`, `src/automation_flows.rs`, `src/chat_flow.rs`, `src/pr_review_flow.rs`, `src/automation_tick.rs`, `src/automation_guard.rs`, `src/run_lifecycle.rs`, `src/tick_installer.rs`, `src/run_log.rs`, `src/run_fold.rs`, `src/random_id.rs`
-**Tests:** `tests/tick_installer.rs`, `tests/run_chats.rs`, `tests/quiet_runs.rs`, `tests/automation_config.rs`, `tests/automation_flows.rs`, `tests/automation_guard.rs`, `tests/automation_tick.rs`, `tests/automation_run_lifecycle.rs`, `tests/local_cron.rs`, `tests/run_log.rs`, `tests/automation_store.rs`
+**Code:** `src/local_automations.rs`, `src/local_automation_command.rs`, `src/run_chats.rs`, `src/local_cron.rs`, `src/automation_flows.rs`, `src/chat_flow.rs`, `src/pr_review_flow.rs`, `src/automation_tick.rs`, `src/automation_guard.rs`, `src/run_lifecycle.rs`, `src/tick_installer.rs`, `src/run_log.rs`, `src/run_fold.rs`, `src/random_id.rs`
+**Tests:** `tests/local_automation_cli.rs`, `tests/tick_installer.rs`, `tests/run_chats.rs`, `tests/quiet_runs.rs`, `tests/automation_config.rs`, `tests/automation_flows.rs`, `tests/automation_guard.rs`, `tests/automation_tick.rs`, `tests/automation_run_lifecycle.rs`, `tests/local_cron.rs`, `tests/run_log.rs`, `tests/automation_store.rs`
 **Depends on:** [automations](automations.md) (the store, the item; `local_schedule`'s DST rule), [work-items](work-items.md)
 
 ## What it does
@@ -140,6 +140,18 @@ by a later `guard_ran`), `last_cron_check`. Writers: `enqueue` (no dedupe), `enq
 key), `refuse_item` (same dedupe; a `refused` run that never queues), `enqueue_cron(due)` (none while a
 cron run is queued; key `cron:<due minute, UTC ISO>`, no item), `retry(run_id)` (an ended run's key, item
 and flow as a new `retry` run, past dedupe; refuses unknown, queued or live runs), and one per event.
+
+**Service and CLI** — `Automations` hands every `runner: local` slug to `LocalAutomations` (no network), drops
+local rows from `overview`, and `push`/`pull`/`adopt` refuse them: "<slug> runs locally — nothing on
+claude.ai". `run` with a guard runs it now (`queue_guard`, trigger `manual`), else queues one item-less run
+keyed `manual:<UTC ISO>`; `pause`/`resume` move the item to `fridge`/`active` with a history note,
+`resume(skip_existing)` first `mark_seen`s the guard's current keys; `retry` is `RunLog::retry`, refused while
+its flow refuses the item (`refusal`); `delete` refuses while a run is live ("stop or finish its runs first"),
+else removes files and run log and resolves the item. `local_automation_command`: `list`, `show` and `runs
+SLUG` read run logs (`list` skips the routines call when automations are off and no row is cloud); `run` and
+`retry SLUG RUN_ID` then tick once and say why a run didn't start; `tick [--dry-run [SLUG]]` (silent when idle
+off a terminal; the dry run writes nothing); `install-tick [--print]` and `uninstall-tick` drive
+`TickInstaller`.
 
 ## Rules
 
