@@ -498,8 +498,14 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
     text_reply("501 Not Implemented", &format!("unsupported input: {method} {route}"))
 }
 
+/// How long a client may take to send its request: 60 s, or `QM_GUI_REQUEST_TIMEOUT_MS` (tests shorten it).
+fn request_timeout() -> std::time::Duration {
+    let ms = std::env::var("QM_GUI_REQUEST_TIMEOUT_MS").ok().and_then(|v| v.parse::<u64>().ok()).filter(|ms| *ms > 0).unwrap_or(60_000);
+    std::time::Duration::from_millis(ms)
+}
+
 fn handle(mut stream: TcpStream, guard: &Guard, token: &str) {
-    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(60)));
+    let _ = stream.set_read_timeout(Some(request_timeout()));
     let mut reader = BufReader::new(stream.try_clone().unwrap());
     let mut line = String::new();
     if reader.read_line(&mut line).unwrap_or(0) == 0 {
@@ -533,6 +539,8 @@ fn handle(mut stream: TcpStream, guard: &Guard, token: &str) {
         let key = headers.get("sec-websocket-key").and_then(Value::as_str).unwrap_or("").to_string();
         let to_i = |k: &str| given.get(k).and_then(Value::as_str).map(|v| ruby_to_i(v) as i64).unwrap_or(0);
         let session = given.get("session").and_then(Value::as_str).unwrap_or("").to_string();
+        // an idle chat sends nothing for minutes: the request timeout is for requests, not for the terminal
+        let _ = stream.set_read_timeout(None);
         crate::terminal_bridge::serve(stream, reader, &key, &session, to_i("cols"), to_i("rows"));
         return;
     }

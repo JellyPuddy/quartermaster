@@ -86,6 +86,8 @@ blocked + unsnoozed your_turn chats.
 - Each WebSocket spawns its own `tmux attach` PTY: a reload or second tab is another client and tmux
   redraws; closing the socket kills only that client. Binary frames are keystrokes, text frames
   `{cols, rows}` resizes (the PTY winsize, clamped to 1–500 × 1–200, plus a SIGWINCH to that client).
+- The 60 s read timeout (`QM_GUI_REQUEST_TIMEOUT_MS` shortens it, for tests) covers reading a request only: a
+  WebSocket clears it before `serve`, since an idle terminal sends nothing (no ping) and would be dropped.
 - `window-size latest` sizes the window to the client that attached, resized or typed last, so a
   second tab or Warp attach on the same chat takes it and a pane shows only its top rows. An unchanged
   winsize sends no SIGWINCH, so the bridge signals one itself, and a page re-sends its terminals' sizes
