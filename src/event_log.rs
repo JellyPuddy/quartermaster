@@ -132,6 +132,18 @@ fn save_fold(fold: &mut Map<String, Value>) {
     }
 }
 
+/// The newest event's `ts`, from the file's last 8 KB; touches no fold.
+pub fn last_ts() -> Option<String> {
+    let mut file = std::fs::File::open(path()).ok()?;
+    file.seek(SeekFrom::Start(file.metadata().ok()?.len().saturating_sub(8192))).ok()?;
+    let mut bytes = vec![];
+    file.read_to_end(&mut bytes).ok()?;
+    String::from_utf8_lossy(&bytes).lines().rev().find_map(|line| match serde_json::from_str::<Value>(line) {
+        Ok(Value::Object(e)) => e.get("ts").and_then(Value::as_str).filter(|t| !t.is_empty()).map(String::from),
+        _ => None,
+    })
+}
+
 /// session_id → turn, reading only what was appended since the persisted fold.
 pub fn turns() -> Map<String, Value> {
     let mut fold = load_fold();

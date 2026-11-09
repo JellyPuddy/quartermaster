@@ -22,10 +22,11 @@ pub fn record(kind: &str, name: &str) {
     }
 }
 
-/// A `qm` run by its command word; hooks, the status line (it runs on every refresh) and `QM_SKIP` runs are plumbing, not uses.
+/// A `qm` run by its command word; hooks, the status line (it runs on every refresh), `qm doctor` (it writes
+/// nothing, so it must not create the root it checks for) and `QM_SKIP` runs are plumbing, not uses.
 pub fn command(word: Option<&str>) {
     let Some(word) = word else { return };
-    if word.starts_with("hook-") || word == "statusline" || std::env::var_os("QM_SKIP").is_some() {
+    if word.starts_with("hook-") || word == "statusline" || word == "doctor" || std::env::var_os("QM_SKIP").is_some() {
         return;
     }
     record("cli", word);

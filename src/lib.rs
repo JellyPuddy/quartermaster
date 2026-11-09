@@ -52,6 +52,7 @@ pub mod pr_items;
 pub mod review_threads;
 pub mod workspace_commands;
 pub mod distill;
+pub mod doctor;
 pub mod rotation;
 pub mod benchmark_report;
 pub mod benchmark_run;

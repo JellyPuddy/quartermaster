@@ -161,6 +161,11 @@ impl SessionLog {
         SessionLog { events }
     }
 
+    /// The `ts` of the newest event other than a dismissal: the last time capture saw anything.
+    pub fn last_activity_ts(&self) -> Option<String> {
+        self.events.iter().rev().find(|e| e.get("event").and_then(Value::as_str) != Some("dismissed")).and_then(|e| e.get("ts")).and_then(Value::as_str).map(String::from)
+    }
+
     pub fn last_start_for(&self, session_id: Option<&str>) -> Option<&Event> {
         self.events.iter().rev().find(|e| {
             e.get("event").and_then(Value::as_str) == Some("start") && e.get("session_id").and_then(Value::as_str) == session_id

@@ -49,6 +49,7 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
         "session-item" => session_item(args),
         "help" | "--help" | "-h" => done(USAGE.to_string()),
         "install-hooks" => install_hooks(),
+        "doctor" => crate::doctor::run(),
         _ => return None,
     })
 }

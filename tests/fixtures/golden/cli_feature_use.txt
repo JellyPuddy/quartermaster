@@ -195,6 +195,7 @@ Hooks:
   qm hook-session-start                                           called by Claude Code: capture, link, inject context
   qm hook-session-end                                             called by Claude Code: capture duration, commits, diff stat
   qm install-hooks                                                print the settings.json hooks snippet (session capture + event/board/snapshot appenders)
+  qm doctor                                                       check hooks, the built binary, data root, qm.log errors and recent capture; exits 1 on a ✗
 --- stderr
 qm: unknown command 'bogus'
 
@@ -272,6 +273,7 @@ Hooks:
   qm hook-session-start                                           called by Claude Code: capture, link, inject context
   qm hook-session-end                                             called by Claude Code: capture duration, commits, diff stat
   qm install-hooks                                                print the settings.json hooks snippet (session capture + event/board/snapshot appenders)
+  qm doctor                                                       check hooks, the built binary, data root, qm.log errors and recent capture; exits 1 on a ✗
 --- stderr
 qm: unknown command '--bogus'
 

@@ -1,7 +1,7 @@
 # CLI and viewer
 
-**Code:** `src/cli.rs`, `src/cli_format.rs`, `src/viewer_commands.rs`, `src/session_rows.rs`, `src/show_command.rs`, `src/session_detail.rs`, `src/attention_command.rs`, `src/overview.rs`, `src/chats_commands.rs`, `src/pr_requires_command.rs`, `src/draft_command.rs`, `src/cleanup_command.rs`, `src/workspace_commands.rs`, `src/viewer.rs`, `src/feature_use.rs`, `quartermaster`, `src/main.rs`, `src/lib.rs`, `src/outcome.rs`, `src/delegate.rs`, `src/opt_parse.rs`, `src/session_commands.rs`, `src/work_item_commands.rs`, `src/free_text_commands.rs`, `src/error.rs`, `src/clock.rs`, `src/ruby_format.rs`, `src/ruby_num.rs`, `src/ruby_text.rs`, `src/data_root.rs`, `src/git.rs`, `src/sha1.rs`, `src/sha256.rs`
-**Tests:** `tests/free_text_args.rs`, `tests/viewer.rs`, `tests/cli_feature_use.rs`, `tests/cli_launch.rs`, `tests/cli_overview.rs`, `tests/launcher.rs`, `tests/characterization.rs`
+**Code:** `src/cli.rs`, `src/cli_format.rs`, `src/viewer_commands.rs`, `src/session_rows.rs`, `src/show_command.rs`, `src/session_detail.rs`, `src/attention_command.rs`, `src/overview.rs`, `src/chats_commands.rs`, `src/pr_requires_command.rs`, `src/draft_command.rs`, `src/cleanup_command.rs`, `src/workspace_commands.rs`, `src/viewer.rs`, `src/feature_use.rs`, `quartermaster`, `src/main.rs`, `src/lib.rs`, `src/outcome.rs`, `src/delegate.rs`, `src/opt_parse.rs`, `src/session_commands.rs`, `src/doctor.rs`, `src/work_item_commands.rs`, `src/free_text_commands.rs`, `src/error.rs`, `src/clock.rs`, `src/ruby_format.rs`, `src/ruby_num.rs`, `src/ruby_text.rs`, `src/data_root.rs`, `src/git.rs`, `src/sha1.rs`, `src/sha256.rs`
+**Tests:** `tests/free_text_args.rs`, `tests/viewer.rs`, `tests/cli_feature_use.rs`, `tests/cli_launch.rs`, `tests/cli_overview.rs`, `tests/launcher.rs`, `tests/doctor.rs`, `tests/characterization.rs`
 **Depends on:** [work-items](work-items.md), [linking](linking.md), [gui-shell](gui-shell.md)
 
 ## What it does
@@ -62,6 +62,17 @@ A command that can't take its arguments as given (an odd value in a file it read
 **Hooks**: `qm hook-session-start`, `qm hook-session-end`, `qm install-hooks` (prints the
 settings snippet) — see [capture](capture.md).
 
+- `qm doctor` — one `✓`/`!`/`✗` line per check, a fix hint on the others, exit 1 on any `✗`
+  (`Doctor`): the SessionStart, SessionEnd and record-event.sh hooks registered (record-event.sh
+  on every event `qm install-hooks` gives it) in `$QM_CLAUDE_SETTINGS` (default
+  `~/.claude/settings.json`) and pointing at existing files; the built binary behind the
+  launcher the SessionStart hook runs (`QM_BIN`, else `target/release/qm` beside it; a hook with
+  no binary exits 0 and captures nothing); the data root present and writable (doctor never
+  creates it); unseen `qm.log` errors (`!` with the newest, counted by `ErrorLog`: header lines
+  that are neither `transient` nor `recovered`, newer than `errors-seen-at` or else the last
+  day, from the log's last 256 KB; [capture](capture.md) owns it); and capture (`!` when
+  neither `sessions.jsonl` nor `events.jsonl`'s tail has an event from the last day).
+
 Internal, called by the viewer's fzf bindings: `viewer-rows`, `sessions-view`, `inbox-view`,
 `cycle-filter`, `session-rows`, `inbox-rows`, `choose-state`, `choose-project`,
 `choose-snooze`, `attach-session`, `item-from-session`. Internal, spawned by the GUI: `bench-run
@@ -85,7 +96,8 @@ new session, `^X` the item's sessions (Enter resumes one), `^B` the inbox (Enter
 item from session, `^D` dismiss), `^S` state, `^P` project, `^O` PR, `^T` distill, `^A` ack,
 `^Z` snooze, `^R` reload. The viewer stays open while actions run.
 
-**Feature use** (`FeatureUse`). Every `qm` command (by its word; not hooks, not `QM_SKIP`
+**Feature use** (`FeatureUse`). Every `qm` command (by its word; not hooks, not `qm doctor`
+(it writes nothing, so a missing data root stays missing and fails its check), not `QM_SKIP`
 runs), every GUI action (by `cmd`; other POST routes by route) and every GUI `/api/` read
 except the `/api/state` and `/api/pulse` polls (by route, cut to `/api/<word>`) appends one
 `{v, at, kind, name}` line to `feature-use.jsonl`: the evidence for deleting unused features.
@@ -109,6 +121,7 @@ refused ("switch to its Warp tab"): it would fork the conversation.
 - Liveness is checked at read time (`kill(0, pid)`), never trusted from the log: SessionEnd doesn't fire on crashes.
 - The viewer's actions are plain `qm` subcommands, so the viewer, the GUI and Claude share one implementation; mouse support is double-click resume only — fzf's `click-header` + `execute` handoff didn't reliably hand the terminal to picker actions, so clickable actions live in the GUI.
 - The feature-use log holds a kind and a name only — never a slug, argument, path or session id — is only appended to, and recording is best-effort: a failed write goes to `qm.log` and never fails the command or request.
+- `qm doctor` writes nothing, not even a feature-use line, so a missing data root stays missing and fails its check: `events.jsonl` is read from its tail through `event_log::last_ts`, never folded, so not even `events-fold.json` changes.
 - `FeatureUse.known_names` reads `CLI.commands`, plus `when "…" then` branches and `method == … && route …` conditions; a dispatcher reshaped away from that loses its names from the never-used lists (the known-names test pins a few).
 - A bad option from any command becomes `qm: <message>` (`qm: invalid option: --bogus`) and exit 1, never a backtrace.
 - Free text may start with a dash: for `new`, `note` and `loose` (`opt_parse`) an argument that starts with `-` and holds whitespace (`qm note SLUG "- a bullet"`) is text, never an option or an abbreviation of one (`"-d does stuff"` is not `--description`), unless it is an inline `--flag=value`; right after a flag that takes a value it is that value; `--` ends options there and is dropped before the text of `retitle`, `describe`, `board-answer`, `ask` and `grep` (`opt_parse::words`). A one-word dash text needs the `--`: `qm new -- -x`.
