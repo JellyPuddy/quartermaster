@@ -1,0 +1,355 @@
+<title>Build Status</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --fg: #1c1c1a;
+    --muted: #6b6b66;
+    --card: #ffffff;
+    --border: #e5e3df;
+    --queued: #9a9690;
+    --running: #4c63d6;
+    --running-bg: #eceffb;
+    --review: #9a6410;
+    --review-bg: #f6eddd;
+    --reviewing: #4c63d6;
+    --reviewing-bg: #eceffb;
+    --done: #1f7a4d;
+    --done-bg: #e7f5ee;
+    --blocked: #b3261e;
+    --blocked-bg: #fbe9e8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #171715;
+      --fg: #ececea;
+      --muted: #9a9994;
+      --card: #201f1d;
+      --border: #35342f;
+      --running: #8aa0ff;
+      --running-bg: #1f2540;
+      --review: #e8b44a;
+      --review-bg: #33291a;
+      --reviewing: #8aa0ff;
+      --reviewing-bg: #1f2540;
+      --done: #5cc493;
+      --done-bg: #113322;
+      --blocked-bg: #3a1917;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #171715;
+    --fg: #ececea;
+    --muted: #9a9994;
+    --card: #201f1d;
+    --border: #35342f;
+    --running: #8aa0ff;
+    --running-bg: #1f2540;
+    --review: #e8b44a;
+    --review-bg: #33291a;
+    --reviewing: #8aa0ff;
+    --reviewing-bg: #1f2540;
+    --done: #5cc493;
+    --done-bg: #113322;
+    --blocked-bg: #3a1917;
+  }
+  body { background: var(--bg); color: var(--fg); }
+  * { box-sizing: border-box; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 32px 20px 60px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 24px; }
+  .summary { display: flex; gap: 16px; margin-bottom: 20px; font-size: 13px; color: var(--muted); }
+  .summary b { color: var(--fg); }
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .row {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .badge {
+    flex: none;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+    margin-top: 1px;
+  }
+  .badge.queued { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+  .badge.running { background: var(--running-bg); color: var(--running); }
+  .badge.review { background: var(--review-bg); color: var(--review); }
+  .badge.reviewing { background: var(--reviewing-bg); color: var(--reviewing); }
+  .badge.done { background: var(--done-bg); color: var(--done); }
+  .badge.blocked { background: var(--blocked-bg); color: var(--blocked); }
+  .body { flex: 1; min-width: 0; }
+  .title { font-size: 14px; font-weight: 500; }
+  .note { font-size: 12.5px; color: var(--muted); margin-top: 2px; word-break: break-word; }
+  .updated { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .waits { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .dag { position: relative; overflow-x: auto; margin: 4px 0 6px; padding-bottom: 4px; }
+  .dag-canvas { position: relative; }
+  .dag svg { position: absolute; inset: 0; overflow: visible; }
+  .dag path { fill: none; stroke: var(--border); stroke-width: 1.5; }
+  .dag path.met { stroke: var(--done); stroke-opacity: .55; }
+  .node {
+    position: absolute;
+    border: 1px solid var(--border);
+    border-left-width: 4px;
+    border-radius: 8px;
+    background: var(--card);
+    padding: 5px 8px;
+    font-size: 12px;
+    line-height: 1.3;
+  }
+  .node .node-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .node .node-status { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  .node.queued { border-left-color: var(--queued); }
+  .node.running { border-left-color: var(--running); background: var(--running-bg); }
+  .node.review { border-left-color: var(--review); background: var(--review-bg); }
+  .node.reviewing { border-left-color: var(--reviewing); background: var(--reviewing-bg); }
+  .node.done { border-left-color: var(--done); background: var(--done-bg); }
+  .node.blocked { border-left-color: var(--blocked); background: var(--blocked-bg); }
+  .empty { color: var(--muted); font-size: 13px; text-align: center; padding: 40px 0; }
+  .stale { text-align: center; font-size: 12px; color: var(--muted); margin-top: 20px; }
+  .batch { display: flex; flex-direction: column; gap: 8px; }
+  .batch + .batch { margin-top: 18px; }
+  .batch-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+    padding: 2px 0;
+  }
+  .batch-head:hover { color: var(--fg); }
+  .batch-head .chev { flex: none; width: 10px; font-size: 9px; }
+  .batch-head .batch-name { font-weight: 600; color: var(--fg); }
+  .batch-head.current .batch-name::after {
+    content: 'current';
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--running);
+    background: var(--running-bg);
+    border-radius: 999px;
+    padding: 2px 6px;
+    margin-left: 8px;
+  }
+</style>
+<div class="wrap">
+  <h1>Build Status</h1>
+  <p class="subtitle">Live from sub-agent updates — leave this tab open.</p>
+  <div class="summary" id="summary"></div>
+  <div class="list" id="list"><div class="empty">Waiting for tasks…</div></div>
+  <div class="stale" id="stale" hidden>Live updates unavailable — reload to refresh.</div>
+</div>
+<script>
+(async () => {
+  const listEl = document.getElementById('list');
+  const summaryEl = document.getElementById('summary');
+  const staleEl = document.getElementById('stale');
+
+  const LABEL = { queued: 'Queued', running: 'Running', review: 'Review', reviewing: 'Reviewing', done: 'Done', blocked: 'Blocked' };
+
+  function timeAgo(iso) {
+    if (!iso) return '';
+    const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+    if (s < 60) return 'just now';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + 'm ago';
+    const h = Math.floor(m / 60);
+    return h + 'h ago';
+  }
+
+  // Batches the viewer has manually expanded/collapsed, so a re-render (or a
+  // sub-agent's write) can't fold a batch back up under them.
+  const overriddenBatches = new Set();
+  const UNBATCHED = '__unbatched__';
+  let latestTasks = [];
+
+  function groupByBatch(tasks) {
+    const groups = new Map();
+    tasks.forEach(t => {
+      const key = t.batch || UNBATCHED;
+      if (!groups.has(key)) groups.set(key, { key, label: t.batchLabel || t.batch || 'Earlier tasks', rows: [] });
+      groups.get(key).rows.push(t);
+    });
+    // Batch ids are ISO-prefixed, so a plain descending sort puts newest first;
+    // rows predating batches sort last.
+    return [...groups.values()].sort((a, b) => {
+      if (a.key === UNBATCHED) return 1;
+      if (b.key === UNBATCHED) return -1;
+      return b.key.localeCompare(a.key);
+    });
+  }
+
+  // Plan order only: the badge carries the status, so rows stay put as it changes.
+  function sortRows(rows) {
+    return rows.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }
+
+  // Prerequisites inside the same batch; ids from elsewhere are left out.
+  function depsWithin(t, byId) {
+    return (t.dependsOn || []).filter(id => byId.has(id) && id !== t.id);
+  }
+
+  // Wave = longest prerequisite chain below a task, so wave 0 is everything
+  // that can start at once. A cycle is cut where it is found.
+  function waves(rows, byId) {
+    const wave = new Map();
+    const visiting = new Set();
+    function depth(t) {
+      if (wave.has(t.id)) return wave.get(t.id);
+      if (visiting.has(t.id)) return 0;
+      visiting.add(t.id);
+      const d = depsWithin(t, byId).reduce((m, id) => Math.max(m, depth(byId.get(id)) + 1), 0);
+      visiting.delete(t.id);
+      wave.set(t.id, d);
+      return d;
+    }
+    rows.forEach(depth);
+    return wave;
+  }
+
+  const NODE_W = 170, NODE_H = 42, COL_GAP = 40, ROW_GAP = 10;
+
+  function dagHtml(rows) {
+    if (rows.length < 2 || !rows.some(t => Array.isArray(t.dependsOn))) return '';
+    const byId = new Map(rows.map(t => [t.id, t]));
+    const wave = waves(rows, byId);
+    const cols = [];
+    sortRows(rows).forEach(t => (cols[wave.get(t.id)] ||= []).push(t));
+    const tallest = Math.max(...cols.map(c => c.length));
+    const height = tallest * NODE_H + (tallest - 1) * ROW_GAP;
+    const width = cols.length * NODE_W + (cols.length - 1) * COL_GAP;
+    const pos = new Map();
+    cols.forEach((col, ci) => {
+      const top = (height - (col.length * NODE_H + (col.length - 1) * ROW_GAP)) / 2;
+      col.forEach((t, ri) => pos.set(t.id, { x: ci * (NODE_W + COL_GAP), y: top + ri * (NODE_H + ROW_GAP) }));
+    });
+    const edges = rows.flatMap(t => depsWithin(t, byId).map(id => {
+      const a = pos.get(id), b = pos.get(t.id);
+      const x1 = a.x + NODE_W, y1 = a.y + NODE_H / 2, x2 = b.x, y2 = b.y + NODE_H / 2, mx = (x1 + x2) / 2;
+      const met = byId.get(id).status === 'done' ? ' class="met"' : '';
+      return `<path${met} d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"/>`;
+    })).join('');
+    const nodes = rows.map(t => {
+      const p = pos.get(t.id);
+      return `
+        <div class="node ${escapeAttr(t.status)}" style="left:${p.x}px;top:${p.y}px;width:${NODE_W}px;height:${NODE_H}px" title="${escapeAttr(t.note || t.title || t.id)}">
+          <div class="node-title">${escapeHtml(t.title || t.id)}</div>
+          <div class="node-status">${escapeHtml(LABEL[t.status] || t.status)}</div>
+        </div>`;
+    }).join('');
+    return `
+      <div class="dag"><div class="dag-canvas" style="width:${width}px;height:${height}px">
+        <svg width="${width}" height="${height}" aria-hidden="true">${edges}</svg>${nodes}
+      </div></div>`;
+  }
+
+  function countsFor(rows) {
+    const counts = { queued: 0, running: 0, review: 0, reviewing: 0, done: 0, blocked: 0 };
+    rows.forEach(t => { counts[t.status] = (counts[t.status] || 0) + 1; });
+    return counts;
+  }
+
+  function summarize(rows) {
+    const c = countsFor(rows);
+    const live = c.running + c.review + c.reviewing + c.blocked + c.queued;
+    if (!live) return `${rows.length} task${rows.length === 1 ? '' : 's'}, all done`;
+    return Object.keys(LABEL)
+      .filter(k => c[k])
+      .map(k => `${c[k]} ${LABEL[k].toLowerCase()}`)
+      .join(' · ');
+  }
+
+  function render(tasks) {
+    latestTasks = tasks;
+    if (!tasks.length) {
+      listEl.innerHTML = '<div class="empty">Waiting for tasks…</div>';
+      summaryEl.innerHTML = '';
+      return;
+    }
+
+    const groups = groupByBatch(tasks);
+    // The newest batch is the live one: expanded by default, earlier ones folded.
+    const currentKey = groups[0].key;
+
+    const c = countsFor(groups[0].rows);
+    summaryEl.innerHTML = Object.keys(LABEL).map(k =>
+      `<span><b>${c[k] || 0}</b> ${LABEL[k].toLowerCase()}</span>`
+    ).join('');
+
+    listEl.innerHTML = groups.map(g => {
+      const defaultOpen = g.key === currentKey;
+      const open = overriddenBatches.has(g.key) ? !defaultOpen : defaultOpen;
+      return `
+        <div class="batch">
+          <div class="batch-head${defaultOpen ? ' current' : ''}" data-batch="${escapeAttr(g.key)}">
+            <span class="chev">${open ? '▼' : '▶'}</span>
+            <span class="batch-name">${escapeHtml(g.label)}</span>
+            <span>${escapeHtml(summarize(g.rows))}</span>
+          </div>
+          ${open ? dagHtml(g.rows) : ''}
+          ${open ? `<div class="list">${sortRows(g.rows).map(t => rowHtml(t, g.rows)).join('')}</div>` : ''}
+        </div>
+      `;
+    }).join('');
+  }
+
+  function rowHtml(t, batchRows) {
+    const byId = new Map(batchRows.map(r => [r.id, r]));
+    const waiting = t.status === 'queued'
+      ? (t.dependsOn || []).filter(id => byId.get(id)?.status !== 'done').map(id => byId.get(id)?.title || id)
+      : [];
+    return `
+      <div class="row">
+        <span class="badge ${escapeAttr(t.status)}">${escapeHtml(LABEL[t.status] || t.status)}</span>
+        <div class="body">
+          <div class="title">${escapeHtml(t.title || t.id)}</div>
+          ${t.note ? `<div class="note">${escapeHtml(t.note)}</div>` : ''}
+          ${waiting.length ? `<div class="waits">Waits for ${escapeHtml(waiting.join(', '))}</div>` : ''}
+          <div class="updated">${escapeHtml(timeAgo(t.updatedAt))}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  listEl.addEventListener('click', e => {
+    const head = e.target.closest('.batch-head');
+    if (!head) return;
+    const key = head.dataset.batch;
+    if (overriddenBatches.has(key)) overriddenBatches.delete(key);
+    else overriddenBatches.add(key);
+    render(latestTasks);
+  });
+
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+  function escapeAttr(s) { return escapeHtml(s); }
+
+  const db = await claude.use('db');
+  if (!db) {
+    staleEl.hidden = false;
+    return;
+  }
+  db.collection('tasks').onSnapshot(
+    snap => render(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+    () => { staleEl.hidden = false; }
+  );
+
+  setInterval(() => {
+    db.collection('tasks').get().then(snap => render(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+  }, 30000);
+})();
+</script>

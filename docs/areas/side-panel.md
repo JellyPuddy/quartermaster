@@ -1,6 +1,6 @@
 # Side panel and header
 
-**Code:** `lib/quartermaster/workspace.rb`, `lib/quartermaster/ide.rb`, `lib/quartermaster/board_mirror.rb`, `lib/quartermaster/usage_ledger.rb`, `lib/quartermaster/transcript_usage.rb`, `lib/quartermaster/item_usage.rb`, `lib/quartermaster/price_table.rb`, `lib/quartermaster/rate_limits.rb`, `lib/quartermaster/caffeinate.rb`, `lib/quartermaster/build_progress.rb`, `lib/quartermaster/gui/js/chat-side.js`, `lib/quartermaster/gui/js/limits.js`, `lib/quartermaster/gui/css/side-panel.css`, `statusline/statusline.rb`, `skills/adopt-worktree/SKILL.md`
+**Code:** `lib/quartermaster/workspace.rb`, `lib/quartermaster/ide.rb`, `lib/quartermaster/board_mirror.rb`, `lib/quartermaster/usage_ledger.rb`, `lib/quartermaster/transcript_usage.rb`, `lib/quartermaster/item_usage.rb`, `lib/quartermaster/price_table.rb`, `lib/quartermaster/rate_limits.rb`, `lib/quartermaster/caffeinate.rb`, `lib/quartermaster/build_progress.rb`, `lib/quartermaster/gui/js/chat-side.js`, `lib/quartermaster/gui/js/limits.js`, `lib/quartermaster/gui/css/side-panel.css`, `statusline/statusline.rb`, `skills/adopt-worktree/SKILL.md`, `skills/delegate-build/SKILL.md`, `skills/delegate-build/helpers/status-board.html`
 **Tests:** `test/usage_test.rb`, `test/rate_limits_test.rb`, `test/statusline_test.rb`, `test/caffeinate_test.rb`, `test/build_progress_test.rb`, `test/board_mirror_test.rb`, `test/pf_test.rb`, `test/gui_test.rb`
 **Depends on:** [gui-shell](gui-shell.md), [worktrees](worktrees.md), [stacks](stacks.md), [capture](capture.md)
 
@@ -53,8 +53,9 @@ the IDE (`Ide#argv`) only with an `ide_command:` — `open_ide` refuses before c
 `work_on` skips the missing half and refuses only when both are missing.
 
 **Board** — the item's status-board rows (`boardRows`: status, title, note, dependsOn),
-grouped like the artifact: one foldable group per batch, newest first, open and marked with an
-accent dot, earlier ones folded unless they hold a blocked row; plan order within a batch. A
+produced by the bundled `delegate-build` skill (a test keeps its seeding step and
+`status-board.html` naming every `BoardMirror::ROW_FIELDS` field), grouped like the artifact:
+one foldable group per batch, newest first, open and marked with an accent dot, earlier ones folded unless they hold a blocked row; plan order within a batch. A
 batch header counts its rows by status in glyphs (`2✓ 1▶ 1○`), the words in its tooltip. A blocked row gets an answer
 box when the item has a `board_answers_dir`. **Check build progress** heads the section.
 

@@ -265,4 +265,16 @@ class BoardMirrorTest < Minitest::Test
     Quartermaster::WorkItem.find("alpha").unlink_board
     refute_includes Quartermaster::WorkItem.find("alpha").front, "board_answers_dir"
   end
+
+  def test_bundled_delegate_build_skill_writes_and_renders_every_row_field
+    skill = File.expand_path("../skills/delegate-build", __dir__)
+    seeding = File.read(File.join(skill, "SKILL.md"))[/^3\. \*\*Seed.*$/]
+    board = File.read(File.join(skill, "helpers/status-board.html"))
+    refute_nil seeding, "SKILL.md has its seeding step"
+
+    Quartermaster::BoardMirror::ROW_FIELDS.each do |field|
+      assert_match(/\b#{field}\b/, seeding, "the seeding step writes #{field}")
+      assert_match(/\b#{field}\b/, board, "status-board.html reads #{field}")
+    end
+  end
 end
