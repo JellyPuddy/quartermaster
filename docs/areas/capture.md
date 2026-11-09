@@ -1,7 +1,7 @@
 # Capture
 
 **Code:** `src/hook.rs`, `src/panic_guard.rs`, `src/jsonl_lines.rs`, `src/session_log.rs`, `src/project_map.rs`, `src/project_config.rs`, `src/failure_log.rs`, `src/error_log.rs`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
-**Tests:** `tests/non_object_lines.rs`, `tests/sessions.rs`, `tests/characterization.rs`, `tests/chat_attention.rs`, `tests/failure_log.rs`, `tests/error_log.rs`
+**Tests:** `tests/non_object_lines.rs`, `tests/sessions.rs`, `tests/session_log_grouping.rs`, `tests/characterization.rs`, `tests/chat_attention.rs`, `tests/failure_log.rs`, `tests/error_log.rs`
 **Depends on:** none
 
 ## What it does
@@ -39,7 +39,7 @@ fallback protocol for when the injection is missing.
   launcher's realpath, so it points at this checkout); it never writes settings.json. Its
   SessionStart/SessionEnd entries replace the existing qm ones — kept side by side, every
   session would be captured and injected twice.
-- **Sessions** are read through `SessionLog` (memoised per instance; a write invalidates it)
+- **Sessions** are read through `SessionLog` (grouped by session id in one pass on first use, in first-seen order, and kept for that value; a value is a snapshot, so a build reads the log once and an append is seen by the next `read`)
   into `Session` objects — the only reader of the event schema. A session's `tier`:
   `live` (running; never resume, it would fork), `resumable` (transcript exists),
   `expired` (transcript pruned), `uncaptured` (an item lists it, the log never saw it).

@@ -1,6 +1,8 @@
+use std::collections::{HashMap, HashSet};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
+use std::sync::OnceLock;
 
 use serde_json::{Map, Value};
 
@@ -127,8 +129,15 @@ fn alive(pid: Option<&Value>) -> bool {
     rc == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
+struct Grouped {
+    sessions: Vec<Session>,
+    index: HashMap<String, usize>,
+}
+
+/// The log as read once; it is never appended to in place, so what it derives is never stale.
 pub struct SessionLog {
     events: Vec<Event>,
+    grouped: OnceLock<Grouped>,
 }
 
 impl SessionLog {
@@ -157,7 +166,7 @@ impl SessionLog {
                 _ => None,
             })
             .collect();
-        SessionLog { events }
+        SessionLog { events, grouped: OnceLock::new() }
     }
 
     /// The `ts` of the newest event other than a dismissal: the last time capture saw anything.
@@ -171,37 +180,54 @@ impl SessionLog {
         })
     }
 
-    pub fn sessions(&self) -> Vec<Session> {
-        let mut order: Vec<Option<String>> = vec![];
-        for e in &self.events {
-            let id = e.get("session_id").and_then(Value::as_str).map(String::from);
-            if !order.contains(&id) {
-                order.push(id);
+    /// Every captured session in the order its id first appears; built in one pass over the events and
+    /// kept for the life of this value, which never changes after `read`.
+    fn grouped(&self) -> &Grouped {
+        self.grouped.get_or_init(|| {
+            // per id, in first-seen order: the newest start event and the newest event that is not a dismissal
+            let mut slots: Vec<(&str, Option<&Event>, Option<&Event>)> = vec![];
+            let mut at: HashMap<&str, usize> = HashMap::new();
+            for e in &self.events {
+                let Some(id) = e.get("session_id").and_then(Value::as_str) else { continue };
+                let slot = *at.entry(id).or_insert_with(|| {
+                    slots.push((id, None, None));
+                    slots.len() - 1
+                });
+                match e.get("event").and_then(Value::as_str) {
+                    Some("dismissed") => {}
+                    Some("start") => {
+                        slots[slot].1 = Some(e);
+                        slots[slot].2 = Some(e);
+                    }
+                    _ => slots[slot].2 = Some(e),
+                }
             }
-        }
-        order
-            .into_iter()
-            .filter_map(|id| {
-                let mine: Vec<&Event> =
-                    self.events.iter().filter(|e| e.get("session_id").and_then(Value::as_str) == id.as_deref()).collect();
-                let start = (*mine.iter().rev().find(|e| e.get("event").and_then(Value::as_str) == Some("start"))?).clone();
-                let last = (*mine.iter().rev().find(|e| e.get("event").and_then(Value::as_str) != Some("dismissed"))?).clone();
+            let mut sessions = vec![];
+            let mut index = HashMap::new();
+            for (id, start, last) in slots {
+                let (Some(start), Some(last)) = (start, last) else { continue };
                 let live = last.get("event").and_then(Value::as_str) == Some("start") && alive(start.get("pid"));
-                Some(Session { id: id?, start, last, live, captured: true })
-            })
-            .collect()
+                index.insert(id.to_string(), sessions.len());
+                sessions.push(Session { id: id.to_string(), start: start.clone(), last: last.clone(), live, captured: true });
+            }
+            Grouped { sessions, index }
+        })
+    }
+
+    pub fn sessions(&self) -> Vec<Session> {
+        self.grouped().sessions.clone()
     }
 
     pub fn session_for(&self, session_id: &str) -> Option<Session> {
-        self.sessions().into_iter().find(|s| s.id == session_id)
+        let g = self.grouped();
+        g.index.get(session_id).map(|&i| g.sessions[i].clone())
     }
 
     /// An item's sessions, newest captured first, uncaptured last — the order plain resume would pick.
     pub fn item_sessions(&self, item: &WorkItem) -> Res<Vec<Session>> {
-        let all = self.sessions();
         let mut out: Vec<(Session, Option<f64>)> = vec![];
         for id in item.session_ids() {
-            let session = all.iter().find(|s| s.id == id).cloned().unwrap_or_else(|| Session::uncaptured(&id));
+            let session = self.session_for(&id).unwrap_or_else(|| Session::uncaptured(&id));
             let when = match session.last_ts_opt() {
                 Some(ts) => Some(-(crate::clock::parse(&ts).ok_or_else(|| crate::error::QmError::argument(format!("no time information in {ts:?}")))?.timestamp_millis() as f64 / 1000.0)),
                 None => None,
@@ -227,8 +253,8 @@ impl SessionLog {
 
     /// Captured sessions no work item claims and nobody dismissed; asides and launched sessions never land here.
     pub fn inbox(&self) -> Res<Vec<Session>> {
-        let claimed: Vec<String> = WorkItem::all()?.iter().flat_map(|i| i.session_ids()).collect();
-        let dismissed: Vec<&str> = self
+        let claimed: HashSet<String> = WorkItem::all()?.iter().flat_map(|i| i.session_ids()).collect();
+        let dismissed: HashSet<&str> = self
             .events
             .iter()
             .filter(|e| e.get("event").and_then(Value::as_str) == Some("dismissed"))
