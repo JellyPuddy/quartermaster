@@ -1,7 +1,7 @@
 # Worktrees
 
 **Code:** `src/cleanup.rs`, `src/git_repo.rs`, `gui/js/cleanup.js`, `src/cleanup_run.rs`
-**Tests:** `tests/cleanup.rs`, `tests/cleanup_unread_drafts.rs`, `tests/issue_drafts.rs`
+**Tests:** `tests/cleanup.rs`, `tests/cleanup_safety.rs`, `tests/worktree_target.rs`, `tests/cleanup_unread_drafts.rs`, `tests/issue_drafts.rs`
 **Depends on:** [stacks](stacks.md), [gui-shell](gui-shell.md), [work-items](work-items.md)
 
 ## What it does

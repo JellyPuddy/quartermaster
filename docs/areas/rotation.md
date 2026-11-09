@@ -1,7 +1,7 @@
 # Rotation
 
 **Code:** `src/rotation.rs`, `skills/rotate/SKILL.md`
-**Tests:** `tests/gui.rs`
+**Tests:** `tests/gui.rs`, `tests/restack_rotate_safety.rs`
 **Depends on:** [chats](chats.md), [work-items](work-items.md), [attention](attention.md)
 
 ## What it does

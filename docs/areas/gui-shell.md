@@ -1,7 +1,7 @@
 # GUI shell
 
 **Code:** `src/gui_server.rs`, `src/gui_launch.rs`, `src/gui_action.rs`, `src/gui_actions.rs`, `src/gui_jobs.rs`, `src/gui_state.rs`, `src/command_runner.rs`, `src/pf.rs`, `src/transcript_search.rs`, `src/ask_command.rs`, `gui/page.html`, `gui/js/core.js`, `gui/js/server.js`, `gui/js/events.js`, `gui/js/board.js`, `gui/js/detail.js`, `gui/js/session-sheet.js`, `gui/js/search.js`, `gui/js/transcript-search.js`, `gui/js/popovers.js`, `gui/js/modals.js`, `gui/js/focus.js`, `gui/js/long-actions.js`, `gui/js/errors.js`, `gui/css/base.css`, `gui/css/board.css`, `gui/css/header.css`, `gui/css/overlays.css`, `gui/css/responsive.css`, `src/grep_command.rs`
-**Tests:** `tests/command_timeout.rs`, `tests/gui.rs`, `tests/error_log.rs`, `tests/grep.rs`, `tests/ask.rs`
+**Tests:** `tests/command_timeout.rs`, `tests/gui.rs`, `tests/gui_guards.rs`, `tests/error_log.rs`, `tests/grep.rs`, `tests/ask.rs`
 **Depends on:** [work-items](work-items.md), [attention](attention.md), [chats](chats.md), [worktrees](worktrees.md), [side-panel](side-panel.md)
 
 ## What it does

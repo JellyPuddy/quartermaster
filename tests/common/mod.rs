@@ -53,11 +53,14 @@ pub fn ruby_launcher() -> PathBuf {
     oracle().expect("QM_RUBY_ORACLE").join("quartermaster")
 }
 
-/// True (after saying so) when a differential test has no Ruby oracle to run against: `if skip() { return; }`.
+/// True (after printing a visible SKIPPED line) when a differential test has no Ruby oracle: `if skip() { return; }`.
+/// The safety rules do not hang on it: they have ungated tests (`cleanup_safety`, `gui_guards`, `worktree_target`,
+/// `restack_rotate_safety`).
 pub fn skip() -> bool {
     let none = oracle().is_none();
     if none {
-        eprintln!("skipped: needs QM_RUBY_ORACLE (a checkout of 6c25480, the last commit with the Ruby code)");
+        // straight to the stderr handle: `eprintln!` is captured and hidden on a pass, which is the silence this ends
+        let _ = std::io::Write::write_all(&mut std::io::stderr(), b"SKIPPED (QM_RUBY_ORACLE unset): a differential test did not run; needs a checkout of 6c25480, the last commit with the Ruby code\n");
     }
     none
 }

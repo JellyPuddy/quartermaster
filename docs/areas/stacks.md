@@ -1,7 +1,7 @@
 # Stacks
 
 **Code:** `src/gh_stack.rs`, `gui/js/stacks.js`, `gui/css/stacks.css`
-**Tests:** `tests/show.rs`, `tests/gui.rs`
+**Tests:** `tests/show.rs`, `tests/gui.rs`, `tests/restack_rotate_safety.rs`
 **Depends on:** [work-items](work-items.md), [chats](chats.md), [prs](prs.md), [side-panel](side-panel.md), [diff](diff.md)
 
 ## What it does
