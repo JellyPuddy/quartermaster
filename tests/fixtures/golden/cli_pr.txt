@@ -1,0 +1,161 @@
+$ qm "pr"
+exit 1
+--- stderr
+usage: qm pr SLUG
+--- p-one.md
+---
+v: 1
+title: p-one
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-a
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pr" "nowhere"
+exit 1
+--- stderr
+qm: no work item 'nowhere'
+--- p-one.md
+---
+v: 1
+title: p-one
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-a
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pr" "p-none"
+exit 1
+--- stderr
+qm: 'p-none' has no branch linked
+--- p-one.md
+---
+v: 1
+title: p-one
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-a
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pr" "p-bare"
+exit 1
+--- stderr
+qm: no repo root configured for project 'nowhere'
+--- p-one.md
+---
+v: 1
+title: p-one
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-a
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pr" "p-one"
+exit 0
+--- p-one.md
+---
+v: 1
+title: p-one
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-a
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pr" "p-one" "extra"
+exit 0
+--- p-one.md
+---
+v: 1
+title: p-one
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-a
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+$ qm "pr" "p-one"
+exit 1
+--- stderr
+qm: no PR found for branch feat-a
+--- p-one.md
+---
+v: 1
+title: p-one
+state: in_progress
+project: demo
+created: 'DATE'
+branches:
+- feat-a
+---
+
+## Description
+
+d
+
+## Notes
+
+## Snapshots
+
+gh log:
+gh pr view feat-a --web in repo
+gh pr view feat-a --web in repo
+gh pr view feat-a --web in repo

@@ -1,7 +1,7 @@
 # Drafts
 
-**Code:** `lib/quartermaster/drafts.rb`, `lib/quartermaster/page_annotations.rb`, `lib/quartermaster/clipboard_annotations.rb`, `lib/quartermaster/issue_drafts.rb`, `skills/draft-issues/SKILL.md`, `skills/draft-issues/helpers/issue-drafts.html`, `lib/quartermaster/gui/js/drafts.js`, `lib/quartermaster/gui/js/anchors.js`, `lib/quartermaster/gui/js/diff-annotations.js`
-**Tests:** `test/drafts_test.rb`, `test/page_annotations_test.rb`, `test/clipboard_annotations_test.rb`, `test/issue_drafts_test.rb`
+**Code:** `src/drafts.rs`, `src/clipboard_annotations.rs`, `src/issue_drafts.rs`, `skills/draft-issues/SKILL.md`, `skills/draft-issues/helpers/issue-drafts.html`, `gui/js/drafts.js`, `gui/js/anchors.js`, `gui/js/diff-annotations.js`, `src/gui_draft_actions.rs`, `src/gui_draft_send.rs`
+**Tests:** `tests/issue_drafts.rs`, `tests/gui.rs`, `tests/cli_draft.rs`
 **Depends on:** [diff](diff.md), [review](review.md), [issues](issues.md), [chats](chats.md)
 
 ## What it does

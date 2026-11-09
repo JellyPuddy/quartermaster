@@ -1,7 +1,7 @@
 # Diff pane
 
-**Code:** `lib/quartermaster/branch_diff.rb`, `lib/quartermaster/branch_stats.rb`, `skills/branch-stats/SKILL.md`, `skills/branch-stats/scripts/branch-stats.sh`, `lib/quartermaster/prompt_diff.rb`, `lib/quartermaster/prompt_snapshots.rb`, `lib/quartermaster/unified_diff.rb`, `lib/quartermaster/file_at_revision.rb`, `lib/quartermaster/viewed_marks.rb`, `lib/quartermaster/uncommitted_marks.rb`, `lib/quartermaster/stack_layers.rb`, `lib/quartermaster/pr_revisions.rb`, `lib/quartermaster/pr_memo.rb`, `lib/quartermaster/gui/js/diff.js`, `lib/quartermaster/gui/js/diff-commits.js`, `lib/quartermaster/gui/js/diff-nav.js`, `lib/quartermaster/gui/js/diff-file.js`, `lib/quartermaster/gui/js/diff-stack.js`, `lib/quartermaster/gui/js/branch-stats.js`, `lib/quartermaster/gui/css/diff.css`, `lib/quartermaster/gui/css/diff-stack.css`, `lib/quartermaster/gui/css/branch-stats.css`
-**Tests:** `test/diff_pane_test.rb`, `test/prompt_diff_test.rb`, `test/prompt_snapshots_test.rb`, `test/pr_scope_test.rb`, `test/branch_stats_test.rb`
+**Code:** `src/branch_diff.rs`, `src/branch_stats.rs`, `skills/branch-stats/SKILL.md`, `skills/branch-stats/scripts/branch-stats.sh`, `src/prompt_diff.rs`, `src/unified_diff.rs`, `src/viewed_marks.rs`, `src/uncommitted_marks.rs`, `src/stack_layers.rs`, `gui/js/diff.js`, `gui/js/diff-commits.js`, `gui/js/diff-nav.js`, `gui/js/diff-file.js`, `gui/js/diff-stack.js`, `gui/js/branch-stats.js`, `gui/css/diff.css`, `gui/css/diff-stack.css`, `gui/css/branch-stats.css`
+**Tests:** `tests/gui.rs`
 **Depends on:** [chats](chats.md), [stacks](stacks.md), [capture](capture.md), [review](review.md), [drafts](drafts.md)
 
 ## What it does
@@ -56,7 +56,7 @@ A pane between the chat and the side panel (which hides while it is open) shows 
 - `prAvailable` never calls gh: loading a diff never waits on GitHub.
 - Branch stats never fetch and never use a model for the numbers; the haiku commentary runs only on a click, as a background job, never under the action mutex.
 - `branch-stats.json` is a real cache: an unreadable or foreign-version file reads as empty, writes go to a temp file then rename.
-- The branch-stats script's markdown is `BranchStats.parse`'s input: a change to its output format changes the parser in the same commit (`test/branch_stats_test.rb` runs the real script and parses it).
+- The branch-stats script's markdown is `branch_stats`'s parser input: a change to its output format changes the parser in the same commit (`tests/gui.rs` runs the real script and parses it).
 - The stack span base is ignored by the PR scope (GitHub diffs a PR against its own base); the layers a loaded span covers are read from the answer (`base.kind == "stack-span"`), not the choice.
 - Only the selected branch's (or span's) diff body is built — never the whole stack.
 - Per-layer git answers are cached on the tip shas (`GhStack.fact`) and tips resolve via `GhStack::RefTips`, so a reload with unchanged refs runs no per-layer git.

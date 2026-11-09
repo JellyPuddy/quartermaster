@@ -1,7 +1,7 @@
 # Work items
 
-**Code:** `lib/quartermaster/work_item.rb`, `lib/quartermaster/note.rb`, `lib/quartermaster/attention.rb`
-**Tests:** `test/work_item_test.rb`, `test/attention_test.rb`, `test/distill_test.rb`, `test/history_rotation_test.rb`
+**Code:** `src/work_item.rs`, `src/note.rs`, `src/attention.rs`, `src/front_edit.rs`, `src/psych.rs`, `src/yaml_scalar.rs`, `src/sections.rs`, `src/distill.rs`
+**Tests:** `tests/work_items.rs`, `tests/psych_scalars.rs`, `tests/interop.rs`, `tests/show.rs`
 **Depends on:** [capture](capture.md)
 
 ## What it does
@@ -45,7 +45,7 @@ editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
 - **Snapshots** are distilled transcript summaries, one per session, under `## Snapshots` as
   `### <date> — session <id>` blocks — the rehydration source once a transcript is gone.
 - **Distill** (`qm distill SLUG [--session ID] [--force]`, the viewer's ^T, the GUI action;
-  `Quartermaster.distill_*` in `lib/quartermaster.rb`): headless `claude -p --model haiku`
+  `src/distill.rs`): headless `claude -p --model haiku`
   with `QM_SKIP=1` over the transcript, prompt asking for goal, what was done and decided,
   state left in, next steps in under 300 words. Bare distill covers every session carrying
   a degradation warning — one action clears an item's expiry warnings — else the newest

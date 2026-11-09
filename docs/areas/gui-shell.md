@@ -1,7 +1,7 @@
 # GUI shell
 
-**Code:** `lib/quartermaster/gui.rb`, `lib/quartermaster/gui_actions.rb`, `lib/quartermaster/gui_jobs.rb`, `lib/quartermaster/gui_state.rb`, `lib/quartermaster/loopback_guard.rb`, `lib/quartermaster/command_runner.rb`, `lib/quartermaster/pf.rb`, `lib/quartermaster/pf_fence.rb`, `lib/quartermaster/transcript_search.rb`, `lib/quartermaster/ask_search.rb`, `lib/quartermaster/gui/page.html`, `lib/quartermaster/gui/js/core.js`, `lib/quartermaster/gui/js/server.js`, `lib/quartermaster/gui/js/events.js`, `lib/quartermaster/gui/js/board.js`, `lib/quartermaster/gui/js/detail.js`, `lib/quartermaster/gui/js/session-sheet.js`, `lib/quartermaster/gui/js/search.js`, `lib/quartermaster/gui/js/transcript-search.js`, `lib/quartermaster/gui/js/popovers.js`, `lib/quartermaster/gui/js/modals.js`, `lib/quartermaster/gui/js/focus.js`, `lib/quartermaster/gui/js/long-actions.js`, `lib/quartermaster/gui/css/base.css`, `lib/quartermaster/gui/css/board.css`, `lib/quartermaster/gui/css/header.css`, `lib/quartermaster/gui/css/overlays.css`, `lib/quartermaster/gui/css/responsive.css`
-**Tests:** `test/gui_test.rb`, `test/pf_test.rb`, `test/distill_test.rb`, `test/transcript_search_test.rb`
+**Code:** `src/gui_server.rs`, `src/gui_action.rs`, `src/gui_actions.rs`, `src/gui_jobs.rs`, `src/gui_state.rs`, `src/command_runner.rs`, `src/pf.rs`, `src/transcript_search.rs`, `src/ask_command.rs`, `gui/page.html`, `gui/js/core.js`, `gui/js/server.js`, `gui/js/events.js`, `gui/js/board.js`, `gui/js/detail.js`, `gui/js/session-sheet.js`, `gui/js/search.js`, `gui/js/transcript-search.js`, `gui/js/popovers.js`, `gui/js/modals.js`, `gui/js/focus.js`, `gui/js/long-actions.js`, `gui/css/base.css`, `gui/css/board.css`, `gui/css/header.css`, `gui/css/overlays.css`, `gui/css/responsive.css`, `src/grep_command.rs`
+**Tests:** `tests/gui.rs`, `tests/grep.rs`, `tests/ask.rs`
 **Depends on:** [work-items](work-items.md), [attention](attention.md), [chats](chats.md), [worktrees](worktrees.md), [side-panel](side-panel.md)
 
 ## What it does
@@ -68,10 +68,10 @@ cheaper events pulse and `/api/attention` (attention, notifications, draft count
 tab title's count. The pulse also tells `TurnNotifier` whether the page is visible/focused.
 
 **The page.** `gui/page.html` holds the markup plus two server-injected constants
-(`TAXONOMIES`, substituted from `Quartermaster.taxonomies` so JS and Ruby can't drift, and
+(`TAXONOMIES`, substituted from the Rust taxonomies so JS and server can't drift, and
 `terminalToken`); styles and scripts are `gui/css/*.css` and `gui/js/*.js` by area, served
 from `/assets/` and read at serve time like the page (so edits need no restart); after a JS
-edit, `node --check lib/quartermaster/gui/js/<file>.js` checks its syntax (nodejs is pinned
+edit, `node --check gui/js/<file>.js` checks its syntax (nodejs is pinned
 in `.tool-versions` for that alone; no test needs node). xterm.js,
 highlight.js and marked load from jsDelivr with SRI hashes. `docs/gui-mockup.html` is the
 design reference: SF for chrome, SF Mono for data (slugs, ids, states, stamps, kbd chips),

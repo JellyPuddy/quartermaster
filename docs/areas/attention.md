@@ -1,7 +1,7 @@
 # Chat attention
 
-**Code:** `lib/quartermaster/event_log.rb`, `lib/quartermaster/chat_attention.rb`, `lib/quartermaster/turn_notifier.rb`, `lib/quartermaster/transcript_vitals.rb`, `lib/quartermaster/background_jobs.rb`, `lib/quartermaster/chat_opener.rb`, `lib/quartermaster/gui/js/notify.js`
-**Tests:** `test/chat_attention_test.rb`, `test/turn_notifier_test.rb`
+**Code:** `src/event_log.rs`, `src/chat_attention.rs`, `src/turn_notifier.rs`, `src/transcript_vitals.rs`, `src/background_jobs.rs`, `src/chat_launch_commands.rs`, `gui/js/notify.js`
+**Tests:** `tests/attention.rs`, `tests/attention_commands.rs`, `tests/chat_attention.rs`, `tests/chats.rs`
 **Depends on:** [capture](capture.md), [chats](chats.md)
 
 ## What it does
@@ -111,10 +111,8 @@ Says whose move it is in every chat, and tells the user when one needs them.
   spliced into the script. A click on an osascript notification opens Finder — hence terminal-notifier first.
 - terminal-notifier gets `-group qm-<slug>` (a newer notification replaces the older; an unlinked
   session groups by session id) and, for an item or a loose chat, `-execute` running
-  `<RbConfig.ruby> <launcher> open-chat <slug or loose name>`.
-- That uses the GUI's own ruby because the click runs with a bare PATH, where `env ruby` finds
-  macOS's Ruby 2.6.
-- `ChatOpener` drives Arc (`company.thebrowser.Browser`) by AppleScript and never launches it: the
+  `<this qm binary> open-chat <slug or loose name>` (an absolute path: the click runs with a bare PATH).
+- `qm open-chat` drives Arc (`company.thebrowser.Browser`) by AppleScript and never launches it: the
   first tab on `http://127.0.0.1:<port>/` or `http://localhost:<port>/` gets `…/#chat=<slug>`
   (hash-only, no reload), is selected, and Arc comes to the front. URLs go in via `on run argv`.
 - No such tab, Arc not running, or the script failing → `open` the URL in the default browser.

@@ -1,7 +1,7 @@
 # Capture
 
-**Code:** `lib/quartermaster/hook_handler.rb`, `lib/quartermaster/session.rb`, `lib/quartermaster/session_log.rb`, `lib/quartermaster/project_map.rb`, `lib/quartermaster/project_config.rb`, `lib/quartermaster/project_settings.rb`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
-**Tests:** `test/hook_test.rb`, `test/chat_attention_test.rb`, `test/prompt_snapshots_test.rb`
+**Code:** `src/hook.rs`, `src/session_log.rs`, `src/project_map.rs`, `src/project_config.rs`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
+**Tests:** `tests/sessions.rs`, `tests/characterization.rs`, `tests/chat_attention.rs`
 **Depends on:** none
 
 ## What it does
@@ -53,13 +53,13 @@ fallback protocol for when the injection is missing.
 
 ## Rules
 
-- **Hooks never block or break a session.** Ruby hook entry points rescue everything, log
-  to `qm.log` and exit 0 (`CLI#guard_hook`); the `sh` hooks wrap their body in
-  `{ … } >/dev/null 2>&1` and always `exit 0`. Pinned by tests.
+- **Hooks never block or break a session.** The `hook-*` commands rescue everything, log
+  to `qm.log` and exit 0 (`guard_hook` in `src/cli.rs`); the launcher exits 0 without a binary;
+  the `sh` hooks wrap their body in `{ … } >/dev/null 2>&1` and always `exit 0`. Pinned by tests.
 - **Only SessionStart may print**, and only the injected context. SessionEnd and every error
   path stay silent — stray stdout would leak into Claude's context.
-- **Per-tool-call hooks are plain POSIX `sh`, not Ruby**: PostToolUse fires on every tool
-  call and Ruby startup there would tax every session. They never print, only append, and
+- **Per-tool-call hooks are plain POSIX `sh`, not `qm`**: PostToolUse fires on every tool
+  call and a process start there would tax every session. They never print, only append, and
   leave all derivation to qm at read time.
 - **`QM_SKIP=1` silences capture**: every hook returns at once. qm's own headless
   `claude -p` runs (distill, ask, build progress) set it so they never log themselves.
@@ -120,9 +120,7 @@ fallback protocol for when the injection is missing.
   resumed or restarted.
 - Headless `claude -p` sessions fire SessionStart/SessionEnd like interactive ones — useful
   for end-to-end checks, and the reason `QM_SKIP` exists.
-- `env ruby` resolves through asdf shims; with no asdf global ruby default it dies outside
-  repos pinned by `.tool-versions` and capture silently stops. Fixed by
-  `asdf set -u ruby <version>` (writes `~/.tool-versions`) — check this first when capture
-  goes quiet.
+- The hooks run the launcher, which needs `target/release/qm`: after a `git pull`, `cargo build
+  --release`, and check that first when capture goes quiet.
 - Claude Code prunes transcripts `cleanupPeriodDays` (default 30) after their last write;
   qm can't stop that, only distill first ([work-items](work-items.md)).

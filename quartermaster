@@ -1,8 +1,22 @@
-#!/usr/bin/env ruby
-# frozen_string_literal: true
-
-# Launcher only — the code lives in lib/quartermaster/. Resolved through
-# realpath so the ~/bin/{quartermaster,qm} symlinks keep working.
-require File.join(File.dirname(File.realpath(__FILE__)), "lib", "quartermaster")
-
-Quartermaster::CLI.new.run(ARGV) if $PROGRAM_NAME == __FILE__
+#!/bin/sh
+# The launcher the ~/bin/qm symlink and the hook registrations point at: it runs the binary cargo built
+# in this checkout (target/release/qm, or the one QM_BIN names). Resolved through the symlinks, so the
+# checkout can be anywhere.
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case $link in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+dir=$(cd "$(dirname "$self")" && pwd -P)
+bin=${QM_BIN:-$dir/target/release/qm}
+if [ ! -x "$bin" ]; then
+  case $1 in
+    hook-*) exit 0 ;; # a hook never breaks a session
+  esac
+  echo "qm: no built binary at $bin: run \`cargo build --release\` in $dir" >&2
+  exit 127
+fi
+exec "$bin" "$@"

@@ -1,7 +1,7 @@
 # Linking
 
-**Code:** `lib/quartermaster/launcher.rb`, `lib/quartermaster/warp_tab.rb`
-**Tests:** `test/hook_test.rb`, `test/launcher_test.rb`, `test/chat_pane_test.rb`, `test/aside_test.rb`
+**Code:** `src/launcher.rs`
+**Tests:** `tests/sessions.rs`, `tests/cli_workspace.rs`, `tests/pane_follow.rs`
 **Depends on:** [capture](capture.md), [work-items](work-items.md)
 
 ## What it does

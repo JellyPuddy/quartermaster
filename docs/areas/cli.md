@@ -1,15 +1,20 @@
 # CLI and viewer
 
-**Code:** `lib/quartermaster/cli.rb`, `lib/quartermaster/cli_format.rb`, `lib/quartermaster/cli_viewer.rb`, `lib/quartermaster/cli_attention.rb`, `lib/quartermaster/cli_chats.rb`, `lib/quartermaster/cli_prs.rb`, `lib/quartermaster/cli_cleanup.rb`, `lib/quartermaster/cli_workspace.rb`, `lib/quartermaster/viewer.rb`, `lib/quartermaster/feature_use.rb`, `quartermaster`
-**Tests:** `test/viewer_test.rb`, `test/feature_use_test.rb`
+**Code:** `src/cli.rs`, `src/cli_format.rs`, `src/viewer_commands.rs`, `src/session_rows.rs`, `src/show_command.rs`, `src/session_detail.rs`, `src/attention_command.rs`, `src/overview.rs`, `src/chats_commands.rs`, `src/pr_requires_command.rs`, `src/draft_command.rs`, `src/cleanup_command.rs`, `src/workspace_commands.rs`, `src/viewer.rs`, `src/feature_use.rs`, `quartermaster`, `src/main.rs`, `src/lib.rs`, `src/outcome.rs`, `src/delegate.rs`, `src/opt_parse.rs`, `src/session_commands.rs`, `src/work_item_commands.rs`, `src/error.rs`, `src/clock.rs`, `src/ruby_format.rs`, `src/ruby_num.rs`, `src/ruby_text.rs`, `src/data_root.rs`, `src/git.rs`, `src/sha1.rs`, `src/sha256.rs`
+**Tests:** `tests/viewer.rs`, `tests/cli_feature_use.rs`, `tests/cli_launch.rs`, `tests/cli_overview.rs`, `tests/launcher.rs`, `tests/characterization.rs`
 **Depends on:** [work-items](work-items.md), [linking](linking.md), [gui-shell](gui-shell.md)
 
 ## What it does
 
-`qm` is shared by the user, Claude and the hooks. `./quartermaster` is a launcher only: it
-requires `lib/quartermaster` through its realpath, so the `~/bin/qm` and `~/bin/quartermaster`
-symlinks keep working, and runs `CLI#run`. Help text comes from `CliFormat::USAGE_SECTIONS`;
-`qm help` is authoritative. Commands, one line each (flags in `qm help`):
+`qm` is shared by the user, Claude and the hooks. `./quartermaster` is a launcher only: a POSIX
+`sh` script that follows its own symlinks (so `~/bin/qm`, `~/bin/quartermaster` and the hook
+registrations keep working wherever the checkout is) and execs `target/release/qm` (`QM_BIN` names
+another binary); with no binary it says to run `cargo build --release`, except for a hook, which
+exits 0 silently. `src/cli.rs` records the command in `feature-use.jsonl`, rewrites the command's
+options through `src/opt_parse.rs` (any unambiguous abbreviation of a long option, `--name=value`,
+`-n5`, options among the arguments; an unknown one is `qm: invalid option: --x`) and runs the command.
+A command that can't take its arguments as given (an odd value in a file it reads, say) says
+`qm: can't do this as given`. Help text is `src/usage.txt`; `qm help` is authoritative. Commands, one line each (flags in `qm help`):
 
 **Viewer and GUI**
 - `qm` — the fzf viewer in a terminal with fzf; otherwise (piped, no fzf) `qm list`.

@@ -1,7 +1,7 @@
 # Benchmarks
 
-**Code:** `lib/quartermaster/benchmark_run.rb`, `lib/quartermaster/benchmark_pipeline.rb`, `lib/quartermaster/benchmark_report.rb`, `lib/quartermaster/gui_benchmark_actions.rb`, `lib/quartermaster/gui/js/benchmark.js`, `lib/quartermaster/gui/js/benchmark-table.js`, `lib/quartermaster/gui/css/benchmark.css`
-**Tests:** `test/benchmark_run_test.rb`, `test/benchmark_report_test.rb`, `test/gui_benchmark_test.rb`
+**Code:** `src/benchmark_run.rs`, `src/benchmark_pipeline.rs`, `src/benchmark_report.rs`, `gui/js/benchmark.js`, `gui/js/benchmark-table.js`, `gui/css/benchmark.css`
+**Tests:** `tests/gui.rs`
 **Depends on:** [diff](diff.md), [stacks](stacks.md), [attention](attention.md), [work-items](work-items.md), [gui-shell](gui-shell.md)
 
 ## What it does

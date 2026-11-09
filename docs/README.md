@@ -53,10 +53,10 @@ goes in the commit message.
   publishing.
 - [cli](areas/cli.md) — read when you touch a `qm` command, the bare-`qm` fzf viewer or live
   sessions listing.
+- [testing](areas/testing.md) — read when you add a test or golden, use the Ruby oracle, or
+  touch the docs-shape and size-ratchet checks.
 
 ## Also here
 
 - `gui-mockup.html` — the GUI's design-reference prototype (fake data).
-- `showcase/` — a fake demo world for running the real `qm gui` on made-up data, scripted
-  screenshots of it and the narrated overview video; how to run them is in `showcase/README.md`.
-- `test/docs_shape_test.rb` checks these pages' shape: headers, code ownership, links, sizes.
+- `tests/docs_shape.rs` checks these pages' shape: headers, code ownership, links, sizes.

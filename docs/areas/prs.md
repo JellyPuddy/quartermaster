@@ -1,7 +1,7 @@
 # PRs
 
-**Code:** `lib/quartermaster/pr_inbox.rb`, `lib/quartermaster/pr_items.rb`, `lib/quartermaster/pr_status.rb`, `lib/quartermaster/pr_prerequisites.rb`, `lib/quartermaster/pr_deployment.rb`, `lib/quartermaster/gui/js/prs.js`, `lib/quartermaster/gui/css/prs.css`
-**Tests:** `test/prs_view_test.rb`, `test/pr_prerequisites_test.rb`, `test/pr_deployment_test.rb`
+**Code:** `src/pr_inbox.rs`, `src/pr_items.rs`, `src/pr_status.rs`, `src/pr_prerequisites.rs`, `src/pr_deployment.rs`, `gui/js/prs.js`, `gui/css/prs.css`, `src/gui_prs.rs`
+**Tests:** `tests/gui.rs`, `tests/pr_requires.rs`
 **Depends on:** [work-items](work-items.md), [gui-shell](gui-shell.md), [worktrees](worktrees.md), [review](review.md)
 
 ## What it does

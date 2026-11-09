@@ -1,7 +1,7 @@
 # Stacks
 
-**Code:** `lib/quartermaster/gh_stack.rb`, `lib/quartermaster/gui/js/stacks.js`, `lib/quartermaster/gui/css/stacks.css`
-**Tests:** `test/restack_test.rb`, `test/gh_stack_test.rb`
+**Code:** `src/gh_stack.rs`, `gui/js/stacks.js`, `gui/css/stacks.css`
+**Tests:** `tests/show.rs`, `tests/gui.rs`
 **Depends on:** [work-items](work-items.md), [chats](chats.md), [prs](prs.md), [side-panel](side-panel.md), [diff](diff.md)
 
 ## What it does

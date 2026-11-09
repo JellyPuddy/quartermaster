@@ -27,7 +27,7 @@ current, so Claude itself writes the notes.
 
 ## Screenshots
 
-All taken on the made-up demo world in [`showcase/`](showcase/README.md).
+All taken on a made-up demo world.
 
 | | |
 |---|---|
@@ -46,7 +46,8 @@ anywhere.
 ## Requirements
 
 - **macOS** (see [macOS-only pieces](#macos-only-pieces); other platforms are untested).
-- **Ruby ≥ 3.3** as `ruby` on `PATH` (stdlib only, no gems).
+- **A Rust toolchain** to build it (`cargo build --release`; `.tool-versions` pins the version for asdf,
+  or use [rustup](https://rustup.rs)).
 - **Claude Code**, **git**, **tmux** (the GUI's chats) and **fzf** (the terminal viewer).
 - **gh**, logged in, for PRs, issues and reviews, plus the gh-stack extension (`gh stack`) for
   stacked branches. Everything GitHub works offline too, just without that data.
@@ -57,19 +58,46 @@ Everything else is optional: see [Optional features](#optional-features).
 
 ```sh
 git clone <this repo> ~/code/quartermaster
-ln -s ~/code/quartermaster/quartermaster ~/bin/qm   # any directory on PATH
-qm install-hooks                                     # prints the hooks snippet
+cd ~/code/quartermaster && cargo build --release       # target/release/qm
+ln -s ~/code/quartermaster/quartermaster ~/bin/qm       # any directory on PATH
+qm install-hooks                                        # prints the hooks snippet
 ```
+
+`quartermaster` is a small `sh` launcher that runs `target/release/qm` through any symlink; rebuild after
+every `git pull`, since the hooks run whatever binary is there.
 
 1. **Hooks.** `qm install-hooks` prints the `hooks` block for `~/.claude/settings.json`, with
    absolute paths into your checkout. qm never writes that file: merge the block in yourself.
    Keep the checkout where it is afterwards; the hooks point at it.
 2. **Skills.** Link the [bundled skills](#bundled-skills) you want into `~/.claude/skills/`.
-3. **Status line** (optional, but it is where qm learns your rate limits):
-   `ln -s ~/code/quartermaster/statusline/statusline.rb ~/.claude/statusline.rb` and set
-   `"statusLine": {"type": "command", "command": "/usr/bin/ruby ~/.claude/statusline.rb"}` in settings.json.
+3. **Status line** (optional, but it is where qm learns your rate limits): set
+   `"statusLine": {"type": "command", "command": "/path/to/qm statusline"}` in settings.json.
 4. Start a Claude Code session anywhere. qm creates `~/.claude/quartermaster/` (override with
    `QM_ROOT`) with a commented `config.yml`. Run `qm gui` and open the URL it prints.
+
+## Migrating from the Ruby version
+
+qm was written in Ruby and is now Rust, with the same commands, the same files and the same GUI. **Your
+data needs no migration:** work items, `sessions.jsonl`, drafts, caches and `config.yml` in
+`~/.claude/quartermaster/` (or `QM_ROOT`) are read and written as before, byte for byte.
+
+1. **Build the binary** in your checkout: `git pull && cargo build --release`. The launcher
+   `~/bin/qm` points at (`quartermaster`, now an `sh` script) runs `target/release/qm`, so the symlink
+   and the hooks `qm install-hooks` printed earlier keep working unchanged. Until the build exists
+   `qm` says to build it, and the hooks stay silent.
+2. **Drop the Ruby settings.** `QM_USE_RUST`, `QM_RUST_BIN` and `QM_RUBY_LAUNCHER` mean nothing any more,
+   and Ruby (and asdf's global ruby) is no longer needed.
+3. **Move the status line** (the one step that breaks if skipped): `statusline/statusline.rb` is gone, so
+   change the `statusLine` command in `~/.claude/settings.json` from
+   `/usr/bin/ruby ~/.claude/statusline.rb` to `/path/to/qm statusline` and remove the
+   `~/.claude/statusline.rb` symlink.
+4. **Restart `qm gui`.** It is the Rust server now.
+
+A few things differ on purpose: an option qm cannot read says `qm: invalid option: --x` instead of a
+Ruby backtrace; a title with no letter or digit is refused instead of making an item with an empty
+slug; YAML qm writes for unusual titles (line breaks, `~`, `<<`) is double-quoted. **To go back**, check
+out commit `6c25480`, the last one with the Ruby code. Report anything else that differs as a bug: the
+port was checked against Ruby on every command and GUI route ([testing](docs/areas/testing.md)).
 
 ## Optional features
 
@@ -169,7 +197,6 @@ Control.
 - Notifications: `osascript` (or terminal-notifier).
 - Opening URLs, Warp tabs and the GUI: `open`; focusing the GUI tab in Arc: `osascript`.
 - Keeping the Mac awake while chats work (`qm caffeinate`): `/usr/bin/caffeinate`.
-- The status line runs under macOS's system Ruby, `/usr/bin/ruby`.
 
 ## config.yml
 
@@ -238,13 +265,17 @@ Know this before you install it:
 ## Development
 
 ```sh
-ruby test/quartermaster_test.rb
+cargo test                                                # unit tests, goldens, the GUI server's tests
+QM_RUBY_ORACLE=$PWD/../qm-ruby cargo test                 # plus the Ruby-vs-Rust comparisons (see below)
 ```
+
+The comparisons against the old Ruby implementation need a checkout of the last commit that had it:
+`git worktree add ../qm-ruby 6c25480`; without `QM_RUBY_ORACLE` they skip
+([testing](docs/areas/testing.md)).
 
 Tests run against a temporary `QM_ROOT` and their own tmux socket, never your live data. Start
 with [`CLAUDE.md`](CLAUDE.md) (the hard constraints) and [`docs/README.md`](docs/README.md),
-which indexes one page per area. `showcase/` builds a fake demo world to run the real GUI on
-made-up data.
+which indexes one page per area.
 
 ## License
 

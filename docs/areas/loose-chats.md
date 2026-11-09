@@ -1,7 +1,7 @@
 # Loose chats
 
-**Code:** `lib/quartermaster/loose_chat.rb`, `lib/quartermaster/gui_loose_actions.rb`, `lib/quartermaster/gui/js/loose.js`
-**Tests:** `test/loose_chat_test.rb`
+**Code:** `gui/js/loose.js`
+**Tests:** `tests/gui.rs`
 **Depends on:** [chats](chats.md), [linking](linking.md), [attention](attention.md), [asides](asides.md)
 
 ## What it does
