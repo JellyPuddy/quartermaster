@@ -23,7 +23,7 @@ const KNOWN: &[&str] = &[
     "pane-warp", "rotate", "aside-open", "aside-close", "aside-promote", "aside-reopen", "page-annotations", "drafts-load", "diff-viewed", "draft-put", "draft-move",
     "review-post", "thread-reply-put", "pr-thread-resolve", "review-preview", "draft-place", "issue-comment-put", "draft-edit", "draft-delete", "drafts-discard",
     "drafts-send", "issues-clear-created", "issue-acknowledge", "issues-create", "build-progress", "branch-stats-commentary", "board-answer", "issue-preview",
-    "issue-start", "pr-chat", "pr-review", "pr-pf", "pr-ide", "pr-unrequire", "cleanup", "caffeinate", "benchmark-start", "benchmark-cancel", "benchmark-rerun",
+    "issue-start", "pr-chat", "pr-review", "pr-pf", "pr-ide", "pr-unrequire", "cleanup", "caffeinate", "errors-seen", "benchmark-start", "benchmark-cancel", "benchmark-rerun",
     "loose-start", "loose-close", "loose-promote", "delete",
 ];
 
@@ -268,6 +268,7 @@ fn run(payload: &Value) -> R<Value> {
             Ok(ok())
         }
         "caffeinate" => caffeinate(&args),
+        "errors-seen" => crate::error_log::mark_seen_reply().map_err(fail),
         "adopt" => adopt(&slug, &args),
         "restack" => restack(&slug, &args),
         "work-on" | "pf-switch" | "ide" | "terminal" => workspace_job(&cmd, &slug, &args),

@@ -22,6 +22,7 @@ pub mod draft_command;
 pub mod drops;
 pub mod drafts;
 pub mod error;
+pub mod error_log;
 pub mod event_log;
 pub mod failure_log;
 pub mod feature_use;

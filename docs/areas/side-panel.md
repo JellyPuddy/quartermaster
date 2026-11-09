@@ -1,7 +1,7 @@
 # Side panel and header
 
 **Code:** `src/workspace.rs`, `src/board_mirror.rs`, `src/usage_ledger.rs`, `src/transcript_usage.rs`, `src/item_usage.rs`, `src/price_table.rs`, `src/caffeinate.rs`, `src/build_progress.rs`, `gui/js/chat-side.js`, `gui/js/limits.js`, `gui/css/side-panel.css`, `src/statusline.rs`, `skills/adopt-worktree/SKILL.md`, `src/price_defaults.rs`
-**Tests:** `tests/usage.rs`, `tests/usage_ledger_keep.rs`, `tests/statusline.rs`, `tests/gui.rs`, `tests/cli_board.rs`
+**Tests:** `tests/usage.rs`, `tests/usage_ledger_keep.rs`, `tests/statusline.rs`, `tests/error_log.rs`, `tests/gui.rs`, `tests/cli_board.rs`
 **Depends on:** [gui-shell](gui-shell.md), [worktrees](worktrees.md), [stacks](stacks.md), [capture](capture.md)
 
 ## What it does
@@ -130,7 +130,9 @@ statusline"}` in settings.json). Claude Code hands rate limits only to the statu
 `rate_limits.{five_hour,seven_day}.{used_percentage,resets_at}`, epoch seconds), so it is where
 qm gets them. Its second line is the linked item's title via `qm session-item`. Inside a qm chat
 (`$TMUX`'s socket path names `qm`, or `QM_TMUX_SOCKET`) it drops the 5h/wk segments and the
-`◆ item` line (and the `qm session-item` call); context % stays. Elsewhere output is unchanged.
+`◆ item` line (and the `qm session-item` call); context % stays. Outside a qm chat, unseen qm.log
+errors (the [capture](capture.md) `ErrorLog` rule) add a red `⚠ N qm errors` after the model; a
+log not modified since `errors-seen-at` (or the last day) is not read at all.
 
 **Caffeinate** (header ☕). `Caffeinate` owns one child: on spawns
 `/usr/bin/caffeinate -i -w <gui pid>` (idle sleep only; the display may still sleep and lock)
@@ -161,6 +163,7 @@ of the pulse so a server-side flip repaints. `qm caffeinate on|off|auto|status` 
 - `rateLimits` is not part of the pulse: the status line rewrites the file on every render, so the chip follows the next state build.
 - `qm statusline` is run on every refresh: it is never recorded in `feature-use.jsonl`, never creates the qm root, prints nothing for input that is not JSON, and reads the item title straight from the work items (no `qm session-item` child).
 - The status line replaces `<QM_ROOT>/rate-limits.json` atomically (tmp + rename, last writer wins — limits are per account) with `{v: 1, five_hour: {used_percentage, resets_at}, seven_day: {…}, captured_at}`, only when the qm root exists, and swallows every failure.
+- The status line's error count reads only qm.log's last 256 KB and any failure counts as no errors: it runs on every render and must never break.
 - The ☕ child belongs to the GUI process (`-w <gui pid>`, pid in memory only, no pid file), so it dies with the GUI and a restarted GUI starts off with nothing to adopt.
 - Auto mode never touches the server's life — it only switches the child — and acts only in auto, so manual on/off always win. `blocked` doesn't count as busy: it waits on the user.
 - Tests pass `Gui` a `caffeinate:` with stubbed spawn/alive/kill; a test GUI without one never spawns unless an `on` action reaches it.

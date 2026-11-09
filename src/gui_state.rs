@@ -528,6 +528,7 @@ pub fn build(token: &str) -> R<Value> {
         ("benchmark", crate::benchmark_run::busy(&context.bench)),
         ("notifications", Value::Array(crate::turn_notifier::recent())),
         ("rateLimits", rate_limits()),
+        ("errors", crate::error_log::ErrorLog::new().summary()),
         ("finished", Value::Array(crate::gui_jobs::take_finished())),
     ] {
         out.insert(k.into(), v);

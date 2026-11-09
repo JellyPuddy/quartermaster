@@ -31,6 +31,7 @@ async function refresh() {
     pf = st.pf || { running: false };
     caffeinate = st.caffeinate || { on: false, mode: "off" };
     rateLimits = st.rateLimits || null;
+    qmErrors = st.errors || { count: 0, entries: [] };
     jobs = st.jobs || [];
     buildProgress = st.buildProgress || {};
     buildActive = st.buildActive || [];

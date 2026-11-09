@@ -171,6 +171,11 @@ pub fn render(input: &Value) -> String {
     if !model.is_empty() {
         left = format!("{left} | {VIVID_BLUE}[{model}]{RESET}");
     }
+    // a qm chat has the GUI's error badge above it
+    let errors = if qm_chat { 0 } else { std::panic::catch_unwind(|| crate::error_log::ErrorLog::new().count_if_modified()).unwrap_or(0) };
+    if errors > 0 {
+        left = format!("{left} {RED}⚠ {errors} qm error{}{RESET}", if errors == 1 { "" } else { "s" });
+    }
 
     let mut usage = String::new();
     if let Some(pct) = used.and_then(round_pct) {

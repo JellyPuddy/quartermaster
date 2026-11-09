@@ -1,7 +1,7 @@
 # GUI shell
 
-**Code:** `src/gui_server.rs`, `src/gui_action.rs`, `src/gui_actions.rs`, `src/gui_jobs.rs`, `src/gui_state.rs`, `src/command_runner.rs`, `src/pf.rs`, `src/transcript_search.rs`, `src/ask_command.rs`, `gui/page.html`, `gui/js/core.js`, `gui/js/server.js`, `gui/js/events.js`, `gui/js/board.js`, `gui/js/detail.js`, `gui/js/session-sheet.js`, `gui/js/search.js`, `gui/js/transcript-search.js`, `gui/js/popovers.js`, `gui/js/modals.js`, `gui/js/focus.js`, `gui/js/long-actions.js`, `gui/css/base.css`, `gui/css/board.css`, `gui/css/header.css`, `gui/css/overlays.css`, `gui/css/responsive.css`, `src/grep_command.rs`
-**Tests:** `tests/gui.rs`, `tests/grep.rs`, `tests/ask.rs`
+**Code:** `src/gui_server.rs`, `src/gui_action.rs`, `src/gui_actions.rs`, `src/gui_jobs.rs`, `src/gui_state.rs`, `src/command_runner.rs`, `src/pf.rs`, `src/transcript_search.rs`, `src/ask_command.rs`, `gui/page.html`, `gui/js/core.js`, `gui/js/server.js`, `gui/js/events.js`, `gui/js/board.js`, `gui/js/detail.js`, `gui/js/session-sheet.js`, `gui/js/search.js`, `gui/js/transcript-search.js`, `gui/js/popovers.js`, `gui/js/modals.js`, `gui/js/focus.js`, `gui/js/long-actions.js`, `gui/js/errors.js`, `gui/css/base.css`, `gui/css/board.css`, `gui/css/header.css`, `gui/css/overlays.css`, `gui/css/responsive.css`, `src/grep_command.rs`
+**Tests:** `tests/gui.rs`, `tests/error_log.rs`, `tests/grep.rs`, `tests/ask.rs`
 **Depends on:** [work-items](work-items.md), [attention](attention.md), [chats](chats.md), [worktrees](worktrees.md), [side-panel](side-panel.md)
 
 ## What it does
@@ -52,7 +52,7 @@ from the plan its reply carries ("Resolved. Clean up N worktrees?"). The header'
 **State** (`GuiState#build`, `/api/state`): `items`, `inbox`, `projects`, `attention` (the
 chat view's list, already in attention order), `pulse`, `refreshing`, `distilling`,
 `distilled`, `pf`, `jobs`, `finished`, `buildActive`, `buildProgress`, `panes`,
-`terminalToken`, `asideModels`, `caffeinate`, `notifications`, `rateLimits`, `benchmark`. Per item: slug,
+`terminalToken`, `asideModels`, `caffeinate`, `notifications`, `rateLimits`, `benchmark`, `errors` (the header's ⚠ badge: the unseen qm.log errors' count and newest 20 entries, from `ErrorLog` in [capture](capture.md); clicking it lists them, and **Mark seen** posts the `errors-seen` action, which takes the normal Origin rule: it is not a local action). Per item: slug,
 title, state, project, branches, issue, sessions (`sessionList` with id, tier, when, prompt),
 `updated`, `live`, `badges` (stale / degrading / merged, from `Attention`), headline `note`,
 `injected` positions, `worktrees`, `chains`, `prStates`, `served`/`servedBranch`, `pane`,

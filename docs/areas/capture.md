@@ -1,7 +1,7 @@
 # Capture
 
-**Code:** `src/hook.rs`, `src/session_log.rs`, `src/project_map.rs`, `src/project_config.rs`, `src/failure_log.rs`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
-**Tests:** `tests/non_object_lines.rs`, `tests/sessions.rs`, `tests/characterization.rs`, `tests/chat_attention.rs`, `tests/failure_log.rs`
+**Code:** `src/hook.rs`, `src/session_log.rs`, `src/project_map.rs`, `src/project_config.rs`, `src/failure_log.rs`, `src/error_log.rs`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
+**Tests:** `tests/non_object_lines.rs`, `tests/sessions.rs`, `tests/characterization.rs`, `tests/chat_attention.rs`, `tests/failure_log.rs`, `tests/error_log.rs`
 **Depends on:** none
 
 ## What it does
@@ -62,6 +62,12 @@ fallback protocol for when the injection is missing.
   [<context>] recovered after <n> failure(s)`. Every other context writes each transient
   failure, since nothing would ever end its outage. A test holds the list equal to the
   `success` call sites in `src/`.
+- **Unseen errors** (`ErrorLog`): the header lines of the log's last 256 KB that are neither
+  transient nor recovered, newer than the iso8601 time in `errors-seen-at` (absent or
+  unreadable: the last 24 h), each with its continuation lines. An unreadable log counts as no
+  errors, so no state build fails on it. They feed the GUI's error badge (`errors` in the
+  state, Mark seen = the `errors-seen` action, which writes now into `errors-seen-at`;
+  [gui-shell](gui-shell.md)) and the status line's `⚠ N qm errors` ([side-panel](side-panel.md)).
 
 ## Rules
 

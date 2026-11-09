@@ -35,6 +35,7 @@ worktrees — derives from these two layers plus a few more append-only hook log
 | `work-items/<slug>.md` | one work item each; `work-items/.lock` serialises writes | [work items](areas/work-items.md) |
 | `config.yml` | projects and their settings (below), `prices:` overrides | [capture](areas/capture.md) |
 | `qm.log` | hook and background errors; network blips once per outage | [capture](areas/capture.md) |
+| `errors-seen-at` | iso8601 time the user last marked qm.log errors seen (absent: count the last 24 h) | [capture](areas/capture.md) |
 | `events.jsonl` + `events-fold.json` | per-prompt/tool/turn hook events and their fold cache | [attention](areas/attention.md) |
 | `board-writes.jsonl` | every `ArtifactData` call, mirrored status boards | [side panel](areas/side-panel.md) |
 | `prompt-snapshots.jsonl` | the session's worktree as a git tree at every prompt | [diff](areas/diff.md) |
