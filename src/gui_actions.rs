@@ -24,7 +24,7 @@ const KNOWN: &[&str] = &[
     "review-post", "thread-reply-put", "pr-thread-resolve", "review-preview", "draft-place", "issue-comment-put", "draft-edit", "draft-delete", "drafts-discard",
     "drafts-send", "issues-clear-created", "issue-acknowledge", "issues-create", "build-progress", "branch-stats-commentary", "board-answer", "issue-preview",
     "issue-start", "pr-chat", "pr-review", "pr-pf", "pr-ide", "pr-unrequire", "cleanup", "caffeinate", "benchmark-start", "benchmark-cancel", "benchmark-rerun",
-    "loose-start", "loose-close", "loose-promote",
+    "loose-start", "loose-close", "loose-promote", "delete",
 ];
 
 type R<T> = Result<T, Stop>;
@@ -237,6 +237,7 @@ fn run(payload: &Value) -> R<Value> {
         "loose-promote" => loose_promote(&args),
         "loose-close" => loose_close(&args),
         "cleanup" => cleanup(&args),
+        "delete" => Ok(crate::item_deletion::gui_reply(&slug, matches!(args.get("force")?, Value::Bool(true)))),
         "pr-unrequire" => {
             let (url, reference) = (args.text("url")?, args.text("ref")?);
             if !crate::pr_prerequisites::remove(&url, &reference).map_err(|_| Stop::Unported)? {

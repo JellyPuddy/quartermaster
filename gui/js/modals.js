@@ -58,6 +58,28 @@ function confirmRedistillModal(it, reason) {
   });
 }
 
+/* Delete, for an item made by accident. The server guards it: an item with
+   notes, branches, 2+ sessions, a board or a description is refused with
+   needs_force and what it holds, and the dialog turns into "Delete anyway".
+   The next refresh no longer finds the item and closes the detail sheet. */
+function deleteItemModal(it, held = null) {
+  modal(m => {
+    m.innerHTML = `<h2>${held ? "Delete anyway?" : "Delete this item?"}</h2><p class="sub">${esc(it.slug)}</p>` +
+      (held ? `<p style="margin:12px 0">It holds ${esc(held.join(", "))}. Deleting loses them; its sessions just become unlinked, and worktrees and branches stay (Clean up worktrees… removes them first).</p>`
+            : `<p style="margin:12px 0">Removes the work item and kills its chat. Its sessions become unlinked; nothing else is touched.</p>`);
+    const bar = el("div", "modal-actions");
+    const cancel = el("button", "btn", "Cancel"); cancel.onclick = closeModal;
+    const go = el("button", "btn danger", held ? "Delete anyway" : "Delete");
+    go.onclick = () => {
+      act("delete", { slug: it.slug, args: held ? { force: true } : {} }).then(r => {
+        if (r.ok) { closeModal(); toast(`deleted ${it.slug}`); }
+        else if (r.needs_force) deleteItemModal(it, r.held || []);
+      });
+    };
+    bar.append(cancel, go); m.appendChild(bar);
+  });
+}
+
 function noteModal(it) {
   modal(m => {
     m.innerHTML = `<h2>Add a note</h2><p class="sub">${esc(it.slug)}</p>`;

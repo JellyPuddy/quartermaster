@@ -306,7 +306,7 @@ impl WorkItem {
 
     /// Runs `f` under the global work-item flock, as the Ruby `WorkItem.with_lock`: one lock spans a
     /// whole read-modify-write, and it is reentrant on this thread so compound moves nest.
-    fn with_lock<T>(f: impl FnOnce() -> Res<T>) -> Res<T> {
+    pub(crate) fn with_lock<T>(f: impl FnOnce() -> Res<T>) -> Res<T> {
         thread_local! {
             static HELD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
         }

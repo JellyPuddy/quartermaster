@@ -37,6 +37,7 @@ A command that can't take its arguments as given (an odd value in a file it read
 - `qm draft add SLUG …` / `qm draft list SLUG [--json]` — Claude's review drafts ([review](review.md)).
 - `qm issues-dir SLUG` — the item's issue-drafts directory ([drafts](drafts.md)).
 - `qm cleanup SLUG [--yes] [--force P]` / `qm sweep [--yes] [--force P]` — plan or run worktree cleanup ([worktrees](worktrees.md)).
+- `qm delete SLUG [--force]` — remove an item made by accident and kill its chat; refused for one holding work unless `--force` ([work-items](work-items.md)).
 - `qm feature-use [--days N]` — per kind, each name used in the last N days (default 30) with its count and last use, then the known names nobody used; dates the log's first line.
 - `qm ask QUERY` — find items by meaning (headless claude); `qm grep PHRASE` — sessions whose prompts or replies contain it ([gui-shell](gui-shell.md)).
 

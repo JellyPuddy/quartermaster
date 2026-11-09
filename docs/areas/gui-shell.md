@@ -28,8 +28,8 @@ a body over `Drops::MAX_BYTES` is refused unread with 413. Routes: `GET /`, `/as
 **Actions** (`GuiActions#dispatch`, `POST /api/action {cmd, slug, args}`). Each web action
 maps to the WorkItem / Launcher / SessionLog / Workspace / Tmux / Rotation operation the CLI
 uses too, never to a CLI `cmd_*` (those `abort` and read stdin). `SystemExit` is rescued into
-a JSON error; `AlreadyDistilledError` returns `needs_confirmation`, which the page turns into
-a confirm and retries with `force: true`. The page refetches `/api/state` after every action.
+a JSON error; `AlreadyDistilledError` returns `needs_confirmation` and a refused `delete`
+returns `needs_force`, which the page turns into a confirm (no failure toast) and retries with `force: true`. The page refetches `/api/state` after every action.
 
 **Long actions** (`GuiJobs`). work-on, pf-switch, ide, terminal, pf-stop, cleanup, rotation,
 review posting, issue start, the PRs view's pf/IDE buttons and build-progress run on
@@ -85,7 +85,9 @@ the rest live in ⋯). A card click (or Enter) opens the item's chat in the chat
 detail": description, branches with worktree
 chips, the board link, a notes timeline with kind filter chips (all / open / decision /
 history, when more than one kind exists), sessions with tier badge, resume and Unlink
-(detach), snapshots.
+(detach), snapshots, and **Delete item…** at the foot: an in-page confirm, and when the
+server's guard refuses (`needs_force`, [work-items](work-items.md)) the dialog lists what the
+item holds and offers **Delete anyway**; the next refresh no longer finds the item and closes the sheet.
 Every section header collapses; filter and fold state survive refreshes and reset when
 another item opens. A session row (or an inbox row) opens the **session sheet** above it:
 the transcript's turns parsed on demand (`GET /api/session/<id>`, clipped server-side) —

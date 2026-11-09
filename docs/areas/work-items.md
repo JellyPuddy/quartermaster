@@ -1,7 +1,7 @@
 # Work items
 
-**Code:** `src/work_item.rs`, `src/atomic_file.rs`, `src/note.rs`, `src/attention.rs`, `src/front_edit.rs`, `src/psych.rs`, `src/yaml_scalar.rs`, `src/sections.rs`, `src/distill.rs`
-**Tests:** `tests/work_items.rs`, `tests/work_item_storage.rs`, `tests/psych_scalars.rs`, `tests/interop.rs`, `tests/show.rs`
+**Code:** `src/work_item.rs`, `src/atomic_file.rs`, `src/item_deletion.rs`, `src/note.rs`, `src/attention.rs`, `src/front_edit.rs`, `src/psych.rs`, `src/yaml_scalar.rs`, `src/sections.rs`, `src/distill.rs`
+**Tests:** `tests/work_items.rs`, `tests/work_item_storage.rs`, `tests/item_deletion.rs`, `tests/psych_scalars.rs`, `tests/interop.rs`, `tests/show.rs`
 **Depends on:** [capture](capture.md)
 
 ## What it does
@@ -17,6 +17,15 @@ editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
   branch `main|master|develop` left off, the session claimed). `qm retitle` never changes
   the slug; `qm describe SLUG TEXT` (or stdin) replaces the Description; `qm move` changes
   the project.
+- **Deleted** by `qm delete SLUG [--force]` or the detail sheet's **Delete item…**
+  (`item_deletion`, action `delete`), meant for an item made by accident: without force it is
+  refused unless the item holds nothing beyond what `qm new` gives it — no notes, no linked
+  branches, at most one session, no board, a Description empty or `_TODO_`. The refusal names
+  what it holds ("3 notes, 2 branches, board set"); the GUI replies `needs_force` with `held`
+  and offers **Delete anyway**. Deleting removes `work-items/<slug>.md` and kills `<slug>` and
+  `<slug>--aside` on the qm socket through the runner (one not running is no error); its
+  sessions simply become unlinked. Worktrees and branches are `qm cleanup`'s, run first;
+  issue drafts of a deleted item are `qm sweep`'s.
 - **Branches are the only stored git link** (`branches:`, a list — one item can span a
   gh-stack; `qm link-branch` appends, `qm unlink-branch` removes, a rename is unlink + link;
   legacy singular `branch:` still reads). The issue number is derived from the first
@@ -103,6 +112,9 @@ editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
   PR-less branch gone locally and on origin is ignored (a forgotten unlink after a rename
   would block the nudge forever); a merged PR's deleted branch still counts.
 - **Resolving clears the item's diff viewed marks** ([diff](diff.md)).
+- **Deleting rewrites no log**: `sessions.jsonl`, `events.jsonl` and `board-writes.jsonl` keep
+  every line that names the slug, and the guard check and the file removal run under the
+  work-item lock, so a note landing meanwhile is seen.
 - **`pf_mode` needs a dev server**: only an item whose project has `dev_server:` in config.yml
   takes one, and only one of that server's `modes`; anything else is refused naming the setting.
 

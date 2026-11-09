@@ -27,6 +27,7 @@ Work items:
   qm issues-dir SLUG                                              print the item's issue drafts directory, creating it (the /draft-issues skill writes there)
   qm cleanup SLUG [--yes] [--force P]                             plan removing the item's worktrees, test DBs, merged and temp branches, issue drafts; --yes runs the [x] ones, --force adds a ⚠ one
   qm sweep [--yes] [--force P]                                    the same over every .claude/worktrees worktree and worktree-* branch of every known repo, and the issue drafts of resolved or deleted items
+  qm delete SLUG [--force]                                        remove an item made by accident and kill its chat; refuses one with notes, branches, 2+ sessions, a board or a description unless --force (sessions just unlink; run qm cleanup first for worktrees)
   qm list                                                         table of all work items (also the default without a terminal)
   qm ask QUERY                                                    find items by meaning: describe what you half-remember (headless claude -p)
   qm feature-use [--days N]                                       which commands, GUI actions and GUI reads were used in the last N days (default 30), and which known ones weren't

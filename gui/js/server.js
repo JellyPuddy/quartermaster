@@ -72,8 +72,8 @@ async function act(cmd, opts = {}) {
     });
     const res = await r.json();
     if (!res || !res.ok) {
-      // needs_confirmation is the caller's to handle (confirm dialog), not a failure toast.
-      if (!(res && res.needs_confirmation)) toast((res && res.error) || "action failed", false);
+      // needs_confirmation / needs_force are the caller's to handle (a confirm dialog), not a failure toast.
+      if (!(res && (res.needs_confirmation || res.needs_force))) toast((res && res.error) || "action failed", false);
       return res || { ok: false };
     }
     await refresh();

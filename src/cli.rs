@@ -88,7 +88,7 @@ pub fn run(raw: Vec<OsString>) -> i32 {
         None => rest,
     };
     if let Some(word) = command {
-        if let Some(outcome) = work_item_commands::run(word, rest).or_else(|| session_commands::run(word, rest)) {
+        if let Some(outcome) = work_item_commands::run(word, rest).or_else(|| session_commands::run(word, rest)).or_else(|| crate::item_deletion::run(word, rest)) {
             return match outcome {
                 Outcome::Delegate => delegate::refuse(&raw),
                 Outcome::Done { code, stdout, stderr } => {
