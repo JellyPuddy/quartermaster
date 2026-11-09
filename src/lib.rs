@@ -64,6 +64,7 @@ pub mod issue_drafts;
 pub mod note;
 pub mod opt_parse;
 pub mod outcome;
+pub mod panic_guard;
 pub mod pf;
 pub mod pane_follows_session;
 pub mod pr_deployment;

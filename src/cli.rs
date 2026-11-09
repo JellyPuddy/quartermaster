@@ -67,6 +67,16 @@ fn finish(outcome: Outcome, command: Option<&str>, raw: &[OsString]) -> i32 {
 }
 
 pub fn run(raw: Vec<OsString>) -> i32 {
+    match raw.first().and_then(|c| c.to_str()) {
+        Some(command) if crate::panic_guard::is_quiet_command(Some(command)) => {
+            let command = command.to_string();
+            crate::panic_guard::contained(&command, || dispatch(raw))
+        }
+        _ => dispatch(raw),
+    }
+}
+
+fn dispatch(raw: Vec<OsString>) -> i32 {
     let Some(args) = raw.iter().map(|a| a.to_str().map(String::from)).collect::<Option<Vec<String>>>() else {
         outcome::refuse(&raw) // arguments that are not UTF-8 are not read
     };

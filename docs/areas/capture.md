@@ -1,6 +1,6 @@
 # Capture
 
-**Code:** `src/hook.rs`, `src/session_log.rs`, `src/project_map.rs`, `src/project_config.rs`, `src/failure_log.rs`, `src/error_log.rs`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
+**Code:** `src/hook.rs`, `src/panic_guard.rs`, `src/session_log.rs`, `src/project_map.rs`, `src/project_config.rs`, `src/failure_log.rs`, `src/error_log.rs`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
 **Tests:** `tests/non_object_lines.rs`, `tests/sessions.rs`, `tests/characterization.rs`, `tests/chat_attention.rs`, `tests/failure_log.rs`, `tests/error_log.rs`
 **Depends on:** none
 
@@ -72,7 +72,9 @@ fallback protocol for when the injection is missing.
 ## Rules
 
 - **Hooks never block or break a session.** The `hook-*` commands rescue everything, log
-  to `qm.log` and exit 0 (`guard_hook` in `src/cli.rs`); the launcher exits 0 without a binary;
+  to `qm.log` and exit 0 (`guard_hook` in `src/cli.rs`); a panic is caught too (`panic_guard`:
+  default panic message silenced, payload logged to `qm.log`, exit 0; `qm statusline` gets the
+  same containment but logs nothing); the launcher exits 0 without a binary;
   the `sh` hooks wrap their body in `{ … } >/dev/null 2>&1` and always `exit 0`. Pinned by tests.
 - **Every `qm.log` line is a header starting at column 0**, and only headers carry
   `[<context>] transient` or `[<context>] recovered`: a multi-line message is folded onto its
