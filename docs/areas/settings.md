@@ -60,7 +60,7 @@ command that turns the feature on (`project_config::config_command`, `Ide::CONFI
 **Layout** — `emit`: the header line
 `# Edited by qm (Settings view / qm config); key reference: docs/overview.md`, then `projects`
 (in the user's order), `default_project`, `ide_command`, `ide_label`, `loose_starters`,
-`overview_artifact`, `prices`, then unknown top-level keys as they were. Keys inside a mapping
+`overview_artifact`, `prices`, `automations`, then unknown top-level keys as they were. Keys inside a mapping
 follow the schema's order; unset values (null, blank text, empty lists) and emptied sub-mappings are
 dropped and a bare `projects:` (the earlier seed's) is `projects: {}` (`config_check::tidy`); a project
 holding only its root is written as the plain path; lists of scalars are flow style (`[dev, tunnel]`);
@@ -101,7 +101,7 @@ lands on Settings; ⌘S saves). Full width, three parts. On top a projects × fe
 project its name and root, a chip per feature from the server's `features` (on in green with its
 short value, off, inherit as a hollow accent outline with the real value in its tooltip, warning,
 error) and its work-item count; clicking the name or any cell opens that project's card (and the
-fold holding the section) and scrolls there. Below it a document: General (`default_project`), IDE
+fold holding the section) and scrolls there. Below it a document: General (`default_project`, `automations.local_*`), IDE
 (the global `ide_command` / `ide_label`), one card per project, collapsed by default (its summary
 shows root, item count, an unsaved dot and error/warning counts), sectioned Basics, Dev server,
 Worktrees, Pull requests, IDE override, Benchmarks, then a "Rarely changed" fold with the

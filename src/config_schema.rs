@@ -79,7 +79,7 @@ const fn container(pattern: &'static str, kind: Kind, shorthand: Option<&'static
     Container { pattern, kind, shorthand }
 }
 
-pub static CONTAINERS: [Container; 8] = [
+pub static CONTAINERS: [Container; 9] = [
     container("projects", Kind::Map, None),
     container("projects.*", Kind::Object, Some("root")),
     container("projects.*.dev_server", Kind::Object, Some("command")),
@@ -88,10 +88,11 @@ pub static CONTAINERS: [Container; 8] = [
     container("loose_starters.*", Kind::Object, None),
     container("prices", Kind::Map, None),
     container("prices.*", Kind::Object, None),
+    container("automations", Kind::Object, None),
 ];
 
 /// Top-level keys in the order a written file lists them.
-pub const TOP_LEVEL: [&str; 7] = ["projects", "default_project", "ide_command", "ide_label", "loose_starters", "overview_artifact", "prices"];
+pub const TOP_LEVEL: [&str; 8] = ["projects", "default_project", "ide_command", "ide_label", "loose_starters", "overview_artifact", "prices", "automations"];
 
 const PRICE_HELP: [&str; 5] = [
     "USD per million input tokens",
@@ -107,7 +108,7 @@ macro_rules! price_key {
     };
 }
 
-pub static KEYS: [Key; 25] = [
+pub static KEYS: [Key; 29] = [
     Key::new("projects.*.root", "path", "The project's main repo root; sessions in it or its worktrees get this project.", "basics"),
     Key::new("projects.*.dev_server.command", "string", "The dev server command: qm runs `<command> switch PATH MODE`, `<command> stop`, `<command> status`.", "dev_server"),
     Key::new("projects.*.dev_server.modes", "string_list", "The modes `switch` accepts (default: one mode, `default`).", "dev_server"),
@@ -133,6 +134,10 @@ pub static KEYS: [Key; 25] = [
     price_key!("cache_write_1h", PRICE_HELP[2]),
     price_key!("cache_read", PRICE_HELP[3]),
     price_key!("output", PRICE_HELP[4]),
+    Key::new("automations.local_paused", "bool", "Local automations run no guards and start no runs (running ones go on).", "general"),
+    Key::new("automations.local_max_running", "number", "How many local automation runs may work at once.", "general").rare().default("2"),
+    Key::new("automations.local_hold_five_hour", "number", "Local automations start no run while the 5-hour limit is used this many percent or more.", "general").rare().default("80"),
+    Key::new("automations.local_hold_seven_day", "number", "Local automations start no run while the weekly limit is used this many percent or more.", "general").rare().default("90"),
 ];
 
 pub fn segments(path: &str) -> Vec<&str> {

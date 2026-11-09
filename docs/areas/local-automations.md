@@ -1,7 +1,7 @@
 # Local automations
 
 **Code:** `src/local_cron.rs`, `src/run_log.rs`, `src/run_fold.rs`, `src/random_id.rs`
-**Tests:** `tests/local_cron.rs`, `tests/run_log.rs`, `tests/automation_store.rs`
+**Tests:** `tests/automation_config.rs`, `tests/local_cron.rs`, `tests/run_log.rs`, `tests/automation_store.rs`
 **Depends on:** [automations](automations.md) (the store, the item; `local_schedule`'s DST rule), [work-items](work-items.md)
 
 ## What it does
@@ -66,3 +66,6 @@ and flow as a new `retry` run, past dedupe; refuses unknown, queued or live runs
 ## Data
 
 - `automations/<slug>.runs.jsonl` — a local automation's run log, `v: 1` per line, append-only.
+- config.yml `automations.local_paused`, `local_max_running`, `local_hold_five_hour`, `local_hold_seven_day`
+  (`config_schema`, read through `ProjectConfig::local_automations`: `paused`, `max_running`,
+  `hold_five_hour`, `hold_seven_day`; defaults 2, 80, 90).

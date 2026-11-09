@@ -100,7 +100,17 @@ pub struct ProjectConfig {
     starters: Vec<Starter>,
     prices: Vec<(String, Vec<(usize, Num)>)>,
     overview_artifact: Option<String>,
+    local_automations: LocalAutomations,
     failure: Option<LoadFailure>,
+}
+
+/// The local automations' tick settings, unset ones at their defaults (`automations.local_*`).
+#[derive(Clone, Debug)]
+pub struct LocalAutomations {
+    pub paused: bool,
+    pub max_running: f64,
+    pub hold_five_hour: f64,
+    pub hold_seven_day: f64,
 }
 
 /// A loose-chat starter (config.yml `loose_starters:`): its prompt has the chat load something first.
@@ -230,6 +240,17 @@ impl ProjectConfig {
                 (model, numbers.collect())
             })
             .collect();
+        let automations = config.section("automations");
+        let number = |key: &str, default: f64| match automations.get(key) {
+            Some(Value::Number(n)) => n.as_f64().unwrap_or(default),
+            _ => default,
+        };
+        let local_automations = LocalAutomations {
+            paused: automations.get("local_paused") == Some(&Value::Bool(true)),
+            max_running: number("local_max_running", 2.0),
+            hold_five_hour: number("local_hold_five_hour", 80.0),
+            hold_seven_day: number("local_hold_seven_day", 90.0),
+        };
         ProjectConfig {
             projects,
             ide: parse_ide(config.get("ide_command"), config.get("ide_label")),
@@ -238,6 +259,7 @@ impl ProjectConfig {
             starters,
             prices,
             overview_artifact: string(config.get("overview_artifact")),
+            local_automations,
             failure,
         }
     }
@@ -250,6 +272,11 @@ impl ProjectConfig {
     /// The published phone page's claude.ai URL, None while unset.
     pub fn overview_artifact(&self) -> Option<&str> {
         self.overview_artifact.as_deref()
+    }
+
+    /// The local automations' tick settings.
+    pub fn local_automations(&self) -> &LocalAutomations {
+        &self.local_automations
     }
 
     /// Why the file read as an empty config, None when it parsed.
