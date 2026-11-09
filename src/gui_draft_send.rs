@@ -16,7 +16,7 @@ const CHAT_KINDS: [&str; 3] = ["diff-comment", "annotation", "issue-comment"];
 fn stop(f: Fail) -> Stop {
     match f {
         Fail::Refuse(msg) => Stop::refuse(msg),
-        Fail::Unported => Stop::Unported,
+        Fail::Unsupported => Stop::Unsupported,
     }
 }
 
@@ -26,7 +26,7 @@ fn text(v: Option<&Value>) -> R<String> {
         Some(Value::String(t)) => Ok(t.clone()),
         Some(Value::Bool(b)) => Ok(b.to_string()),
         Some(Value::Number(n)) if n.is_i64() || n.is_u64() => Ok(n.to_string()),
-        _ => Err(Stop::Unported),
+        _ => Err(Stop::Unsupported),
     }
 }
 
@@ -44,7 +44,7 @@ fn paste_into_chat(item: &crate::work_item::WorkItem, message: &str) -> R<()> {
 }
 
 fn issue_data(slug: &str) -> R<(Vec<(String, String, String)>, Vec<String>, Value)> {
-    let data = crate::issue_drafts::read(slug).ok_or(Stop::Unported)?;
+    let data = crate::issue_drafts::read(slug).ok_or(Stop::Unsupported)?;
     let field = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").to_string();
     let issues = data["issues"].as_array().map(|l| l.iter().map(|i| (field(i, "file"), field(i, "title"), field(i, "body"))).collect()).unwrap_or_default();
     let broken = data["errors"].as_array().map(|l| l.iter().map(|e| field(e, "file")).collect()).unwrap_or_default();
@@ -59,7 +59,7 @@ pub(crate) fn drafts_send(slug: &str, args: &Map<String, Value>) -> R<Value> {
     if !slug_shaped(&item.slug) {
         return Err(fail(format!("'{}' is not a work item slug", item.slug)));
     }
-    let all = drafts::entries(&item.slug).ok_or(Stop::Unported)?;
+    let all = drafts::entries(&item.slug).ok_or(Stop::Unsupported)?;
     let mut entries: Vec<Map<String, Value>> = all.into_iter().filter(|e| e.get("kind").and_then(Value::as_str).is_some_and(|k| CHAT_KINDS.contains(&k))).collect();
     if let Some(Value::Array(ids)) = args.get("ids") {
         entries.retain(|e| ids.contains(e.get("id").unwrap_or(&Value::Null)));
@@ -80,7 +80,7 @@ pub(crate) fn drafts_send(slug: &str, args: &Map<String, Value>) -> R<Value> {
         Ok(before - list.len())
     });
     if gone.is_err() {
-        return Err(Stop::Unported);
+        return Err(Stop::Unsupported);
     }
     let mut out = ok();
     out["sent"] = json!(entries.len());
@@ -94,7 +94,7 @@ fn message(slug: &str, entries: &[Map<String, Value>], args: &Map<String, Value>
     let issue_comments = of("issue-comment");
     let mut keyed = vec![];
     for (index, e) in comments.iter().enumerate() {
-        let line = crate::transcript_usage::to_i(e.get("line")).map_err(|_| Stop::Unported)?;
+        let line = crate::transcript_usage::to_i(e.get("line")).map_err(|_| Stop::Unsupported)?;
         keyed.push((text(e.get("path"))?, line, index));
     }
     let mut order: Vec<usize> = (0..comments.len()).collect();

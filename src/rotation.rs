@@ -48,10 +48,10 @@ pub struct Plan {
     pub requested_at: f64,
 }
 
-/// `Err(Arg)` is the `ArgumentError` Ruby raises; `Unported` a value only Ruby reads exactly.
+/// `Err(Arg)` is the `ArgumentError` Ruby raises; `Unsupported` a value only Ruby reads exactly.
 pub enum Fail {
     Arg(String),
-    Unported,
+    Unsupported,
 }
 
 type R<T> = Result<T, Fail>;
@@ -86,7 +86,7 @@ pub fn plan(item: &WorkItem, close: bool, finish: bool, by_chat: bool, session_i
         return Ok(p);
     }
     let log = SessionLog::read();
-    let sessions = log.item_sessions(item).map_err(|_| Fail::Unported)?;
+    let sessions = log.item_sessions(item).map_err(|_| Fail::Unsupported)?;
     let live: Vec<&Session> = sessions.iter().filter(|s| s.live).collect();
     if tmux.live(&item.slug) {
         let Some(session) = live.first() else { return arg(format!("{}'s chat has no captured session yet — rotate once it has answered", item.slug)) };
@@ -121,7 +121,7 @@ fn self_plan(item: &WorkItem, close: bool, session_id: Option<&str>) -> R<Plan> 
     if !tmux.live(slug) {
         return arg(format!("{slug}'s chat isn't open in the qm gui — qm rotate --self only works from a GUI chat"));
     }
-    let sessions = SessionLog::read().item_sessions(item).map_err(|_| Fail::Unported)?;
+    let sessions = SessionLog::read().item_sessions(item).map_err(|_| Fail::Unsupported)?;
     let live: Vec<&Session> = sessions.iter().filter(|s| s.live).collect();
     let pane = tmux.pane_pid(slug);
     let session = match session_id {
@@ -216,7 +216,7 @@ fn hand_over(item: &mut WorkItem, session: &Session, via: &str, close: bool) -> 
         tmux.keep_on_exit(&slug, false);
         return Err(e);
     }
-    let rotation = item.record_rotation(&session.id, via, crate::clock::now_f64()).map_err(|_| Fail::Unported)?;
+    let rotation = item.record_rotation(&session.id, via, crate::clock::now_f64()).map_err(|_| Fail::Unsupported)?;
     if close {
         tmux.kill(&slug);
     } else {
@@ -227,7 +227,7 @@ fn hand_over(item: &mut WorkItem, session: &Session, via: &str, close: bool) -> 
 
 /// In the window the old chat left behind when there is one (the pane stays attached), else a new tmux session.
 fn start_fresh(item: &WorkItem) -> R<()> {
-    let Some(plan) = crate::launcher::fresh_chat_plan(item) else { return Err(Fail::Unported) };
+    let Some(plan) = crate::launcher::fresh_chat_plan(item) else { return Err(Fail::Unsupported) };
     let tmux = Tmux::new();
     let env: Vec<(String, String)> = plan.env.clone();
     if tmux.live(&item.slug) {
@@ -267,10 +267,10 @@ pub fn run(item: &mut WorkItem, plan: &Plan, relabel: &dyn Fn(&str)) -> R<Value>
                 match crate::distill::session(item, &plan.session) {
                     Ok(_) => {}
                     Err(crate::distill::Fail::Arg(m)) | Err(crate::distill::Fail::Already(m)) => return arg(m),
-                    Err(crate::distill::Fail::Unported) => return Err(Fail::Unported),
+                    Err(crate::distill::Fail::Unsupported) => return Err(Fail::Unsupported),
                 }
             }
-            let rotation = item.record_rotation(&plan.session.id, "distill", crate::clock::now_f64()).map_err(|_| Fail::Unported)?;
+            let rotation = item.record_rotation(&plan.session.id, "distill", crate::clock::now_f64()).map_err(|_| Fail::Unsupported)?;
             start_fresh(item)?;
             rotation
         }
@@ -284,7 +284,7 @@ pub fn run(item: &mut WorkItem, plan: &Plan, relabel: &dyn Fn(&str)) -> R<Value>
 
 /// Re-read: the wrap-up wrote notes after the item was loaded.
 fn resolve(slug: &str) -> R<Value> {
-    let mut item = WorkItem::find(slug).map_err(|_| Fail::Unported)?;
+    let mut item = WorkItem::find(slug).map_err(|_| Fail::Unsupported)?;
     item.update_state("resolved").map_err(|e| Fail::Arg(e.message))?;
     let open = item.notes().iter().filter(|n| n.is_open()).count();
     let tail = match open {

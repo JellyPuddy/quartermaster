@@ -56,8 +56,8 @@ fn write_cache(cache: &Map<String, Value>) -> R<()> {
     let _ = crate::data_root::ensure_setup();
     let path = cache_file();
     let temp = format!("{}.{}.{:?}.tmp", path.display(), std::process::id(), std::thread::current().id());
-    std::fs::write(&temp, crate::drafts::pretty(&Value::Object(cache.clone()))).map_err(|_| Failure::Unported)?;
-    std::fs::rename(&temp, &path).map_err(|_| Failure::Unported)
+    std::fs::write(&temp, crate::drafts::pretty(&Value::Object(cache.clone()))).map_err(|_| Failure::Unsupported)?;
+    std::fs::rename(&temp, &path).map_err(|_| Failure::Unsupported)
 }
 
 fn key_fields(target: &Value) -> Map<String, Value> {
@@ -98,10 +98,10 @@ fn compute(target: &Value) -> R<Value> {
     entry.insert("markdown".into(), json!(markdown));
     let _lock = CACHE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let mut cache = read_cache();
-    let Some(Value::Object(entries)) = cache.get_mut("entries") else { return Err(Failure::Unported) };
+    let Some(Value::Object(entries)) = cache.get_mut("entries") else { return Err(Failure::Unsupported) };
     let root = s(&target["root"]);
     let by_branch = entries.entry(root).or_insert_with(|| json!({}));
-    let Some(by_branch) = by_branch.as_object_mut() else { return Err(Failure::Unported) };
+    let Some(by_branch) = by_branch.as_object_mut() else { return Err(Failure::Unsupported) };
     by_branch.insert(s(&target["branch"]), Value::Object(entry.clone()));
     write_cache(&cache)?;
     Ok(Value::Object(entry))

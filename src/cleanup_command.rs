@@ -92,7 +92,7 @@ fn options(a: &[String]) -> Option<Options> {
 }
 
 pub fn cleanup(a: &[String]) -> Outcome {
-    let Some(o) = options(a) else { return Outcome::Delegate };
+    let Some(o) = options(a) else { return Outcome::Refused };
     let Some(slug) = o.rest.first() else { return abort("usage: qm cleanup SLUG [--yes] [--force PATH|BRANCH ...]") };
     let item = match WorkItem::find(slug) {
         Ok(i) => i,
@@ -107,7 +107,7 @@ pub fn cleanup(a: &[String]) -> Outcome {
 
 /// `qm sweep [--yes] [--force KEY]`: the plan over every repo, and with `--yes` carrying it out.
 pub fn sweep(a: &[String]) -> Outcome {
-    let Some(o) = options(a) else { return Outcome::Delegate };
+    let Some(o) = options(a) else { return Outcome::Refused };
     match plan_sweep() {
         Ok(plan) => carry_out(&plan, &o),
         Err(e) => abort(&format!("qm: {}", e.message)),

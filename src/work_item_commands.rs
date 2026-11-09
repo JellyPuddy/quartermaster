@@ -1,5 +1,5 @@
 //! The work-item commands of the CLI, ported from `Cli#cmd_*`. Anything this port is not sure it
-//! parses or writes exactly as Ruby does is handed back as `Delegate` before anything is written.
+//! parses or writes exactly as Ruby does is refused (`Outcome::Refused`) before anything is written.
 
 use std::io::Read;
 
@@ -13,10 +13,10 @@ use crate::ruby_text::strip;
 use crate::attention::Attention;
 use crate::work_item::{Snooze, WorkItem, STATES};
 
-/// An error as `Cli#run` reports it: `qm: <message>`, or Ruby's job when only it can write the value.
+/// An error as `Cli#run` reports it: `qm: <message>`, or a refusal when qm can't write the value faithfully.
 pub(crate) fn failed(e: QmError) -> Outcome {
     if e.class == UNEMITTABLE {
-        Outcome::Delegate
+        Outcome::Refused
     } else {
         abort(&format!("qm: {}", e.message))
     }
@@ -67,7 +67,7 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
 fn issues_dir(a: &[String]) -> Outcome {
     let Some(slug) = a.first() else { return abort("usage: qm issues-dir SLUG") };
     if slug.starts_with('-') {
-        return Outcome::Delegate;
+        return Outcome::Refused;
     }
     if !crate::cleanup_command::valid_slug(slug) {
         return abort(&format!("qm: '{slug}' is not a work item slug"));
@@ -75,7 +75,7 @@ fn issues_dir(a: &[String]) -> Outcome {
     tri!(WorkItem::find(slug));
     let dir = crate::issue_drafts::dir(slug);
     if std::fs::create_dir_all(&dir).is_err() {
-        return Outcome::Delegate;
+        return Outcome::Refused;
     }
     done(format!("{}\n", dir.display()))
 }
@@ -105,7 +105,7 @@ fn link_branch(a: &[String]) -> Outcome {
     for arg in a {
         match arg.as_str() {
             "--temp" => temp = true,
-            s if s.starts_with('-') => return Outcome::Delegate,
+            s if s.starts_with('-') => return Outcome::Refused,
             _ => positional.push(arg),
         }
     }
@@ -148,11 +148,11 @@ fn board(a: &[String]) -> Outcome {
     while i < a.len() {
         match a[i].as_str() {
             "--answers-dir" => {
-                let Some(value) = a.get(i + 1) else { return Outcome::Delegate };
+                let Some(value) = a.get(i + 1) else { return Outcome::Refused };
                 answers_dir = Some(value);
                 i += 2;
             }
-            s if s.starts_with('-') => return Outcome::Delegate,
+            s if s.starts_with('-') => return Outcome::Refused,
             _ => {
                 positional.push(&a[i]);
                 i += 1;
@@ -160,7 +160,7 @@ fn board(a: &[String]) -> Outcome {
         }
     }
     if answers_dir.is_some_and(|d| d.starts_with('~') && d != "~" && !d.starts_with("~/")) {
-        return Outcome::Delegate; // `~user` expansion
+        return Outcome::Refused; // `~user` expansion
     }
     let Some(slug) = positional.first() else { return abort("usage: qm board SLUG [URL [--answers-dir DIR] | clear]") };
     let url = positional.get(1).map(|u| u.as_str());
@@ -210,7 +210,7 @@ fn pr(a: &[String]) -> Outcome {
     match crate::pr_status::PrStatus::new(crate::clock::now_f64() as i64).open_web(&item, chosen.as_deref()) {
         Ok(_) => done(String::new()),
         Err(Some(m)) => abort(&format!("qm: {m}")),
-        Err(None) => Outcome::Delegate,
+        Err(None) => Outcome::Refused,
     }
 }
 
@@ -262,7 +262,7 @@ fn slug_and_session(a: &[String]) -> Result<(Option<&String>, Option<&String>), 
 }
 
 fn attach(a: &[String]) -> Outcome {
-    let Ok((slug, session)) = slug_and_session(a) else { return Outcome::Delegate };
+    let Ok((slug, session)) = slug_and_session(a) else { return Outcome::Refused };
     let (Some(slug), Some(session)) = (slug, session) else { return abort("usage: qm attach SLUG --session SESSION_ID") };
     let mut item = tri!(WorkItem::find(slug));
     let vacated = tri!(item.claim_session(session));
@@ -272,7 +272,7 @@ fn attach(a: &[String]) -> Outcome {
 }
 
 fn detach(a: &[String]) -> Outcome {
-    let Ok((slug, session)) = slug_and_session(a) else { return Outcome::Delegate };
+    let Ok((slug, session)) = slug_and_session(a) else { return Outcome::Refused };
     let (Some(slug), Some(session)) = (slug, session) else { return abort("usage: qm detach SLUG --session SESSION_ID") };
     let mut item = tri!(WorkItem::find(slug));
     tri!(item.detach_session(session));
@@ -313,7 +313,7 @@ fn board_rows(a: &[String]) -> Outcome {
     if item.board().is_none() {
         return abort(&format!("qm: '{slug}' has no status board"));
     }
-    let Ok(rows) = crate::board_mirror::rows_for(&item) else { return Outcome::Delegate };
+    let Ok(rows) = crate::board_mirror::rows_for(&item) else { return Outcome::Refused };
     if json {
         return done(format!("{}\n", crate::drafts::pretty(&serde_json::Value::Array(rows))));
     }
@@ -330,7 +330,7 @@ fn board_rows(a: &[String]) -> Outcome {
     let mut out = String::new();
     let width = rows.iter().map(|r| r["doc_id"].as_str().unwrap_or("").chars().count()).max().unwrap_or(0);
     for r in &rows {
-        let (Some(status), Some(title), Some(note)) = (text(&r["status"]), text(&r["title"]), text(&r["note"])) else { return Outcome::Delegate };
+        let (Some(status), Some(title), Some(note)) = (text(&r["status"]), text(&r["title"]), text(&r["note"])) else { return Outcome::Refused };
         let mut line = format!("{}  {}  {title}", ljust(r["doc_id"].as_str().unwrap_or(""), width), ljust(&status, 8));
         if !note.is_empty() {
             line += &format!(" — {note}");
@@ -354,7 +354,7 @@ fn board_answer(a: &[String]) -> Outcome {
     match crate::board_mirror::answer(&item, doc_id, &text) {
         Ok(path) => done(format!("{}\n", path.display())),
         Err(Ok(m)) => abort(&format!("qm: {m}")),
-        Err(Err(_)) => Outcome::Delegate,
+        Err(Err(_)) => Outcome::Refused,
     }
 }
 

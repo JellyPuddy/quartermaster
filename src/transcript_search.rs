@@ -70,7 +70,7 @@ pub enum Failure {
     /// Ruby's `ArgumentError` message, printed bare.
     Abort(String),
     /// Something only Ruby reads exactly.
-    Ruby,
+    Unsupported,
 }
 
 fn truthy(v: Option<&Value>) -> bool {

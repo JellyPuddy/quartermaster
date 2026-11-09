@@ -13,14 +13,14 @@ pub enum Failed {
     /// `abort`'s message, printed as is.
     Abort(String),
     /// A port this port doesn't read like Ruby's `String#to_i`.
-    Ruby,
+    Unsupported,
 }
 
 /// `Gui.port`: `QM_GUI_PORT` (default 49737) through `to_i`. Only plain 1–65535 is read here.
 pub fn port() -> Result<u16, Failed> {
     match std::env::var("QM_GUI_PORT") {
         Err(_) => Ok(49737),
-        Ok(v) => v.parse::<u16>().ok().filter(|p| *p > 0 && v.bytes().all(|b| b.is_ascii_digit())).ok_or(Failed::Ruby),
+        Ok(v) => v.parse::<u16>().ok().filter(|p| *p > 0 && v.bytes().all(|b| b.is_ascii_digit())).ok_or(Failed::Unsupported),
     }
 }
 

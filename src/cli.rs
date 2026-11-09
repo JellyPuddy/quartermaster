@@ -2,13 +2,12 @@ use std::ffi::OsString;
 use std::io::{IsTerminal, Read, Write};
 
 use crate::data_root;
-use crate::delegate;
 use crate::error::QmError;
 use crate::feature_use;
 use crate::hook;
 use crate::session_log::SessionLog;
 use crate::session_rows;
-use crate::outcome::Outcome;
+use crate::outcome::{self, Outcome};
 use crate::session_commands;
 use crate::work_item_commands;
 
@@ -57,7 +56,7 @@ fn abort(message: &str) -> i32 {
 /// Prints what a command ended with (the refusal of its options, say), as every ported command does.
 fn finish(outcome: Outcome, command: Option<&str>, raw: &[OsString]) -> i32 {
     match outcome {
-        Outcome::Delegate => delegate::refuse(raw),
+        Outcome::Refused => outcome::refuse(raw),
         Outcome::Done { code, stdout, stderr } => {
             feature_use::command(command);
             out(&stdout);
@@ -69,7 +68,7 @@ fn finish(outcome: Outcome, command: Option<&str>, raw: &[OsString]) -> i32 {
 
 pub fn run(raw: Vec<OsString>) -> i32 {
     let Some(args) = raw.iter().map(|a| a.to_str().map(String::from)).collect::<Option<Vec<String>>>() else {
-        delegate::refuse(&raw) // arguments that are not UTF-8 are not read
+        outcome::refuse(&raw) // arguments that are not UTF-8 are not read
     };
     let command = args.first().map(String::as_str);
     let rest = args.get(1..).unwrap_or(&[]);
@@ -90,7 +89,7 @@ pub fn run(raw: Vec<OsString>) -> i32 {
     if let Some(word) = command {
         if let Some(outcome) = work_item_commands::run(word, rest).or_else(|| session_commands::run(word, rest)).or_else(|| crate::item_deletion::run(word, rest)) {
             return match outcome {
-                Outcome::Delegate => delegate::refuse(&raw),
+                Outcome::Refused => outcome::refuse(&raw),
                 Outcome::Done { code, stdout, stderr } => {
                     // the launchd tick is plumbing, not a use
                     if command != Some("feature-use") && !(command == Some("automation") && rest.first().map(String::as_str) == Some("tick")) {
@@ -155,7 +154,7 @@ pub fn run(raw: Vec<OsString>) -> i32 {
                 let _ = std::io::stderr().write_all(stderr.as_bytes());
                 code
             }
-            _ => delegate::refuse(&raw),
+            _ => outcome::refuse(&raw),
         },
         None if crate::viewer::fzf_available() => {
             feature_use::command(command);
@@ -165,7 +164,7 @@ pub fn run(raw: Vec<OsString>) -> i32 {
                     let _ = std::io::stderr().write_all(stderr.as_bytes());
                     code
                 }
-                Outcome::Delegate => delegate::refuse(&raw),
+                Outcome::Refused => outcome::refuse(&raw),
             }
         }
         None => {
@@ -176,7 +175,7 @@ pub fn run(raw: Vec<OsString>) -> i32 {
                     let _ = std::io::stderr().write_all(stderr.as_bytes());
                     code
                 }
-                Outcome::Delegate => delegate::refuse(&raw),
+                Outcome::Refused => outcome::refuse(&raw),
             }
         }
         Some(word) if !feature_use::is_known_cli(word) && !matches!(word, "help" | "--help" | "-h") => {
@@ -185,6 +184,6 @@ pub fn run(raw: Vec<OsString>) -> i32 {
             out(crate::session_commands::USAGE);
             1
         }
-        _ => delegate::refuse(&raw),
+        _ => outcome::refuse(&raw),
     }
 }

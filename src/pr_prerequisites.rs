@@ -16,7 +16,7 @@ pub enum Fail {
     /// Ruby's `ArgumentError`: printed as `qm: <message>`.
     Arg(String),
     /// Something only Ruby words or reads exactly.
-    Ruby,
+    Unsupported,
 }
 
 pub type R<T> = Result<T, Fail>;
@@ -47,9 +47,9 @@ fn read() -> R<(Map<String, Value>, Prs)> {
     let Ok(Value::Object(data)) = serde_json::from_str::<Value>(&text) else { return Ok(empty()) };
     let Some(Value::Object(prs)) = data.get("prs").cloned() else { return Ok(empty()) };
     for list in prs.values() {
-        let Value::Array(entries) = list else { return Err(Fail::Ruby) };
+        let Value::Array(entries) = list else { return Err(Fail::Unsupported) };
         if entries.iter().any(|e| !e.is_object()) {
-            return Err(Fail::Ruby);
+            return Err(Fail::Unsupported);
         }
     }
     Ok((data, prs))
@@ -69,7 +69,7 @@ pub fn for_pr(url: &str) -> R<Vec<Map<String, Value>>> {
 /// Read-modify-write under the store's flock, then temp file + rename, as Ruby's `update`.
 fn update<T>(f: impl FnOnce(&mut Prs) -> T) -> R<T> {
     let _ = data_root::ensure_setup();
-    let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(data_root::root().join("pr-prerequisites.lock")).map_err(|_| Fail::Ruby)?;
+    let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(data_root::root().join("pr-prerequisites.lock")).map_err(|_| Fail::Unsupported)?;
     unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) };
     let (mut data, mut prs) = read()?;
     let result = f(&mut prs);
@@ -77,7 +77,7 @@ fn update<T>(f: impl FnOnce(&mut Prs) -> T) -> R<T> {
     data.insert("v".into(), Value::from(1));
     let temp = format!("{}.{}.{:?}.tmp", file().display(), std::process::id(), std::thread::current().id());
     let text = crate::drafts::pretty(&Value::Object(data));
-    std::fs::write(&temp, text).and_then(|_| std::fs::rename(&temp, file())).map_err(|_| Fail::Ruby)?;
+    std::fs::write(&temp, text).and_then(|_| std::fs::rename(&temp, file())).map_err(|_| Fail::Unsupported)?;
     Ok(result)
 }
 
@@ -199,7 +199,7 @@ fn gh(args: &[&str], chdir: Option<&str>) -> R<String> {
     if let Some(dir) = chdir {
         cmd.current_dir(dir);
     }
-    let Ok(o) = cmd.output() else { return Err(Fail::Ruby) };
+    let Ok(o) = cmd.output() else { return Err(Fail::Unsupported) };
     let (out, err) = (String::from_utf8_lossy(&o.stdout).into_owned(), String::from_utf8_lossy(&o.stderr).into_owned());
     if !o.status.success() {
         let shown = strip(if strip(&err).is_empty() { &out } else { &err });
@@ -218,7 +218,7 @@ fn viewed_pr_url(target: Option<&str>, cwd: Option<&str>) -> R<String> {
     let shown = target.unwrap_or("(current branch)");
     let out = gh(&args, cwd)?;
     let Ok(parsed) = serde_json::from_str::<Value>(&out) else { return arg(format!("gh pr view {shown} returned no JSON")) };
-    let Value::Object(o) = parsed else { return Err(Fail::Ruby) };
+    let Value::Object(o) = parsed else { return Err(Fail::Unsupported) };
     match o.get("url") {
         Some(Value::String(u)) if pr_url_re().is_match(u) => Ok(u.clone()),
         _ => arg(format!("gh pr view {shown} gave no PR URL")),
@@ -296,14 +296,14 @@ fn cache() -> Option<Map<String, Value>> {
 pub fn verdict_label(entry: &Map<String, Value>) -> R<Option<String>> {
     let cache = cache();
     let section = |name: &str| cache.as_ref().and_then(|c| c.get(name)).and_then(Value::as_object).cloned().unwrap_or_default();
-    let reference = entry.get("ref").and_then(Value::as_str).ok_or(Fail::Ruby)?;
+    let reference = entry.get("ref").and_then(Value::as_str).ok_or(Fail::Unsupported)?;
     let sha: String = if entry.get("kind").and_then(Value::as_str) == Some("commit") {
         reference.to_string()
     } else {
         let pull = match section("pulls").get(reference) {
             None | Some(Value::Null) => None,
             Some(Value::Object(o)) => Some(o.clone()),
-            Some(_) => return Err(Fail::Ruby),
+            Some(_) => return Err(Fail::Unsupported),
         };
         match pull.as_ref().and_then(|p| p.get("state")).and_then(Value::as_str) {
             Some("OPEN") => return Ok(Some("not merged".into())),
@@ -311,7 +311,7 @@ pub fn verdict_label(entry: &Map<String, Value>) -> R<Option<String>> {
             Some("MERGED") => match pull.as_ref().and_then(|p| p.get("mergeCommit")) {
                 Some(Value::String(s)) => s.clone(),
                 None | Some(Value::Null) | Some(Value::Bool(false)) => return Ok(None),
-                Some(_) => return Err(Fail::Ruby),
+                Some(_) => return Err(Fail::Unsupported),
             },
             _ => return Ok(None),
         }
@@ -319,12 +319,12 @@ pub fn verdict_label(entry: &Map<String, Value>) -> R<Option<String>> {
     let checked = match section("verdicts").get(&sha) {
         None | Some(Value::Null) => return Ok(None),
         Some(Value::Object(o)) => o.clone(),
-        Some(_) => return Err(Fail::Ruby),
+        Some(_) => return Err(Fail::Unsupported),
     };
     let tag = match checked.get("tag") {
         None | Some(Value::Null) => String::new(),
         Some(Value::String(s)) => s.clone(),
-        Some(_) => return Err(Fail::Ruby),
+        Some(_) => return Err(Fail::Unsupported),
     };
     let deployed = !matches!(checked.get("deployed"), None | Some(Value::Null) | Some(Value::Bool(false)));
     Ok(Some(if deployed { format!("✓ deployed in {tag}") } else { format!("not in {tag}") }))

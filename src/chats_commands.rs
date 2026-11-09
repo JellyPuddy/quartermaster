@@ -24,7 +24,7 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
 fn failed(f: Failed) -> Outcome {
     match f {
         Failed::Abort(message) => abort(&message),
-        Failed::Ruby => Outcome::Delegate,
+        Failed::Unsupported => Outcome::Refused,
     }
 }
 
@@ -54,11 +54,11 @@ fn pane(cmd: &str, a: &[String]) -> Outcome {
     while i < a.len() {
         match a[i].as_str() {
             "--session" if cmd == "pane-resume" => {
-                let Some(v) = a.get(i + 1) else { return Outcome::Delegate };
+                let Some(v) = a.get(i + 1) else { return Outcome::Refused };
                 session = Some(v.clone());
                 i += 2;
             }
-            s if s.starts_with('-') && s != "-" => return Outcome::Delegate,
+            s if s.starts_with('-') && s != "-" => return Outcome::Refused,
             _ => {
                 rest.push(&a[i]);
                 i += 1;
@@ -124,7 +124,7 @@ fn rotate(a: &[String]) -> Outcome {
         match arg.as_str() {
             "--close" => close = true,
             "--self" => by_chat = true,
-            s if s.starts_with('-') && s != "-" => return Outcome::Delegate, // OptionParser reads these its own way
+            s if s.starts_with('-') && s != "-" => return Outcome::Refused, // OptionParser reads these its own way
             s => rest.push(s.to_string()),
         }
     }

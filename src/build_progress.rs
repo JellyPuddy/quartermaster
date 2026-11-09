@@ -22,7 +22,7 @@ const INPUT_KEYS: [&str; 10] = ["description", "command", "file_path", "pattern"
 
 pub enum Fail {
     Arg(String),
-    Unported,
+    Unsupported,
 }
 
 type R<T> = Result<T, Fail>;
@@ -73,7 +73,7 @@ fn s(v: Option<&Value>) -> R<String> {
         Some(Value::String(t)) => Ok(t.clone()),
         Some(Value::Bool(b)) => Ok(b.to_string()),
         Some(Value::Number(n)) if n.is_i64() || n.is_u64() => Ok(n.to_string()),
-        _ => Err(Fail::Unported),
+        _ => Err(Fail::Unsupported),
     }
 }
 
@@ -134,7 +134,7 @@ fn running(session_dir: &str, run_id: &str) -> R<bool> {
     if !std::path::Path::new(&result).exists() {
         return Ok(true);
     }
-    let Ok(text) = std::fs::read_to_string(&result) else { return Err(Fail::Unported) };
+    let Ok(text) = std::fs::read_to_string(&result) else { return Err(Fail::Unsupported) };
     match serde_json::from_str::<Value>(&text) {
         Err(_) => Ok(true), // half-written: the run is ending right now
         Ok(Value::Object(o)) => Ok(match o.get("status") {
@@ -142,7 +142,7 @@ fn running(session_dir: &str, run_id: &str) -> R<bool> {
             Some(Value::String(st)) => matches!(st.as_str(), "" | "running" | "pending"),
             Some(_) => false,
         }),
-        Ok(_) => Err(Fail::Unported),
+        Ok(_) => Err(Fail::Unsupported),
     }
 }
 
@@ -204,11 +204,11 @@ fn run_agents(run_dir: &str, run_id: &str) -> R<Vec<Agent>> {
         }
         let meta = read_json(&format!("{run_dir}/agent-{agent_id}.meta.json")).unwrap_or_else(|| json!({}));
         if !meta.is_object() {
-            return Err(Fail::Unported);
+            return Err(Fail::Unsupported);
         }
         let label = match truthy(started.get("label")).or_else(|| truthy(meta.get("description"))) {
             Some(Value::String(t)) => t.clone(),
-            Some(_) => return Err(Fail::Unported),
+            Some(_) => return Err(Fail::Unsupported),
             None => agent_id.clone(),
         };
         let Some(task) = task_name(&label) else { continue };
@@ -298,12 +298,12 @@ fn first_timestamp(path: &str) -> R<Option<f64>> {
         let Some(Value::Object(entry)) = json_line(&line) else { continue };
         let stamp = match truthy(entry.get("timestamp")) {
             Some(Value::String(t)) => t.clone(),
-            Some(_) => return Err(Fail::Unported),
+            Some(_) => return Err(Fail::Unsupported),
             None => continue,
         };
         return match chrono::DateTime::parse_from_rfc3339(&stamp) {
             Ok(t) => Ok(Some(t.timestamp_millis() as f64 / 1000.0)),
-            Err(_) => Err(Fail::Unported),
+            Err(_) => Err(Fail::Unsupported),
         };
     }
     Ok(None)
@@ -325,7 +325,7 @@ fn input_summary(input: Option<&Value>) -> R<String> {
         Some(Value::String(t)) => Ok(t.clone()),
         Some(Value::Bool(b)) => Ok(b.to_string()),
         Some(Value::Number(n)) if n.is_i64() || n.is_u64() => Ok(n.to_string()),
-        _ => Err(Fail::Unported),
+        _ => Err(Fail::Unsupported),
     }
 }
 
@@ -375,11 +375,11 @@ fn headless_claude(stdin: &str) -> R<(String, String, bool)> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|_| Fail::Unported)?;
+        .map_err(|_| Fail::Unsupported)?;
     if let Some(mut input) = child.stdin.take() {
         let _ = input.write_all(stdin.as_bytes());
     }
-    let out = child.wait_with_output().map_err(|_| Fail::Unported)?;
+    let out = child.wait_with_output().map_err(|_| Fail::Unsupported)?;
     Ok((String::from_utf8_lossy(&out.stdout).into_owned(), String::from_utf8_lossy(&out.stderr).into_owned(), out.status.success()))
 }
 

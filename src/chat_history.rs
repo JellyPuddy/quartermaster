@@ -17,7 +17,7 @@ const TOOL_SUBJECT_KEYS: [&str; 10] = ["command", "file_path", "notebook_path", 
 /// Why a history answer is not made here: Ruby's `ArgumentError` message, or what only Ruby reads exactly.
 pub enum Stop {
     Refuse(String),
-    Unported,
+    Unsupported,
 }
 
 fn words(s: &str) -> String {
@@ -36,7 +36,7 @@ fn tool_line(block: &Map<String, Value>) -> Result<String, Stop> {
     let name = match block.get("name") {
         None | Some(Value::Null) | Some(Value::Bool(false)) => "?".to_string(),
         Some(Value::String(n)) => n.clone(),
-        Some(_) => return Err(Stop::Unported),
+        Some(_) => return Err(Stop::Unsupported),
     };
     let line = match subject {
         Some(s) => format!("{name}  {s}"),
@@ -64,7 +64,7 @@ fn transcript_entries(path: &std::path::Path) -> Result<Option<Vec<Value>>, Stop
     if !path.exists() {
         return Ok(None);
     }
-    let bytes = std::fs::read(path).map_err(|_| Stop::Unported)?;
+    let bytes = std::fs::read(path).map_err(|_| Stop::Unsupported)?;
     let mut e = Entries { list: vec![], message_id: None };
     for raw in bytes.split_inclusive(|b| *b == b'\n') {
         let Ok(line) = std::str::from_utf8(raw) else { continue };
@@ -78,7 +78,7 @@ fn transcript_entries(path: &std::path::Path) -> Result<Option<Vec<Value>>, Stop
                 if !matches!(entry.get("isCompactSummary"), None | Some(Value::Null) | Some(Value::Bool(false))) {
                     continue;
                 }
-                let text = crate::transcripts::prompt_text(&entry).map_err(|_| Stop::Unported)?;
+                let text = crate::transcripts::prompt_text(&entry).map_err(|_| Stop::Unsupported)?;
                 let Some(text) = text else { continue };
                 let kind = if text.starts_with(crate::transcript_vitals::INTERRUPT_MARK) { "event" } else { "user" };
                 e.push(kind, text, ts);
@@ -87,7 +87,7 @@ fn transcript_entries(path: &std::path::Path) -> Result<Option<Vec<Value>>, Stop
                 let message = match entry.get("message") {
                     None | Some(Value::Null) => None,
                     Some(Value::Object(m)) => Some(m),
-                    Some(_) => return Err(Stop::Unported),
+                    Some(_) => return Err(Stop::Unsupported),
                 };
                 let id = message.and_then(|m| m.get("id")).cloned().filter(|v| !matches!(v, Value::Null | Value::Bool(false)));
                 let blocks: Vec<Value> = match message.and_then(|m| m.get("content")) {
@@ -104,7 +104,7 @@ fn transcript_entries(path: &std::path::Path) -> Result<Option<Vec<Value>>, Stop
                                 Some(Value::String(t)) => t.clone(),
                                 Some(Value::Bool(v)) => v.to_string(),
                                 Some(Value::Number(n)) if n.is_i64() || n.is_u64() => n.to_string(),
-                                Some(_) => return Err(Stop::Unported),
+                                Some(_) => return Err(Stop::Unsupported),
                             };
                             let text = crate::ruby_text::strip(&text).to_string();
                             if text.is_empty() {
@@ -140,17 +140,17 @@ fn earlier_sessions(item: &WorkItem) -> Result<Vec<Session>, Stop> {
 
 fn moment(ts: &Value) -> Result<f64, Stop> {
     match ts {
-        Value::String(s) => crate::clock::parse_f64(s).ok_or(Stop::Unported),
+        Value::String(s) => crate::clock::parse_f64(s).ok_or(Stop::Unsupported),
         Value::Null => Ok(0.0),
-        _ => Err(Stop::Unported),
+        _ => Err(Stop::Unsupported),
     }
 }
 
 fn to_i(v: Option<&serde_yaml::Value>) -> Result<i64, Stop> {
     match v {
         None | Some(serde_yaml::Value::Null) => Ok(0),
-        Some(serde_yaml::Value::Number(n)) => n.as_i64().ok_or(Stop::Unported),
-        Some(_) => Err(Stop::Unported),
+        Some(serde_yaml::Value::Number(n)) => n.as_i64().ok_or(Stop::Unsupported),
+        Some(_) => Err(Stop::Unsupported),
     }
 }
 
@@ -158,7 +158,7 @@ fn yaml_scalar(v: Option<&serde_yaml::Value>) -> Result<Value, Stop> {
     match v {
         None | Some(serde_yaml::Value::Null) => Ok(Value::Null),
         Some(serde_yaml::Value::String(s)) => Ok(json!(s)),
-        Some(_) => Err(Stop::Unported),
+        Some(_) => Err(Stop::Unsupported),
     }
 }
 
@@ -171,11 +171,11 @@ pub fn timeline(item: &WorkItem) -> Result<Value, Stop> {
     }
     let notes = item.notes();
     for rotation in item.rotations() {
-        let serde_yaml::Value::Mapping(m) = &rotation else { return Err(Stop::Unported) };
+        let serde_yaml::Value::Mapping(m) = &rotation else { return Err(Stop::Unsupported) };
         let carried: Vec<Value> = match crate::yaml_scalar::get(m, "carried") {
             None | Some(serde_yaml::Value::Null) => vec![],
             Some(serde_yaml::Value::Sequence(items)) => items.iter().filter_map(|p| p.as_i64()).filter_map(|p| notes.iter().find(|n| n.position as i64 == p)).map(|n| json!({"stamp": n.stamp, "kind": n.kind, "text": n.text, "position": n.position})).collect(),
-            Some(_) => return Err(Stop::Unported),
+            Some(_) => return Err(Stop::Unsupported),
         };
         segments.push(json!({"type": "divider", "at": yaml_scalar(crate::yaml_scalar::get(m, "at"))?, "from": yaml_scalar(crate::yaml_scalar::get(m, "from"))?, "via": yaml_scalar(crate::yaml_scalar::get(m, "via"))?, "decisions": to_i(crate::yaml_scalar::get(m, "decisions"))?, "open": to_i(crate::yaml_scalar::get(m, "open"))?, "notes": carried}));
     }

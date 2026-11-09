@@ -23,12 +23,12 @@ pub const USAGE: &str = "usage: qm automation list | show SLUG | new TITLE --pro
 /// How a subcommand ends early: an `abort` message, or "this spelling isn't read here".
 pub(crate) enum Stop {
     Abort(String),
-    Delegate,
+    Refused,
 }
 
 impl From<QmError> for Stop {
     fn from(e: QmError) -> Stop {
-        if e.class == UNEMITTABLE { Stop::Delegate } else { Stop::Abort(format!("qm: {}", e.message)) }
+        if e.class == UNEMITTABLE { Stop::Refused } else { Stop::Abort(format!("qm: {}", e.message)) }
     }
 }
 
@@ -73,7 +73,7 @@ pub fn run(args: &[String]) -> Outcome {
     match dispatch(args, &mut out) {
         Ok(()) => done(out),
         Err(Stop::Abort(message)) => Outcome::Done { code: 1, stdout: out, stderr: format!("{message}\n") },
-        Err(Stop::Delegate) => Outcome::Delegate,
+        Err(Stop::Refused) => Outcome::Refused,
     }
 }
 
@@ -218,7 +218,7 @@ fn named(args: &[String], names: &[&str]) -> Result<(Vec<(String, String)>, Vec<
     let mut words = args.iter();
     while let Some(word) = words.next() {
         if names.contains(&word.as_str()) {
-            found.push((word.clone(), words.next().ok_or(Stop::Delegate)?.clone()));
+            found.push((word.clone(), words.next().ok_or(Stop::Refused)?.clone()));
         } else if word == "--" {
             rest.extend(words.by_ref().cloned());
         } else {
@@ -326,7 +326,7 @@ fn chat(name: &str, slug: &str, out: &mut String) -> Said {
     let reply = match gui_action::call_optional(&format!("automation {name}"), "automation-chat", Some(&item.slug), json!({})) {
         Ok(reply) => reply,
         Err(Failed::Abort(message)) => return Err(Stop::Abort(message)),
-        Err(Failed::Ruby) => return Err(Stop::Delegate),
+        Err(Failed::Unsupported) => return Err(Stop::Refused),
     };
     let Some(reply) = reply else {
         let plan = automation_chat::plan(&item, &store).map_err(refuse)?;

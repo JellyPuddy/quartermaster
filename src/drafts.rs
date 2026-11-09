@@ -221,7 +221,7 @@ pub enum Halt {
     /// Ruby raises this `ArgumentError`.
     Refuse(String),
     /// A value this port does not read as Ruby does; nothing was written.
-    Unported,
+    Unsupported,
 }
 
 /// `Drafts#update`: the entries read and handed to `f` under the item's lock (the directory and lock
@@ -229,7 +229,7 @@ pub enum Halt {
 /// drafts and no clipboard load ids loses its file.
 pub fn update<T>(slug: &str, f: impl FnOnce(&mut Vec<Value>) -> Result<T, Halt>) -> Result<T, Halt> {
     update_data(slug, |data| {
-        let Some(Value::Array(list)) = data.get_mut("entries") else { return Err(Halt::Unported) };
+        let Some(Value::Array(list)) = data.get_mut("entries") else { return Err(Halt::Unsupported) };
         f(list)
     })
 }
@@ -238,12 +238,12 @@ pub fn update<T>(slug: &str, f: impl FnOnce(&mut Vec<Value>) -> Result<T, Halt>)
 pub fn update_data<T>(slug: &str, f: impl FnOnce(&mut Map<String, Value>) -> Result<T, Halt>) -> Result<T, Halt> {
     use std::os::unix::io::AsRawFd;
     if !writable(slug) {
-        return Err(Halt::Unported);
+        return Err(Halt::Unsupported);
     }
     let dir = data_root::root().join("drafts");
     let path = dir.join(format!("{slug}.json"));
-    std::fs::create_dir_all(&dir).map_err(|_| Halt::Unported)?;
-    let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(dir.join(format!(".{slug}.lock"))).map_err(|_| Halt::Unported)?;
+    std::fs::create_dir_all(&dir).map_err(|_| Halt::Unsupported)?;
+    let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(dir.join(format!(".{slug}.lock"))).map_err(|_| Halt::Unsupported)?;
     unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) };
     let mut data = match std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
         Some(Value::Object(d)) if d.get("entries").is_some_and(Value::is_array) => d,
@@ -262,8 +262,8 @@ pub fn update_data<T>(slug: &str, f: impl FnOnce(&mut Map<String, Value>) -> Res
     } else {
         data.insert("v".into(), Value::from(1));
         let temp = format!("{}.{}.{:?}.tmp", path.display(), std::process::id(), std::thread::current().id());
-        std::fs::write(&temp, pretty(&Value::Object(data))).map_err(|_| Halt::Unported)?;
-        std::fs::rename(&temp, &path).map_err(|_| Halt::Unported)?;
+        std::fs::write(&temp, pretty(&Value::Object(data))).map_err(|_| Halt::Unsupported)?;
+        std::fs::rename(&temp, &path).map_err(|_| Halt::Unsupported)?;
     }
     Ok(result)
 }

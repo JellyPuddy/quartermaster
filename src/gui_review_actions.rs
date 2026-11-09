@@ -18,21 +18,21 @@ fn to_s(v: &Value) -> R<String> {
         Value::String(t) => Ok(t.clone()),
         Value::Bool(b) => Ok(b.to_string()),
         Value::Number(n) if n.is_i64() || n.is_u64() => Ok(n.to_string()),
-        _ => Err(Stop::Unported),
+        _ => Err(Stop::Unsupported),
     }
 }
 
 fn from_e(e: E) -> Stop {
     match e {
         E::Arg(m) => Stop::refuse(m),
-        E::Unsure => Stop::Unported,
+        E::Unsure => Stop::Unsupported,
     }
 }
 
 fn halt(h: Halt) -> Stop {
     match h {
         Halt::Refuse(m) => Stop::refuse(m),
-        Halt::Unported => Stop::Unported,
+        Halt::Unsupported => Stop::Unsupported,
     }
 }
 
@@ -55,7 +55,7 @@ pub(crate) fn refuse_unanchorable(item: &WorkItem, entry: &Map<String, Value>) -
 
 /// The entry of a drafts file by id (`Drafts#find`).
 fn find_draft(slug: &str, id: &str) -> R<Option<Map<String, Value>>> {
-    let entries = crate::drafts::entries(slug).ok_or(Stop::Unported)?;
+    let entries = crate::drafts::entries(slug).ok_or(Stop::Unsupported)?;
     Ok(entries.into_iter().find(|e| e.get("id") == Some(&json!(id))))
 }
 
@@ -114,10 +114,10 @@ pub(crate) fn place(slug: &str, args: &Map<String, Value>) -> R<Value> {
         (other, _) => {
             let shown = match other {
                 None | Some(Value::Null) => "nil".to_string(),
-                Some(Value::String(t)) => crate::ruby_text::inspect_ascii(t).ok_or(Stop::Unported)?,
+                Some(Value::String(t)) => crate::ruby_text::inspect_ascii(t).ok_or(Stop::Unsupported)?,
                 Some(Value::Bool(b)) => b.to_string(),
                 Some(Value::Number(n)) if n.is_i64() || n.is_u64() => n.to_string(),
-                _ => return Err(Stop::Unported),
+                _ => return Err(Stop::Unsupported),
             };
             return Err(Stop::refuse(format!("a draft is placed on a line, the file or its commit, not {shown}")));
         }
@@ -142,7 +142,7 @@ const RELOCATED: [&str; 11] = ["path", "side", "line", "code", "range", "start_l
 fn relocate_bump(slug: &str, id: &str, fields: &Map<String, Value>) -> Result<Value, Halt> {
     update(slug, |list| {
         let Some(entry) = list.iter_mut().find(|e| e.get("id") == Some(&json!(id)) && e.get("kind") == Some(&json!("github-comment"))) else { return Ok(Value::Null) };
-        let Some(entry) = entry.as_object_mut() else { return Err(Halt::Unported) };
+        let Some(entry) = entry.as_object_mut() else { return Err(Halt::Unsupported) };
         for k in RELOCATED {
             if let Some(v) = fields.get(k) {
                 if v.is_null() {
@@ -156,7 +156,7 @@ fn relocate_bump(slug: &str, id: &str, fields: &Map<String, Value>) -> Result<Va
         let rev = match entry.get("rev") {
             None | Some(Value::Null) => 0,
             Some(Value::Number(n)) if n.is_i64() => n.as_i64().unwrap(),
-            _ => return Err(Halt::Unported),
+            _ => return Err(Halt::Unsupported),
         };
         entry.insert("rev".into(), json!(rev + 1));
         entry.insert("updatedAt".into(), json!(crate::clock::now_utc_iso()));
@@ -169,7 +169,7 @@ fn review_drafts(item: &WorkItem, args: &Map<String, Value>) -> R<(PendingReview
     let root = repo_root(item)?;
     let repo = args.get("repo").cloned().unwrap_or(Value::Null);
     let review = PendingReview::new(&root, &Value::String(to_s(&repo)?), args.get("number").unwrap_or(&Value::Null)).map_err(from_e)?;
-    let all = crate::drafts::entries(&item.slug).ok_or(Stop::Unported)?;
+    let all = crate::drafts::entries(&item.slug).ok_or(Stop::Unsupported)?;
     let mut entries: Vec<Map<String, Value>> = vec![];
     for e in all {
         let kind = e.get("kind").and_then(Value::as_str).unwrap_or("");
@@ -255,7 +255,7 @@ pub(crate) fn resolve(args: &Map<String, Value>) -> R<Value> {
             Ok(out)
         }
         Err(Some(m)) => Err(Stop::refuse(m)),
-        Err(None) => Err(Stop::Unported),
+        Err(None) => Err(Stop::Unsupported),
     }
 }
 

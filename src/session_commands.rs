@@ -25,7 +25,7 @@ pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
         "show" => crate::show_command::show(args),
         "feature-use" => match crate::feature_use::report(args) {
             Ok(Some(text)) => done(crate::cli_format::puts(&text)),
-            Ok(None) => Outcome::Delegate,
+            Ok(None) => Outcome::Refused,
             Err(m) => abort(&format!("qm: {m}")),
         },
         "statusline" => {

@@ -2,7 +2,7 @@
 //! view's attention list, the dev server and the sessions' tmux panes. A port of `GuiState#build`
 //! for a GUI that has no jobs, notifier or caffeinate child of its own yet. What belongs to parts
 //! not ported — status boards, benchmarks, loose chats, build progress — is empty when the data
-//! says it would be empty in Ruby, and `Unported` (a 501) when it would not.
+//! says it would be empty in Ruby, and `Unsupported` (a 501) when it would not.
 
 use std::sync::Mutex;
 
@@ -22,8 +22,8 @@ use crate::session_log::{Session, SessionLog};
 use crate::usage_ledger::UsageLedger;
 use crate::work_item::WorkItem;
 
-pub struct Unported;
-type R<T> = Result<T, Unported>;
+pub struct Unsupported;
+type R<T> = Result<T, Unsupported>;
 
 const MAINLINE: [&str; 3] = ["main", "master", "develop"];
 
@@ -42,7 +42,7 @@ fn text(v: &Value) -> String {
 /// `GuiState.relative_when`: "3h ago", a date past ten days; None for what Ruby can't parse.
 pub fn relative_when(ts: Option<&str>) -> R<Option<String>> {
     let Some(ts) = ts.filter(|t| !t.is_empty()) else { return Ok(None) };
-    let Some(then) = crate::clock::parse(ts) else { return Err(Unported) };
+    let Some(then) = crate::clock::parse(ts) else { return Err(Unsupported) };
     let seconds = crate::clock::now_f64() - crate::clock::parse_f64(ts).unwrap_or(0.0);
     Ok(Some(if seconds < 60.0 {
         "just now".to_string()
@@ -172,7 +172,7 @@ pub fn items_checked_out_at(path: &str) -> Vec<WorkItem> {
 fn active_build_agents(items: &[WorkItem], log: &SessionLog) -> R<Vec<(String, Vec<String>)>> {
     let mut building = vec![];
     for item in items {
-        let keys: Vec<String> = crate::build_progress::active_agents(item, log).map_err(|_| Unported)?.iter().map(|a| a.key()).collect();
+        let keys: Vec<String> = crate::build_progress::active_agents(item, log).map_err(|_| Unsupported)?.iter().map(|a| a.key()).collect();
         if !keys.is_empty() {
             building.push((item.slug.clone(), keys));
         }
@@ -296,17 +296,17 @@ fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R
         }
     }
     let mut sessions = vec![];
-    for s in c.log.item_sessions(item).map_err(|_| Unported)? {
+    for s in c.log.item_sessions(item).map_err(|_| Unsupported)? {
         sessions.push(json!({"id": s.id, "tier": s.tier(), "when": relative_when(s.last_ts_opt().as_deref())?.unwrap_or_else(|| "—".into()), "prompt": s.first_prompt()}));
     }
     let badges: Vec<Value> = c
         .attention
         .entries_for(item)
-        .map_err(|_| Unported)?
+        .map_err(|_| Unsupported)?
         .iter()
         .map(|e| json!({"type": match e.kind { "degrade" => "degrading", "stale" => "stale", _ => "merged" }, "label": e.message}))
         .collect();
-    let activity = c.attention.activity_at(item).map_err(|_| Unported)?;
+    let activity = c.attention.activity_at(item).map_err(|_| Unsupported)?;
     let updated = chrono::DateTime::from_timestamp(activity.floor() as i64, 0).map(|t| t.with_timezone(&chrono::Local).date_naive().to_string()).unwrap_or_default();
     let ids = item.session_ids();
     let paths: Vec<String> = checkouts.iter().map(|(_, p)| p.clone()).collect();
@@ -320,7 +320,7 @@ fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R
     };
     let aside = crate::chats_commands::aside_name(&item.slug);
     let benchmarkable = crate::benchmark_run::enabled(item);
-    let entries = drafts::entries(&item.slug).ok_or(Unported)?;
+    let entries = drafts::entries(&item.slug).ok_or(Unsupported)?;
     let mut out = Map::new();
     // WorkItem#to_h
     for (k, v) in [
@@ -354,7 +354,7 @@ fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R
         ("pane", json!(c.panes.contains(&item.slug))),
         ("aside", json!(c.panes.contains(&aside))),
         ("asideCount", json!(c.aside_counts.iter().find(|(s, _)| *s == item.slug).map(|(_, n)| *n).unwrap_or(0))),
-        ("boardRows", Value::Array(crate::board_mirror::rows_for(item).map_err(|_| Unported)?)),
+        ("boardRows", Value::Array(crate::board_mirror::rows_for(item).map_err(|_| Unsupported)?)),
         ("rotations", json!(item.rotation_count())),
         ("sessionList", Value::Array(sessions)),
         ("usage", usage_payload(item, c.log, ledger, c.prices)?),
@@ -398,7 +398,7 @@ pub(crate) fn loose_session(log: &SessionLog, id: &str) -> Option<Session> {
 
 fn chat_attention() -> R<Vec<Value>> {
     let mut attention = ChatAttention::new();
-    let entries = attention.entries().map_err(|_| Unported)?;
+    let entries = attention.entries().map_err(|_| Unsupported)?;
     let log = SessionLog::read();
     *MID_TURN.lock().unwrap() = entries.iter().filter(|e| e.state == "working" || e.state == "blocked").filter_map(|e| e.session_id.as_deref().and_then(|id| log.session_for(id)).and_then(|s| s.transcript()).map(|p| p.to_string_lossy().into_owned())).collect();
     let now = crate::clock::now_f64();
@@ -435,7 +435,7 @@ pub fn build(token: &str) -> R<Value> {
             }
         }
     }
-    let mut work_items = WorkItem::all().map_err(|_| Unported)?;
+    let mut work_items = WorkItem::all().map_err(|_| Unsupported)?;
     let context = Context { log: &log, attention: &attention, live_ids, pf: &status, panes: &panes, prices: &prices, aside_counts, bench: crate::benchmark_run::all() };
     let mut guard = LEDGER.lock().unwrap();
     let ledger = guard.get_or_insert_with(UsageLedger::new);
@@ -455,12 +455,12 @@ pub fn build(token: &str) -> R<Value> {
     let default_project = match config.default_project_raw() {
         serde_yaml::Value::Null => String::new(),
         serde_yaml::Value::String(s) => s.clone(),
-        _ => return Err(Unported),
+        _ => return Err(Unsupported),
     };
     let default_project = if names.contains(&default_project.as_str()) { json!(default_project) } else { json!(names.first()) };
 
     let open_loose: Vec<&str> = panes.iter().filter_map(|n| n.strip_prefix("loose--")).collect();
-    let mut inbox_sessions: Vec<Session> = log.inbox().map_err(|_| Unported)?.into_iter().filter(|s| !s.loose_id().is_some_and(|id| open_loose.contains(&id.as_str()))).collect();
+    let mut inbox_sessions: Vec<Session> = log.inbox().map_err(|_| Unsupported)?.into_iter().filter(|s| !s.loose_id().is_some_and(|id| open_loose.contains(&id.as_str()))).collect();
     inbox_sessions.sort_by_key(|s| s.last_ts());
     inbox_sessions.reverse();
     let mut inbox = vec![];

@@ -48,7 +48,7 @@ fn cycle_filter() -> Outcome {
     let _ = data_root::ensure_setup();
     match std::fs::write(filter_file(), FILTER_CYCLE[(at + 1) % FILTER_CYCLE.len()]) {
         Ok(()) => done(String::new()),
-        Err(_) => Outcome::Delegate,
+        Err(_) => Outcome::Refused,
     }
 }
 
@@ -68,11 +68,11 @@ fn viewer_rows(a: &[String]) -> Outcome {
     while i < a.len() {
         match a[i].as_str() {
             "--state" => {
-                let Some(v) = a.get(i + 1) else { return Outcome::Delegate };
+                let Some(v) = a.get(i + 1) else { return Outcome::Refused };
                 state = Some(v.clone());
                 i += 2;
             }
-            s if s.starts_with('-') && s != "-" => return Outcome::Delegate, // OptionParser reads these its own way
+            s if s.starts_with('-') && s != "-" => return Outcome::Refused, // OptionParser reads these its own way
             _ => i += 1,
         }
     }
@@ -126,7 +126,7 @@ fn viewer_rows(a: &[String]) -> Outcome {
 fn session_rows(a: &[String]) -> Outcome {
     let Some(slug) = a.first() else { return abort("usage: qm session-rows SLUG") };
     if slug.starts_with('-') {
-        return Outcome::Delegate;
+        return Outcome::Refused;
     }
     let item = tri!(WorkItem::find(slug));
     let rows = tri!(crate::show_command::session_lines(&item, &SessionLog::read()));

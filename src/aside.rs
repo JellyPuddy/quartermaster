@@ -14,7 +14,7 @@ const MODELS: [&str; 3] = ["sonnet", "opus", "haiku"];
 
 pub enum Halt {
     Refuse(String),
-    Unported,
+    Unsupported,
 }
 
 fn refuse<T>(m: impl Into<String>) -> Result<T, Halt> {
@@ -33,10 +33,10 @@ fn start(item: &WorkItem, cwd: &str, argv: &[String]) -> Result<bool, Halt> {
 pub fn open(item: &WorkItem, model: &str) -> Result<bool, Halt> {
     let model = if model.is_empty() { "sonnet" } else { model };
     if !MODELS.contains(&model) {
-        let shown = crate::ruby_text::inspect_ascii(model).ok_or(Halt::Unported)?;
+        let shown = crate::ruby_text::inspect_ascii(model).ok_or(Halt::Unsupported)?;
         return refuse(format!("unknown model {shown} (sonnet, opus, haiku)"));
     }
-    let command = chat_command().ok_or(Halt::Unported)?;
+    let command = chat_command().ok_or(Halt::Unsupported)?;
     let argv: Vec<String> = command.into_iter().chain(["--model".to_string(), model.to_string()]).collect();
     start(item, &crate::branch_diff::start_cwd(item), &argv)
 }
@@ -87,7 +87,7 @@ pub fn reopen(item: &WorkItem, session_id: &str) -> Result<(), Halt> {
         Some(t) => model_in(&t)?,
         None => None,
     };
-    let command = chat_command().ok_or(Halt::Unported)?;
+    let command = chat_command().ok_or(Halt::Unsupported)?;
     let mut argv: Vec<String> = command;
     if let Some(m) = model {
         argv.extend(["--model".to_string(), m]);
@@ -125,14 +125,14 @@ pub fn promote(item: &mut WorkItem, session_id: Option<&str>) -> Result<String, 
     };
     let Some(answer) = answer else { return refuse(format!("the aside for {} has no answer to promote yet", item.slug)) };
     let text = note_text(&answer);
-    item.add_note(&text, crate::note::DEFAULT_NOTE_KIND).map_err(|e| if e.class == crate::error::UNEMITTABLE { Halt::Unported } else { Halt::Refuse(e.message) })?;
+    item.add_note(&text, crate::note::DEFAULT_NOTE_KIND).map_err(|e| if e.class == crate::error::UNEMITTABLE { Halt::Unsupported } else { Halt::Refuse(e.message) })?;
     Ok(text)
 }
 
 /// The transcript's lines as parsed JSON, `None` for the ones Ruby skips; `Err` when the file isn't
 /// text this port reads as Ruby does.
 fn entries(path: &std::path::Path) -> Result<Vec<Option<Value>>, Halt> {
-    let text = String::from_utf8(std::fs::read(path).map_err(|_| Halt::Unported)?).map_err(|_| Halt::Unported)?;
+    let text = String::from_utf8(std::fs::read(path).map_err(|_| Halt::Unsupported)?).map_err(|_| Halt::Unsupported)?;
     Ok(text.split_inclusive('\n').map(|l| serde_json::from_str::<Value>(l.trim_end_matches('\n')).ok()).collect())
 }
 
@@ -141,7 +141,7 @@ fn assistant_texts(entry: &Value) -> Result<Vec<String>, Halt> {
     let message = match entry.get("message") {
         None | Some(Value::Null) => return Ok(vec![]),
         Some(m @ Value::Object(_)) => m,
-        Some(_) => return Err(Halt::Unported),
+        Some(_) => return Err(Halt::Unsupported),
     };
     match message.get("content") {
         Some(Value::String(s)) if !crate::ruby_text::strip(s).is_empty() => Ok(vec![s.clone()]),
@@ -153,7 +153,7 @@ fn assistant_texts(entry: &Value) -> Result<Vec<String>, Halt> {
                         Some(Value::String(t)) if !crate::ruby_text::strip(t).is_empty() => out.push(t.clone()),
                         None | Some(Value::Null) => {}
                         Some(Value::String(_)) => {}
-                        Some(_) => return Err(Halt::Unported),
+                        Some(_) => return Err(Halt::Unsupported),
                     }
                 }
             }
@@ -194,7 +194,7 @@ fn model_in(path: &std::path::Path) -> Result<Option<String>, Halt> {
     if !path.exists() {
         return Ok(None);
     }
-    let text = String::from_utf8(std::fs::read(path).map_err(|_| Halt::Unported)?).map_err(|_| Halt::Unported)?;
+    let text = String::from_utf8(std::fs::read(path).map_err(|_| Halt::Unsupported)?).map_err(|_| Halt::Unsupported)?;
     let mut model = None;
     for line in text.split_inclusive('\n').filter(|l| l.contains("\"model\"")) {
         let Ok(entry) = serde_json::from_str::<Value>(line.trim_end_matches('\n')) else { continue };
@@ -210,7 +210,7 @@ fn model_in(path: &std::path::Path) -> Result<Option<String>, Halt> {
                 }
             }
             None | Some(Value::Null) => {}
-            Some(_) => return Err(Halt::Unported),
+            Some(_) => return Err(Halt::Unsupported),
         }
     }
     Ok(model)

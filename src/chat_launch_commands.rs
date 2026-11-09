@@ -35,7 +35,7 @@ fn encode(text: &str) -> String {
 fn failed(f: Failed) -> Outcome {
     match f {
         Failed::Abort(message) => abort(&message),
-        Failed::Ruby => Outcome::Delegate,
+        Failed::Unsupported => Outcome::Refused,
     }
 }
 
@@ -78,7 +78,7 @@ fn last<'a>(found: &'a [(String, String)], name: &str) -> Option<&'a str> {
 }
 
 pub fn open_chat(a: &[String]) -> Outcome {
-    let Some((found, rest)) = options(a, &["--benchmark"]) else { return Outcome::Delegate };
+    let Some((found, rest)) = options(a, &["--benchmark"]) else { return Outcome::Refused };
     let Some(slug) = rest.first() else { return abort("usage: qm open-chat SLUG [--benchmark BRANCH]") };
     let port = match gui_action::port() {
         Ok(p) => p,
@@ -126,20 +126,20 @@ fn text_of(v: &Value, key: &str) -> String {
 }
 
 pub fn start_issue(a: &[String]) -> Outcome {
-    let Some((found, rest)) = options(a, &["--project"]) else { return Outcome::Delegate };
+    let Some((found, rest)) = options(a, &["--project"]) else { return Outcome::Refused };
     let [number] = &rest[..] else { return abort("usage: qm start-issue NUMBER [--project P]") };
     let project = last(&found, "--project").map(String::from).unwrap_or_else(default_issue_project);
     let prefixed = |m: &str| abort(&format!("qm start-issue: {m}"));
     let preview = match issue_start::preview(&json!(number), &project) {
         Ok(p) => p,
         Err(Fail::Arg(m)) => return prefixed(&m),
-        Err(Fail::Unported) => return Outcome::Delegate,
+        Err(Fail::Unsupported) => return Outcome::Refused,
     };
     let mut out = preview_lines(&preview);
     let reply = match gui_action::call_optional("start-issue", "issue-start", None, json!({"number": preview["number"], "project": project})) {
         Ok(r) => r,
         Err(Failed::Abort(m)) => return Outcome::Done { code: 1, stdout: out, stderr: format!("{m}\n") },
-        Err(Failed::Ruby) => return Outcome::Delegate,
+        Err(Failed::Unsupported) => return Outcome::Refused,
     };
     if let Some(reply) = reply {
         let slug = text_of(&Value::Object(reply.clone()), "slug");
@@ -155,26 +155,26 @@ pub fn start_issue(a: &[String]) -> Outcome {
                 out.push_str(&format!("  cd {} && QM_ITEM={} claude {}\n", shell_escape(&path), item.slug, shell_escape(&issue_start::kickoff(preview["number"].as_i64().unwrap_or(0)))));
             }
             Err(Fail::Arg(m)) => return Outcome::Done { code: 1, stdout: out, stderr: format!("qm start-issue: {m}\n") },
-            Err(Fail::Unported) => return Outcome::Delegate,
+            Err(Fail::Unsupported) => return Outcome::Refused,
         }
     }
     done(out)
 }
 
 pub fn loose(a: &[String]) -> Outcome {
-    let Some((found, rest)) = options(a, &["--project", "--model", "--starter"]) else { return Outcome::Delegate };
+    let Some((found, rest)) = options(a, &["--project", "--model", "--starter"]) else { return Outcome::Refused };
     let models = ["sonnet", "opus", "haiku"];
     if rest.len() > 1 {
         return abort(&format!("usage: qm loose [--project P] [--model {}] [--starter NAME] [--] [\"first prompt\"]", models.join("|")));
     }
     let (model, starter) = (last(&found, "--model"), last(&found, "--starter"));
     if let Some(m) = model.filter(|m| !models.contains(m)) {
-        let Some(shown) = crate::ruby_text::inspect_ascii(m) else { return Outcome::Delegate };
+        let Some(shown) = crate::ruby_text::inspect_ascii(m) else { return Outcome::Refused };
         return abort(&format!("qm loose: unknown model {shown} ({})", models.join(", ")));
     }
     let stop = |s: Stop| match s {
         Stop::Reply(v) => abort(&format!("qm loose: {}", v["error"].as_str().unwrap_or(""))),
-        Stop::Unported => Outcome::Delegate,
+        Stop::Unsupported => Outcome::Refused,
     };
     if let Err(s) = crate::gui_actions::loose_kickoff(starter, None) {
         return stop(s);
@@ -202,7 +202,7 @@ pub fn loose(a: &[String]) -> Outcome {
                 Ok(k) => k,
                 Err(s) => return stop(s),
             };
-            let Some(mut argv) = crate::launcher::chat_command() else { return Outcome::Delegate };
+            let Some(mut argv) = crate::launcher::chat_command() else { return Outcome::Refused };
             if let Some(m) = model {
                 argv.extend(["--model".to_string(), m.to_string()]);
             }

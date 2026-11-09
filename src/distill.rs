@@ -20,7 +20,7 @@ pub enum Fail {
     Arg(String),
     /// `AlreadyDistilledError`: the page turns it into a confirmation.
     Already(String),
-    Unported,
+    Unsupported,
 }
 
 type R<T> = Result<T, Fail>;
@@ -61,15 +61,15 @@ pub fn targets(item: &WorkItem, log: &SessionLog, session_id: Option<&str>, forc
 
 /// The cheap half: the item and its target sessions, everything the caller must surface before any run.
 pub fn plan(slug: &str, session_id: Option<&str>, force: bool) -> R<(WorkItem, Vec<Session>)> {
-    let item = WorkItem::find(slug).map_err(|e| if e.class == "ArgumentError" { Fail::Arg(e.message) } else { Fail::Unported })?;
+    let item = WorkItem::find(slug).map_err(|e| if e.class == "ArgumentError" { Fail::Arg(e.message) } else { Fail::Unsupported })?;
     let sessions = targets(&item, &SessionLog::read(), session_id, force)?;
     Ok((item, sessions))
 }
 
 /// One headless haiku call over the session's transcript tail; the snapshot it answers is added to the item.
 pub fn session(item: &mut WorkItem, session: &Session) -> R<Value> {
-    let path = session.transcript().ok_or(Fail::Unported)?;
-    let raw = std::fs::read(&path).map_err(|_| Fail::Unported)?;
+    let path = session.transcript().ok_or(Fail::Unsupported)?;
+    let raw = std::fs::read(&path).map_err(|_| Fail::Unsupported)?;
     let mut tail = TRANSCRIPT_TAIL_BYTES;
     loop {
         let mut transcript: Vec<u8> = raw.clone();
@@ -77,14 +77,14 @@ pub fn session(item: &mut WorkItem, session: &Session) -> R<Value> {
             transcript = format!("(transcript truncated — only the tail follows)\n").into_bytes();
             transcript.extend_from_slice(&raw[raw.len() - tail..]);
         }
-        let mut child = Command::new(crate::command_runner::resolve_program("claude")).args(["-p", DISTILL_PROMPT, "--model", "haiku"]).env("QM_SKIP", "1").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|_| Fail::Unported)?;
+        let mut child = Command::new(crate::command_runner::resolve_program("claude")).args(["-p", DISTILL_PROMPT, "--model", "haiku"]).env("QM_SKIP", "1").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|_| Fail::Unsupported)?;
         if let Some(mut input) = child.stdin.take() {
             let _ = input.write_all(&transcript);
         }
-        let result = child.wait_with_output().map_err(|_| Fail::Unported)?;
+        let result = child.wait_with_output().map_err(|_| Fail::Unsupported)?;
         let (out, err) = (String::from_utf8_lossy(&result.stdout).into_owned(), String::from_utf8_lossy(&result.stderr).into_owned());
         if result.status.success() && !strip(&out).is_empty() {
-            item.add_snapshot(&session.id, strip(&out)).map_err(|_| Fail::Unported)?;
+            item.add_snapshot(&session.id, strip(&out)).map_err(|_| Fail::Unsupported)?;
             return Ok(json!({"session_id": session.id, "transcript_bytes": transcript.len(), "snapshot": strip(&out)}));
         }
         if out.to_lowercase().contains("prompt is too long") && tail > TRANSCRIPT_MIN_TAIL_BYTES {

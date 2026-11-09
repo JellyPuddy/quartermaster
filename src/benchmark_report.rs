@@ -19,7 +19,7 @@ pub type Reply = (&'static str, &'static str, Vec<u8>);
 /// What stopped a payload: the `ArgumentError` Ruby raises, or a value only Ruby reads exactly.
 pub enum Fail {
     Arg(String),
-    Unported,
+    Unsupported,
 }
 
 type R<T> = Result<T, Fail>;
@@ -38,7 +38,7 @@ fn run_dir(id: &Option<String>) -> R<std::path::PathBuf> {
         other => {
             let shown = match other {
                 None => "nil".to_string(),
-                Some(i) => crate::ruby_text::inspect_ascii(i).ok_or(Fail::Unported)?,
+                Some(i) => crate::ruby_text::inspect_ascii(i).ok_or(Fail::Unsupported)?,
             };
             arg(format!("bad benchmark run id {shown}"))
         }
@@ -66,11 +66,11 @@ fn plan_file(id: &Option<String>, file: &Option<String>) -> R<Vec<u8>> {
     if !path.is_file() {
         return arg(format!("no plan {name} in run {}", id.clone().unwrap_or_default()));
     }
-    let (real, base) = (std::fs::canonicalize(&path).map_err(|_| Fail::Unported)?, std::fs::canonicalize(&plans).map_err(|_| Fail::Unported)?);
+    let (real, base) = (std::fs::canonicalize(&path).map_err(|_| Fail::Unsupported)?, std::fs::canonicalize(&plans).map_err(|_| Fail::Unsupported)?);
     if !real.starts_with(&base) || real == base {
         return arg("bad plan file name");
     }
-    std::fs::read(&path).map_err(|_| Fail::Unported)
+    std::fs::read(&path).map_err(|_| Fail::Unsupported)
 }
 
 fn log_file(id: &Option<String>, name: &Option<String>) -> R<Vec<u8>> {
@@ -78,7 +78,7 @@ fn log_file(id: &Option<String>, name: &Option<String>) -> R<Vec<u8>> {
     if !LOGS.contains(&given.as_str()) {
         let shown = match name {
             None => "nil".to_string(),
-            Some(n) => crate::ruby_text::inspect_ascii(n).ok_or(Fail::Unported)?,
+            Some(n) => crate::ruby_text::inspect_ascii(n).ok_or(Fail::Unsupported)?,
         };
         return arg(format!("no log {shown}"));
     }
@@ -107,7 +107,7 @@ pub fn respond(route: &str, query: &std::collections::HashMap<String, String>) -
             return match if file { plan_file(&id, &name) } else { log_file(&id, &name) } {
                 Ok(body) => Some(("200 OK", "text/plain; charset=utf-8", body)),
                 Err(Fail::Arg(m)) => Some(("404 Not Found", "text/plain; charset=utf-8", m.into_bytes())),
-                Err(Fail::Unported) => None,
+                Err(Fail::Unsupported) => None,
             };
         }
     }
@@ -130,7 +130,7 @@ pub fn respond(route: &str, query: &std::collections::HashMap<String, String>) -
         }
         Ok(_) => None,
         Err(Fail::Arg(m)) => Some(json_reply(json!({"ok": false, "error": m}))),
-        Err(Fail::Unported) => None,
+        Err(Fail::Unsupported) => None,
     }
 }
 
@@ -339,7 +339,7 @@ fn activity(dir: &std::path::Path) -> R<Value> {
         if let Some(call) = blocks.iter().rev().find(|b| b.get("type") == Some(&json!("tool_use")) && b.is_object()) {
             return match crate::chat_history::tool_line_of(call.as_object().unwrap()) {
                 Some(l) => Ok(json!(l)),
-                None => Err(Fail::Unported),
+                None => Err(Fail::Unsupported),
             };
         }
     }

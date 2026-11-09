@@ -18,7 +18,7 @@ const LINE_KINDS: [&str; 2] = ["diff-comment", "github-comment"];
 fn halt(h: Halt) -> Stop {
     match h {
         Halt::Refuse(m) => Stop::refuse(m),
-        Halt::Unported => Stop::Unported,
+        Halt::Unsupported => Stop::Unsupported,
     }
 }
 
@@ -33,7 +33,7 @@ fn to_s(v: &Value) -> Result<String, Halt> {
         Value::String(s) => Ok(s.clone()),
         Value::Bool(b) => Ok(b.to_string()),
         Value::Number(n) if n.is_i64() || n.is_u64() => Ok(n.to_string()),
-        _ => Err(Halt::Unported),
+        _ => Err(Halt::Unsupported),
     }
 }
 
@@ -42,7 +42,7 @@ fn rev(entry: &Map<String, Value>) -> Result<i64, Halt> {
     match entry.get("rev") {
         None | Some(Value::Null) => Ok(0),
         Some(Value::Number(n)) if n.is_i64() => Ok(n.as_i64().unwrap()),
-        _ => Err(Halt::Unported),
+        _ => Err(Halt::Unsupported),
     }
 }
 
@@ -62,7 +62,7 @@ fn bumped(entry: &mut Map<String, Value>) -> Result<(), Halt> {
 }
 
 fn as_map(v: &mut Value) -> Result<&mut Map<String, Value>, Halt> {
-    v.as_object_mut().ok_or(Halt::Unported)
+    v.as_object_mut().ok_or(Halt::Unsupported)
 }
 
 pub(crate) fn edit(slug: &str, id: &str, comment: &Value) -> R<Value> {
@@ -102,7 +102,7 @@ pub(crate) fn discard(slug: &str, ids: &Value) -> R<Value> {
     let ids = match ids {
         Value::Array(items) => {
             if items.iter().any(|i| matches!(i, Value::Number(n) if !(n.is_i64() || n.is_u64())) || i.is_array() || i.is_object()) {
-                return Err(Stop::Unported);
+                return Err(Stop::Unsupported);
             }
             Some(items.clone())
         }
@@ -135,8 +135,8 @@ pub(crate) fn move_to(slug: &str, id: &str, to: &Value) -> R<Value> {
                 Value::Null => "nil".to_string(),
                 Value::Bool(b) => b.to_string(),
                 Value::Number(n) if n.is_i64() || n.is_u64() => n.to_string(),
-                Value::String(s) => crate::ruby_text::inspect_ascii(s).ok_or(Stop::Unported)?,
-                _ => return Err(Stop::Unported),
+                Value::String(s) => crate::ruby_text::inspect_ascii(s).ok_or(Stop::Unsupported)?,
+                _ => return Err(Stop::Unsupported),
             };
             return Err(Stop::refuse(format!("a draft moves to github or chat, not {shown}")));
         }
@@ -229,7 +229,7 @@ pub(crate) fn put_guarded(slug: &str, raw: &Map<String, Value>, guard: Guard) ->
         let mut found = None;
         for (i, e) in list.iter().enumerate() {
             let kind = e.get("kind").and_then(Value::as_str).unwrap_or("");
-            if LINE_KINDS.contains(&kind) && address(e.as_object().ok_or(Halt::Unported)?)? == wanted {
+            if LINE_KINDS.contains(&kind) && address(e.as_object().ok_or(Halt::Unsupported)?)? == wanted {
                 found = Some(i);
                 break;
             }
@@ -341,7 +341,7 @@ pub(crate) fn issue_comment_put(slug: &str, raw: &Map<String, Value>) -> R<Value
     let stored = update(slug, |list| {
         let mut found = None;
         for (i, e) in list.iter().enumerate() {
-            let m = e.as_object().ok_or(Halt::Unported)?;
+            let m = e.as_object().ok_or(Halt::Unsupported)?;
             if m.get("kind") == Some(&json!("issue-comment")) {
                 let same = |k: &str| -> Result<bool, Halt> { Ok(to_s(m.get(k).unwrap_or(&Value::Null))? == to_s(fields.get(k).unwrap_or(&Value::Null))?) };
                 if same("file")? && same("block")? {
@@ -390,7 +390,7 @@ pub(crate) fn thread_reply_guarded(slug: &str, raw: &Map<String, Value>, author:
     let Some(_) = get("repo").as_str().filter(|r| crate::review_threads::repo_ok(r)) else {
         return Err(Stop::refuse(format!("'{}' is not an owner/name repo", to_s(get("repo")).map_err(halt)?)));
     };
-    let number = crate::transcript_usage::to_i(raw.get("number")).map_err(|_| Stop::Unported)?;
+    let number = crate::transcript_usage::to_i(raw.get("number")).map_err(|_| Stop::Unsupported)?;
     if number <= 0 {
         return Err(Stop::refuse("a reply needs its pull request's number"));
     }
@@ -455,7 +455,7 @@ pub(crate) fn add_annotations(slug: &str, raw: &Value, url: &str, title: &str, l
             let mut loaded: Vec<Value> = match data.get("loaded") {
                 None | Some(Value::Null) => vec![],
                 Some(Value::Array(l)) => l.clone(),
-                Some(_) => return Err(Halt::Unported),
+                Some(_) => return Err(Halt::Unsupported),
             };
             if loaded.contains(&json!(id)) {
                 return refuse(format!("already loaded — these annotations are in {slug}'s drafts or were sent"));
@@ -486,7 +486,7 @@ pub(crate) fn add_annotations(slug: &str, raw: &Value, url: &str, title: &str, l
         }
         match data.get_mut("entries") {
             Some(Value::Array(list)) => list.extend(added.iter().cloned()),
-            _ => return Err(Halt::Unported),
+            _ => return Err(Halt::Unsupported),
         }
         Ok(added)
     })
@@ -508,7 +508,7 @@ pub(crate) fn page_annotations(root: &Value, annotations: &Value, url: &Value, t
     let mut attention = crate::chat_attention::ChatAttention::new();
     let mut best: Option<(usize, (f64, f64))> = None;
     for (i, item) in items.iter().enumerate() {
-        let key = attention.sort_key_for(item).map_err(|_| Stop::Unported)?;
+        let key = attention.sort_key_for(item).map_err(|_| Stop::Unsupported)?;
         if best.is_none_or(|(_, b)| key.partial_cmp(&b) == Some(std::cmp::Ordering::Less)) {
             best = Some((i, key));
         }
@@ -530,7 +530,7 @@ pub(crate) fn drafts_load(slug: &str, text: &Value) -> R<Value> {
     let payload = match c::parse(text) {
         Ok(p) => p,
         Err(c::Fail::Refuse(m)) => return Err(Stop::refuse(m)),
-        Err(c::Fail::Unported) => return Err(Stop::Unported),
+        Err(c::Fail::Unsupported) => return Err(Stop::Unsupported),
     };
     let root = crate::branch_diff::chat_checkout(&item);
     let annotations = c::quote(&payload.annotations, root.as_deref());
@@ -564,7 +564,7 @@ fn pr_part(raw: &Map<String, Value>, kind: &str) -> Result<Map<String, Value>, H
         }
     }
     let number_text = to_s(pr.get("number").unwrap_or(&Value::Null))?;
-    let number = crate::ruby_text::kernel_integer(&Value::String(number_text)).map_err(|_| Halt::Unported)?;
+    let number = crate::ruby_text::kernel_integer(&Value::String(number_text)).map_err(|_| Halt::Unsupported)?;
     let repo = to_s(pr.get("repo").unwrap_or(&Value::Null))?;
     match number {
         Some(n) if crate::review_threads::repo_ok(&repo) && n > 0 => {

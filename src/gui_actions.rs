@@ -29,10 +29,10 @@ const KNOWN: &[&str] = &[
 
 type R<T> = Result<T, Stop>;
 
-/// Either the action's own refusal (a JSON reply) or "Ruby's job".
+/// Either the action's own refusal (a JSON reply) or an input it does not take (a `501`).
 pub(crate) enum Stop {
     Reply(Value),
-    Unported,
+    Unsupported,
 }
 
 pub(crate) fn fail(message: impl Into<String>) -> Stop {
@@ -48,7 +48,7 @@ impl Stop {
 
 fn error(e: QmError) -> Stop {
     if e.class == UNEMITTABLE {
-        return Stop::Unported;
+        return Stop::Unsupported;
     }
     if e.class != "ArgumentError" {
         data_root::log_error("gui-action", e.class, &e.message);
@@ -67,7 +67,7 @@ fn to_s(v: &Value) -> R<String> {
         Value::String(s) => Ok(s.clone()),
         Value::Bool(b) => Ok(b.to_string()),
         Value::Number(n) if n.is_i64() || n.is_u64() => Ok(n.to_string()),
-        _ => Err(Stop::Unported),
+        _ => Err(Stop::Unsupported),
     }
 }
 
@@ -78,7 +78,7 @@ impl Args<'_> {
         static NULL: Value = Value::Null;
         match self.0 {
             Some(m) => Ok(m.get(key).unwrap_or(&NULL)),
-            None => Err(Stop::Unported),
+            None => Err(Stop::Unsupported),
         }
     }
     fn text(&self, key: &str) -> R<String> {
@@ -88,7 +88,7 @@ impl Args<'_> {
     fn string(&self, key: &str) -> R<String> {
         match self.get(key)? {
             Value::String(s) => Ok(s.clone()),
-            _ => Err(Stop::Unported),
+            _ => Err(Stop::Unsupported),
         }
     }
 }
@@ -105,7 +105,7 @@ pub fn dispatch(payload: &Value) -> Option<Value> {
     match run(payload) {
         Ok(v) => Some(v),
         Err(Stop::Reply(v)) => Some(v),
-        Err(Stop::Unported) => None,
+        Err(Stop::Unsupported) => None,
     }
 }
 
@@ -119,7 +119,7 @@ fn run(payload: &Value) -> R<Value> {
             data_root::log_error("gui-action", "TypeError", message);
             return Err(fail(message));
         }
-        _ => return Err(Stop::Unported),
+        _ => return Err(Stop::Unsupported),
     };
     let cmd = match obj.get("cmd") {
         None | Some(Value::Null) => String::new(),
@@ -132,7 +132,7 @@ fn run(payload: &Value) -> R<Value> {
     let slug = match obj.get("slug") {
         None | Some(Value::Null) => String::new(),
         Some(Value::String(s)) => s.clone(),
-        Some(_) => return Err(Stop::Unported),
+        Some(_) => return Err(Stop::Unsupported),
     };
     let args = match obj.get("args") {
         None | Some(Value::Null) | Some(Value::Bool(false)) => Args(Some(&empty)),
@@ -166,12 +166,12 @@ fn run(payload: &Value) -> R<Value> {
             let branch = match args.get("branch")? {
                 Value::Null => None,
                 Value::String(b) => Some(b.clone()),
-                _ => return Err(Stop::Unported),
+                _ => return Err(Stop::Unsupported),
             };
             match crate::pr_status::PrStatus::new(0).open_web(&item, branch.as_deref()) {
                 Ok(_) => Ok(ok()),
                 Err(Some(m)) => Err(fail(m)),
-                Err(None) => Err(Stop::Unported),
+                Err(None) => Err(Stop::Unsupported),
             }
         }
         "snooze" => {
@@ -193,7 +193,7 @@ fn run(payload: &Value) -> R<Value> {
             let session = match args.get("session")? {
                 Value::Null => return Ok(Value::Bool(false)),
                 Value::String(s) => s.clone(),
-                _ => return Err(Stop::Unported),
+                _ => return Err(Stop::Unsupported),
             };
             // Ruby answers `false` itself when nothing was attached
             Ok(if item.detach_session(&session).map_err(error)? { ok() } else { Value::Bool(false) })
@@ -208,7 +208,7 @@ fn run(payload: &Value) -> R<Value> {
             match crate::viewed_marks::set(&slug, args.get("path")?, args.get("digest")?, viewed) {
                 Ok(v) => Ok(json!({"ok": true, "viewed": v})),
                 Err(crate::viewed_marks::Halt::Refuse(m)) => Err(fail(m)),
-                Err(crate::viewed_marks::Halt::Unported) => Err(Stop::Unported),
+                Err(crate::viewed_marks::Halt::Unsupported) => Err(Stop::Unsupported),
             }
         }
         "issue-acknowledge" | "issues-clear-created" => {
@@ -240,7 +240,7 @@ fn run(payload: &Value) -> R<Value> {
         "delete" => Ok(crate::item_deletion::gui_reply(&slug, matches!(args.get("force")?, Value::Bool(true)))),
         "pr-unrequire" => {
             let (url, reference) = (args.text("url")?, args.text("ref")?);
-            if !crate::pr_prerequisites::remove(&url, &reference).map_err(|_| Stop::Unported)? {
+            if !crate::pr_prerequisites::remove(&url, &reference).map_err(|_| Stop::Unsupported)? {
                 return Err(fail(format!("{url} has no prerequisite {reference}")));
             }
             Ok(ok())
@@ -294,29 +294,29 @@ fn run(payload: &Value) -> R<Value> {
         "issue-start" => issue_start(&args),
         "pr-thread-resolve" => match args.0 {
             Some(raw) => crate::gui_review_actions::resolve(raw),
-            None => Err(Stop::Unported),
+            None => Err(Stop::Unsupported),
         },
         "review-preview" => match args.0 {
             Some(raw) => crate::gui_review_actions::preview(&slug, raw),
-            None => Err(Stop::Unported),
+            None => Err(Stop::Unsupported),
         },
         "review-post" => match args.0 {
             Some(raw) => crate::gui_review_actions::post(&slug, raw),
-            None => Err(Stop::Unported),
+            None => Err(Stop::Unsupported),
         },
         "draft-place" => match args.0 {
             Some(raw) => crate::gui_review_actions::place(&slug, raw),
-            None => Err(Stop::Unported),
+            None => Err(Stop::Unsupported),
         },
         "page-annotations" => crate::gui_draft_actions::page_annotations(args.get("root")?, args.get("annotations")?, args.get("url")?, args.get("title")?),
         "drafts-load" => crate::gui_draft_actions::drafts_load(&slug, args.get("text")?),
         "drafts-send" => match args.0 {
             Some(raw) => crate::gui_draft_send::drafts_send(&slug, raw),
-            None => Err(Stop::Unported),
+            None => Err(Stop::Unsupported),
         },
         "issues-create" => crate::gui_draft_send::issues_create(&slug, args.get("files")?),
         "draft-edit" | "draft-delete" | "drafts-discard" | "draft-put" | "draft-move" | "issue-comment-put" | "thread-reply-put" => drafts(&cmd, &slug, &args),
-        _ => Err(Stop::Unported),
+        _ => Err(Stop::Unsupported),
     }
 }
 
@@ -337,13 +337,13 @@ fn issues(cmd: &str, slug: &str, args: &Args) -> R<Value> {
         return Ok(json!({"ok": true, "acknowledged": acknowledged}));
     }
     if !crate::drafts::writable(slug) {
-        return Err(Stop::Unported);
+        return Err(Stop::Unsupported);
     }
     let loaded = i::load(slug);
     loaded.record().map_err(|e| fail(format!("can't keep the issue drafts' snapshots: {e}")))?;
     let created: Vec<String> = loaded.issues.iter().filter(|x| x.number.is_some()).map(|x| x.file.clone()).collect();
     for name in &created {
-        i::delete(slug, name).map_err(|_| Stop::Unported)?;
+        i::delete(slug, name).map_err(|_| Stop::Unsupported)?;
     }
     Ok(json!({"ok": true, "cleared": created}))
 }
@@ -358,7 +358,7 @@ fn new_item(args: &Args) -> R<Value> {
     let project = match args.get("project")? {
         Value::Null | Value::Bool(false) => "No project".to_string(),
         Value::String(s) => s.clone(),
-        _ => return Err(Stop::Unported),
+        _ => return Err(Stop::Unsupported),
     };
     let item = WorkItem::create(&title, &project, None, None, (!description.is_empty()).then_some(description.as_str()), None).map_err(error)?;
     Ok(json!({"ok": true, "slug": item.slug}))
@@ -372,7 +372,7 @@ pub(crate) fn from_session(session: &str, title: &str) -> R<(WorkItem, Vec<Strin
     let text_of = |key: &str| match start.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) => Ok(Some(s.clone())),
-        Some(_) => Err(Stop::Unported),
+        Some(_) => Err(Stop::Unsupported),
     };
     let branch = text_of("branch")?.filter(|b| !["main", "master", "develop"].contains(&b.as_str()));
     let project = text_of("project")?.unwrap_or_else(|| "No project".to_string());
@@ -402,7 +402,7 @@ fn followed(mut reply: Value, session: &str, vacated: &[String], to: &str) -> Va
 fn aside_halt(h: crate::aside::Halt) -> Stop {
     match h {
         crate::aside::Halt::Refuse(m) => fail(m),
-        crate::aside::Halt::Unported => Stop::Unported,
+        crate::aside::Halt::Unsupported => Stop::Unsupported,
     }
 }
 
@@ -445,7 +445,7 @@ pub(crate) fn loose_kickoff(starter: Option<&str>, question: Option<&str>) -> R<
     let Some(starter) = starter else { return Ok(question) };
     let config = crate::project_config::ProjectConfig::current();
     let Some(known) = config.loose_starters().iter().find(|s| s.key == starter) else {
-        let shown = crate::ruby_text::inspect_ascii(starter).ok_or(Stop::Unported)?;
+        let shown = crate::ruby_text::inspect_ascii(starter).ok_or(Stop::Unsupported)?;
         let keys: Vec<&str> = config.loose_starters().iter().map(|s| s.key.as_str()).collect();
         return Err(fail(format!("unknown starter {shown} (configured: {}; add one with `qm config set loose_starters.{starter}.prompt <prompt>`)", keys.join(", "))));
     };
@@ -460,14 +460,14 @@ fn loose_start(args: &Args) -> R<Value> {
     let model = presence_of(args, "model")?;
     if let Some(m) = &model {
         if !["sonnet", "opus", "haiku"].contains(&m.as_str()) {
-            let shown = crate::ruby_text::inspect_ascii(m).ok_or(Stop::Unported)?;
+            let shown = crate::ruby_text::inspect_ascii(m).ok_or(Stop::Unsupported)?;
             return Err(fail(format!("unknown model {shown} (sonnet, opus, haiku)")));
         }
     }
     let starter = presence_of(args, "starter")?;
     let prompt = loose_kickoff(starter.as_deref(), presence_of(args, "prompt")?.as_deref())?;
     let project = presence_of(args, "project")?.unwrap_or_else(|| "No project".to_string());
-    let command = crate::launcher::chat_command().ok_or(Stop::Unported)?;
+    let command = crate::launcher::chat_command().ok_or(Stop::Unsupported)?;
     let id = crate::gui_draft_actions::random_hex(4);
     let root = crate::project_map::root_for(Some(&project)).filter(|r| std::path::Path::new(r).is_dir());
     let cwd = root.unwrap_or_else(crate::data_root::home);
@@ -515,7 +515,7 @@ fn resume(slug: &str, args: &Args) -> R<Value> {
     let wanted = match args.get("session")? {
         Value::Null => None,
         Value::String(s) => Some(s.clone()),
-        _ => return Err(Stop::Unported),
+        _ => return Err(Stop::Unsupported),
     };
     match crate::launcher::resume_plan(&item, wanted.as_deref()) {
         crate::launcher::Resume::Live { .. } => Err(fail(RUNNING_NOW)),
@@ -682,7 +682,7 @@ fn adopt(slug: &str, args: &Args) -> R<Value> {
     if tmux.live(slug) {
         return type_into_chat(&item, &prompt);
     }
-    let plan = crate::launcher::chat_plan(&item, true, None, None).ok_or(Stop::Unported)?;
+    let plan = crate::launcher::chat_plan(&item, true, None, None).ok_or(Stop::Unsupported)?;
     if matches!(plan.mode, crate::launcher::Mode::Live) {
         return Err(fail(format!("{slug} has a chat running outside the GUI — adopt from there, or end it first")));
     }
@@ -728,7 +728,7 @@ fn restack(slug: &str, args: &Args) -> R<Value> {
         refuse_waiting(&item)?;
         return type_into_chat(&item, &prompt);
     }
-    let plan = crate::launcher::chat_plan(&item, true, None, Some(&prompt)).ok_or(Stop::Unported)?;
+    let plan = crate::launcher::chat_plan(&item, true, None, Some(&prompt)).ok_or(Stop::Unsupported)?;
     if matches!(plan.mode, crate::launcher::Mode::Live) {
         return Err(fail(format!("{slug} has a chat running outside the GUI — restack from there, or end it first")));
     }
@@ -800,7 +800,7 @@ fn strings_of(v: &Value) -> R<Vec<String>> {
     match v {
         Value::Null => Ok(vec![]),
         Value::Array(items) => items.iter().map(to_s).collect(),
-        Value::Object(_) => Err(Stop::Unported),
+        Value::Object(_) => Err(Stop::Unsupported),
         other => Ok(vec![to_s(other)?]),
     }
 }
@@ -905,7 +905,7 @@ fn loose_close(args: &Args) -> R<Value> {
 }
 
 /// `loose-promote`: an item from the chat's newest session, the tmux session renamed to its slug.
-/// "Tell the chat" types into the chat and stays Ruby's.
+/// "Tell the chat" types one line into the chat, only because the user ticked it.
 fn loose_promote(args: &Args) -> R<Value> {
     let tell = matches!(args.get("tell")?, Value::Bool(true));
     let id = args.text("id")?;
@@ -955,7 +955,7 @@ fn pane(slug: &str, fresh: bool, args: &Args) -> R<Value> {
         let given = args.text("session")?;
         (!strip(&given).is_empty()).then_some(given)
     };
-    let plan = crate::launcher::chat_plan(&item, fresh, session.as_deref(), None).ok_or(Stop::Unported)?;
+    let plan = crate::launcher::chat_plan(&item, fresh, session.as_deref(), None).ok_or(Stop::Unsupported)?;
     if matches!(plan.mode, crate::launcher::Mode::Live) {
         return Err(fail(format!("{slug} has a chat running outside the GUI — take it over here once it ends")));
     }
@@ -990,11 +990,11 @@ fn drafts(cmd: &str, slug: &str, args: &Args) -> R<Value> {
         }
         "issue-comment-put" => match args.0 {
             Some(raw) => d::issue_comment_put(&slug, raw),
-            None => Err(Stop::Unported),
+            None => Err(Stop::Unsupported),
         },
         "thread-reply-put" => match args.0 {
             Some(raw) => d::thread_reply_put(&slug, raw),
-            None => Err(Stop::Unported),
+            None => Err(Stop::Unsupported),
         },
         _ => match args.0 {
             Some(raw) => {
@@ -1003,7 +1003,7 @@ fn drafts(cmd: &str, slug: &str, args: &Args) -> R<Value> {
                 }
                 d::put(&slug, raw)
             }
-            None => Err(Stop::Unported),
+            None => Err(Stop::Unsupported),
         },
     }
 }
@@ -1017,7 +1017,7 @@ fn note(slug: &str, args: &Args) -> R<Value> {
         Value::Null => DEFAULT_NOTE_KIND.to_string(),
         Value::String(s) if s.is_empty() => DEFAULT_NOTE_KIND.to_string(),
         Value::String(s) => s.clone(),
-        _ => return Err(Stop::Unported),
+        _ => return Err(Stop::Unsupported),
     };
     find(slug)?.add_note(&text, &kind).map_err(error)?;
     Ok(ok())
@@ -1027,9 +1027,9 @@ fn retag(slug: &str, args: &Args) -> R<Value> {
     let mut item = find(slug)?;
     let position = match args.get("position")? {
         Value::Null => 0,
-        Value::Number(n) => n.as_u64().ok_or(Stop::Unported)? as usize,
-        Value::String(s) if s == "0" || (s.starts_with(|c: char| ('1'..='9').contains(&c)) && s.bytes().all(|c| c.is_ascii_digit())) => s.parse().map_err(|_| Stop::Unported)?,
-        _ => return Err(Stop::Unported),
+        Value::Number(n) => n.as_u64().ok_or(Stop::Unsupported)? as usize,
+        Value::String(s) if s == "0" || (s.starts_with(|c: char| ('1'..='9').contains(&c)) && s.bytes().all(|c| c.is_ascii_digit())) => s.parse().map_err(|_| Stop::Unsupported)?,
+        _ => return Err(Stop::Unsupported),
     };
     let kind = args.string("kind")?;
     item.update_note_kind(position, &kind).map_err(error)?;
@@ -1095,7 +1095,7 @@ pub(crate) fn plan_payload(plan: &crate::cleanup::Plan) -> Value {
 fn issue_fail(f: crate::issue_start::Fail) -> Stop {
     match f {
         crate::issue_start::Fail::Arg(m) => fail(m),
-        crate::issue_start::Fail::Unported => Stop::Unported,
+        crate::issue_start::Fail::Unsupported => Stop::Unsupported,
     }
 }
 
@@ -1145,7 +1145,7 @@ fn issue_start(args: &Args) -> R<Value> {
         let relabel = |label: &str| crate::gui_jobs::relabel(&job_slug, label);
         let (item, path) = crate::issue_start::start(&job_preview, from.as_deref(), &relabel).map_err(|f| match f {
             crate::issue_start::Fail::Arg(m) => Failure::Argument(m),
-            crate::issue_start::Fail::Unported => Failure::Other("a value this port can't start an issue from yet".into(), "NotImplementedError"),
+            crate::issue_start::Fail::Unsupported => Failure::Other("a value this port can't start an issue from yet".into(), "NotImplementedError"),
         })?;
         let plan = crate::launcher::chat_plan(&item, true, None, Some(&crate::issue_start::kickoff(number))).ok_or_else(|| Failure::Other("no chat command is configured".into(), "NotImplementedError"))?;
         if !matches!(plan.mode, crate::launcher::Mode::Live) {
@@ -1165,12 +1165,12 @@ fn branch_stats_commentary(slug: &str, args: &Args) -> R<Value> {
     let branch = match args.get("branch")? {
         Value::Null => None,
         Value::String(b) => Some(b.clone()),
-        _ => return Err(Stop::Unported),
+        _ => return Err(Stop::Unsupported),
     };
     let target = match crate::branch_stats::target(&mut item, branch.as_deref()) {
         Ok(t) => t,
         Err(Fail::Arg(m)) => return Err(fail(m)),
-        Err(Fail::Unported) => return Err(Stop::Unported),
+        Err(Fail::Unsupported) => return Err(Stop::Unsupported),
     };
     let key = crate::branch_stats::job_key(&target);
     let label = format!("reading {}'s stats…", target["branch"].as_str().unwrap_or(""));
@@ -1178,7 +1178,7 @@ fn branch_stats_commentary(slug: &str, args: &Args) -> R<Value> {
         use crate::gui_jobs::Failure;
         crate::branch_stats::comment(&target).map_err(|f| match f {
             Fail::Arg(m) => Failure::Argument(m),
-            Fail::Unported => Failure::Other("the branch stats cache holds a value this port can't update yet".into(), "NotImplementedError"),
+            Fail::Unsupported => Failure::Other("the branch stats cache holds a value this port can't update yet".into(), "NotImplementedError"),
         })
     }))
 }
@@ -1193,7 +1193,7 @@ fn build_progress_action(slug: &str) -> R<Value> {
         let result = match crate::build_progress::call(&item) {
             Ok(v) => v,
             Err(Fail::Arg(m)) => json!({"ok": false, "taken_at": crate::clock::now_iso(), "error": m}),
-            Err(Fail::Unported) => return Err(crate::gui_jobs::Failure::Other("a build transcript holds a value this port can't read yet".into(), "NotImplementedError")),
+            Err(Fail::Unsupported) => return Err(crate::gui_jobs::Failure::Other("a build transcript holds a value this port can't read yet".into(), "NotImplementedError")),
         };
         crate::gui_jobs::store_progress(&item.slug, result.clone());
         Ok(if result["ok"] == Value::Bool(true) { json!({"ok": true, "message": format!("{}: build progress updated", item.slug)}) } else { result })
@@ -1207,14 +1207,14 @@ fn board_answer(slug: &str, args: &Args) -> R<Value> {
     match crate::board_mirror::answer(&item, &doc_id, &text) {
         Ok(_) => Ok(ok()),
         Err(Ok(m)) => Err(fail(m)),
-        Err(Err(_)) => Err(Stop::Unported),
+        Err(Err(_)) => Err(Stop::Unsupported),
     }
 }
 
 fn benchmark_fail(f: crate::benchmark_run::Fail) -> Stop {
     match f {
         crate::benchmark_run::Fail::Arg(m) => fail(m),
-        crate::benchmark_run::Fail::Unported => Stop::Unported,
+        crate::benchmark_run::Fail::Unsupported => Stop::Unsupported,
     }
 }
 
@@ -1271,7 +1271,7 @@ fn benchmark_action(cmd: &str, slug: &str, args: &Args) -> R<Value> {
             Ok(crate::gui_jobs::background(&key, "cancelling the benchmark…", false, move || {
                 crate::benchmark_run::cancel(&id).map_err(|f| match f {
                     crate::benchmark_run::Fail::Arg(m) => crate::gui_jobs::Failure::Argument(m),
-                    crate::benchmark_run::Fail::Unported => crate::gui_jobs::Failure::Other("a run folder this port can't update yet".into(), "NotImplementedError"),
+                    crate::benchmark_run::Fail::Unsupported => crate::gui_jobs::Failure::Other("a run folder this port can't update yet".into(), "NotImplementedError"),
                 })?;
                 Ok(json!({"ok": true, "message": format!("benchmark {id} cancelled")}))
             }))
@@ -1291,14 +1291,14 @@ fn distill_action(slug: &str, args: &Args) -> R<Value> {
             let item = find(slug)?;
             return Err(fail(format!("session {} of '{}' has no surviving transcript to distill", args.text("session")?, item.slug)));
         }
-        _ => return Err(Stop::Unported),
+        _ => return Err(Stop::Unsupported),
     };
     let force = matches!(args.get("force")?, Value::Bool(true));
     let (item, sessions) = match crate::distill::plan(slug, session.as_deref(), force) {
         Ok(p) => p,
         Err(Fail::Arg(m)) => return Err(fail(m)),
         Err(Fail::Already(m)) => return Err(Stop::Reply(json!({"ok": false, "needs_confirmation": true, "error": m}))),
-        Err(Fail::Unported) => return Err(Stop::Unported),
+        Err(Fail::Unsupported) => return Err(Stop::Unsupported),
     };
     if !crate::gui_jobs::start_distill(slug, sessions.len()) {
         return Ok(json!({"ok": false, "error": format!("'{slug}' is already being distilled")}));
@@ -1310,7 +1310,7 @@ fn distill_action(slug: &str, args: &Args) -> R<Value> {
             if let Err(f) = crate::distill::session(&mut item, session) {
                 let message = match f {
                     Fail::Arg(m) | Fail::Already(m) => m,
-                    Fail::Unported => "a transcript this port can't distill yet".to_string(),
+                    Fail::Unsupported => "a transcript this port can't distill yet".to_string(),
                 };
                 crate::data_root::log_error("gui-distill", "ArgumentError", &message);
                 crate::gui_jobs::finish_distill(&name, json!({"ok": false, "error": message}));
@@ -1332,7 +1332,7 @@ fn rotate_action(slug: &str, args: &Args) -> R<Value> {
     let plan = match crate::rotation::plan(&item, close, finish, by_chat, session.as_deref()) {
         Ok(p) => p,
         Err(Fail::Arg(m)) => return Err(fail(m)),
-        Err(Fail::Unported) => return Err(Stop::Unported),
+        Err(Fail::Unsupported) => return Err(Stop::Unsupported),
     };
     let label = crate::rotation::label(&plan);
     let (mode, closed) = (plan.mode.name(), plan.close);
@@ -1343,7 +1343,7 @@ fn rotate_action(slug: &str, args: &Args) -> R<Value> {
         let relabel = |l: &str| crate::gui_jobs::relabel(&name, l);
         crate::rotation::run(&mut item, &plan, &relabel).map_err(|f| match f {
             Fail::Arg(m) => Failure::Argument(m),
-            Fail::Unported => Failure::Other("a value this port can't rotate yet".into(), "NotImplementedError"),
+            Fail::Unsupported => Failure::Other("a value this port can't rotate yet".into(), "NotImplementedError"),
         })
     });
     reply["mode"] = json!(mode);

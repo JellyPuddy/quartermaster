@@ -193,7 +193,7 @@ pub fn item_from_session(a: &[String]) -> Outcome {
     let (item, vacated) = match crate::gui_actions::from_session(session, &title) {
         Ok(r) => r,
         Err(crate::gui_actions::Stop::Reply(v)) => return abort(&format!("qm: {}", v["error"].as_str().unwrap_or(""))),
-        Err(crate::gui_actions::Stop::Unported) => return Outcome::Delegate,
+        Err(crate::gui_actions::Stop::Unsupported) => return Outcome::Refused,
     };
     let (mut stdout, mut stderr) = (String::new(), String::new());
     crate::work_item_commands::report_claim(&vacated, session, &item.slug, &mut stdout, &mut stderr);

@@ -12,7 +12,7 @@ use crate::work_item::WorkItem;
 /// What `add` can end in: Ruby's `ArgumentError` message, or a value this port leaves to Ruby.
 pub enum Fail {
     Arg(String),
-    Unported,
+    Unsupported,
 }
 
 type R<T> = Result<T, Fail>;
@@ -24,7 +24,7 @@ fn arg<T>(m: impl Into<String>) -> R<T> {
 fn from_failure(f: Failure) -> Fail {
     match f {
         Failure::Arg(m) => Fail::Arg(m),
-        Failure::Unported => Fail::Unported,
+        Failure::Unsupported => Fail::Unsupported,
     }
 }
 
@@ -32,9 +32,9 @@ fn from_stop(s: Stop) -> Fail {
     match s {
         Stop::Reply(v) => match v.get("error").and_then(Value::as_str) {
             Some(m) => Fail::Arg(m.to_string()),
-            None => Fail::Unported,
+            None => Fail::Unsupported,
         },
-        Stop::Unported => Fail::Unported,
+        Stop::Unsupported => Fail::Unsupported,
     }
 }
 
@@ -87,7 +87,7 @@ fn pr_of(item: &WorkItem, repo: Option<&str>, branch: Option<&str>) -> R<Value> 
 
 fn branch_pr(item: &WorkItem, repo: Option<&str>) -> R<Value> {
     let branches = item.branches();
-    let cwd = std::env::current_dir().map_err(|_| Fail::Unported)?;
+    let cwd = std::env::current_dir().map_err(|_| Fail::Unsupported)?;
     let here = crate::git::git(cwd.to_str(), &["symbolic-ref", "--quiet", "--short", "HEAD"]);
     if let Some(here) = here.filter(|h| branches.contains(h)) {
         return pr_of(item, repo, Some(&here));
@@ -149,11 +149,11 @@ fn line_entry(root: &str, pr: &Value, o: &Options) -> R<Map<String, Value>> {
     if let Some(s) = o.start_line.filter(|s| *s > line) {
         return arg(format!("--start-line {s} comes after --line {line}"));
     }
-    let revs = crate::branch_diff::fetch_pr_uncached(root, pr).map_err(|e| e.map_or_else(|_| Fail::Unported, Fail::Arg))?;
+    let revs = crate::branch_diff::fetch_pr_uncached(root, pr).map_err(|e| e.map_or_else(|_| Fail::Unsupported, Fail::Arg))?;
     let (anchor, range) = anchor_commit(root, &revs, &o.commit)?;
     let base = revs["baseSha"].as_str().unwrap_or("");
     let anchors = crate::review_anchors::new(root, base, &anchor).map_err(Fail::Arg)?;
-    let unsure = |_| Fail::Unported;
+    let unsure = |_| Fail::Unsupported;
     let side = json!(o.side);
     let start_line = o.start_line.filter(|s| *s != line);
     let text = |l: i64| anchors.text(&path, &side, l).map_err(unsure);
@@ -198,7 +198,7 @@ fn keep_users(existing: Option<&Value>, replaced: &mut bool, place: &str) -> Res
         *replaced = true;
         return Ok(());
     }
-    let id = crate::draft_command::s(existing.get("id")).ok_or(Halt::Unported)?;
+    let id = crate::draft_command::s(existing.get("id")).ok_or(Halt::Unsupported)?;
     Err(Halt::Refuse(format!("{place} already holds the user's draft {id} — leave it, or put yours on another line")))
 }
 
@@ -212,7 +212,7 @@ pub fn add(item: &WorkItem, o: &Options) -> R<(Map<String, Value>, bool)> {
     let mut replaced = false;
     let refuse = |h: Halt| match h {
         Halt::Refuse(m) => Fail::Arg(m),
-        Halt::Unported => Fail::Unported,
+        Halt::Unsupported => Fail::Unsupported,
     };
     if let Some(thread) = &o.reply_to {
         if o.commit.is_some() || o.file || o.start_line.is_some() {
@@ -235,20 +235,20 @@ pub fn add(item: &WorkItem, o: &Options) -> R<(Map<String, Value>, bool)> {
         let stored = crate::gui_draft_actions::thread_reply_guarded(&item.slug, &reply, "claude", &mut |e| keep_users(e, &mut replaced, &place)).map_err(from_stop)?;
         return match stored {
             Value::Object(m) => Ok((m, replaced)),
-            _ => Err(Fail::Unported),
+            _ => Err(Fail::Unsupported),
         };
     }
     let mut entry = line_entry(&root, &pr, o)?;
     entry.insert("comment".into(), json!(o.body));
-    if let Some(why) = crate::review_anchors::refusal_stored(&root, &entry).map_err(|_| Fail::Unported)? {
+    if let Some(why) = crate::review_anchors::refusal_stored(&root, &entry).map_err(|_| Fail::Unsupported)? {
         return arg(if o.file { why } else { format!("{why}. Record it as a file comment with --file instead") });
     }
-    let label = crate::draft_command::lines_label(&entry).ok_or(Fail::Unported)?;
+    let label = crate::draft_command::lines_label(&entry).ok_or(Fail::Unsupported)?;
     let place = format!("{}:{}", o.path.clone().unwrap_or_default(), label.strip_prefix(':').unwrap_or(&label));
     let stored = crate::gui_draft_actions::put_guarded(&item.slug, &entry, &mut |e| keep_users(e, &mut replaced, &place)).map_err(from_stop)?;
     let _ = refuse;
     match stored {
         Value::Object(m) => Ok((m, replaced)),
-        _ => Err(Fail::Unported),
+        _ => Err(Fail::Unsupported),
     }
 }

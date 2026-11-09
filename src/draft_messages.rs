@@ -1,5 +1,5 @@
 //! The messages a chat receives for its drafts: `DiffComments.message`, `PageAnnotations.message` and
-//! `IssueComments.message`. A value of a shape only Ruby prints exactly is `Fail::Unported`.
+//! `IssueComments.message`. A value of a shape only Ruby prints exactly is `Fail::Unsupported`.
 
 use serde_json::{Map, Value};
 
@@ -7,7 +7,7 @@ use crate::ruby_text::{chomp, kernel_integer, strip};
 
 pub enum Fail {
     Refuse(String),
-    Unported,
+    Unsupported,
 }
 
 type R<T> = Result<T, Fail>;
@@ -19,7 +19,7 @@ fn s(v: Option<&Value>) -> R<String> {
         Some(Value::String(t)) => Ok(t.clone()),
         Some(Value::Bool(b)) => Ok(b.to_string()),
         Some(Value::Number(n)) if n.is_i64() || n.is_u64() => Ok(n.to_string()),
-        _ => Err(Fail::Unported),
+        _ => Err(Fail::Unsupported),
     }
 }
 
@@ -33,7 +33,7 @@ fn truthy(v: Option<&Value>) -> Option<&Value> {
 fn int(v: Option<&Value>) -> R<Option<i64>> {
     match v {
         None => Ok(None),
-        Some(v) => kernel_integer(v).map_err(|_| Fail::Unported),
+        Some(v) => kernel_integer(v).map_err(|_| Fail::Unsupported),
     }
 }
 
@@ -204,18 +204,18 @@ fn path_of(url: &str) -> R<String> {
         return Ok(url.to_string());
     }
     if url.contains(['[', ']', '%', '@']) {
-        return Err(Fail::Unported);
+        return Err(Fail::Unsupported);
     }
-    let Some((scheme, rest)) = url.split_once("://") else { return Err(Fail::Unported) };
+    let Some((scheme, rest)) = url.split_once("://") else { return Err(Fail::Unsupported) };
     if scheme.is_empty() || !scheme.starts_with(|c: char| c.is_ascii_alphabetic()) || !scheme.chars().all(|c| c.is_ascii_alphanumeric() || "+.-".contains(c)) {
-        return Err(Fail::Unported);
+        return Err(Fail::Unsupported);
     }
     let rest = rest.split('#').next().unwrap_or("");
     let end = rest.find(['/', '?']).unwrap_or(rest.len());
     let (authority, tail) = rest.split_at(end);
     let host = authority.split(':').next().unwrap_or("");
     if host.is_empty() || !host.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-') || authority.matches(':').count() > 1 || authority.split(':').nth(1).is_some_and(|p| !p.chars().all(|c| c.is_ascii_digit())) {
-        return Err(Fail::Unported);
+        return Err(Fail::Unsupported);
     }
     let (path, query) = match tail.split_once('?') {
         Some((p, q)) => (p, Some(q)),

@@ -1,7 +1,7 @@
 //! `qm ask QUERY`: finds work items by meaning. A compact index of every item goes to headless
 //! `claude -p --model sonnet` on stdin and the answer comes back as schema-validated JSON — the same
-//! call, with the same prompt, arguments and index, as the Ruby `AskSearch`. Anything this port can't
-//! word exactly as Ruby does (claude missing, an answer whose shape makes Ruby raise) goes to Ruby.
+//! call, with the same prompt, arguments and index, as the Ruby `AskSearch`. An answer qm can't word
+//! (claude missing, an answer of an odd shape) is refused.
 
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -89,7 +89,7 @@ fn shown(v: Option<&Value>) -> Option<String> {
 /// Why a search did not produce hits: `Ruby`'s `ArgumentError` message, or something only Ruby words exactly.
 pub enum Fail {
     Message(String),
-    Ruby,
+    Unsupported,
 }
 
 /// `AskSearch#call`: the matching items, best first, each with the model's reason.
@@ -107,12 +107,12 @@ pub fn search(query: &str) -> Result<Vec<(String, String)>, Fail> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn();
-    let Ok(mut child) = spawned else { return Err(Fail::Ruby) };
+    let Ok(mut child) = spawned else { return Err(Fail::Unsupported) };
     let mut stdin = child.stdin.take().unwrap();
     let writer = std::thread::spawn(move || {
         let _ = stdin.write_all(index.as_bytes());
     });
-    let Ok(output) = child.wait_with_output() else { return Err(Fail::Ruby) };
+    let Ok(output) = child.wait_with_output() else { return Err(Fail::Unsupported) };
     let _ = writer.join();
     let (out, err) = (String::from_utf8_lossy(&output.stdout).into_owned(), String::from_utf8_lossy(&output.stderr).into_owned());
     if !output.status.success() {
@@ -122,13 +122,13 @@ pub fn search(query: &str) -> Result<Vec<(String, String)>, Fail> {
     let head = |s: &str| strip(s).chars().take(200).collect::<String>();
     let answer = match serde_json::from_str::<Value>(&out) {
         Ok(Value::Object(o)) => o,
-        Ok(_) => return Err(Fail::Ruby),
+        Ok(_) => return Err(Fail::Unsupported),
         Err(_) => return Err(Fail::Message(format!("unparseable answer from claude: {}", head(&out)))),
     };
     let hits = match answer.get("structured_output") {
         None | Some(Value::Null) => None,
         Some(Value::Object(s)) => s.get("hits"),
-        Some(_) => return Err(Fail::Ruby),
+        Some(_) => return Err(Fail::Unsupported),
     };
     let Some(Value::Array(hits)) = hits else { return Err(Fail::Message(format!("unexpected answer from claude: {}", head(&out)))) };
     let mut found: Vec<(String, String)> = vec![];
@@ -138,7 +138,7 @@ pub fn search(query: &str) -> Result<Vec<(String, String)>, Fail> {
         if !items.iter().any(|i| &i.slug == slug) || found.iter().any(|(s, _)| s == slug) {
             continue;
         }
-        let Some(why) = shown(h.get("why")) else { return Err(Fail::Ruby) };
+        let Some(why) = shown(h.get("why")) else { return Err(Fail::Unsupported) };
         found.push((slug.clone(), why));
     }
     found.truncate(LIMIT);
@@ -154,6 +154,6 @@ pub fn ask(args: &[String]) -> Outcome {
         Ok(found) if found.is_empty() => done("No work item matches.\n".into()),
         Ok(found) => done(found.iter().map(|(slug, why)| puts(&format!("{slug}\n    {why}"))).collect()),
         Err(Fail::Message(m)) => abort(&format!("qm: {m}")),
-        Err(Fail::Ruby) => Outcome::Delegate,
+        Err(Fail::Unsupported) => Outcome::Refused,
     }
 }

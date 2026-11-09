@@ -27,7 +27,7 @@ const PROMPT: &str = "You plan and write a benchmark for the branch `%{branch}`;
 /// What stopped a call: the `ArgumentError` Ruby raises, or a value only Ruby reads exactly.
 pub enum Fail {
     Arg(String),
-    Unported,
+    Unsupported,
 }
 
 type R<T> = Result<T, Fail>;
@@ -106,16 +106,16 @@ pub fn all() -> Vec<Value> {
 /// meta.json written whole: a temp file renamed over it.
 pub fn write_meta(dir: &std::path::Path, meta: &Value) -> R<()> {
     let temp = dir.join(format!("meta.json.{}.{:?}.tmp", std::process::id(), std::thread::current().id()));
-    std::fs::write(&temp, crate::drafts::pretty(meta)).map_err(|_| Fail::Unported)?;
-    std::fs::rename(&temp, dir.join("meta.json")).map_err(|_| Fail::Unported)
+    std::fs::write(&temp, crate::drafts::pretty(meta)).map_err(|_| Fail::Unsupported)?;
+    std::fs::rename(&temp, dir.join("meta.json")).map_err(|_| Fail::Unsupported)
 }
 
 /// Rewrites the run's meta.json under the run's lock; `f` gets the current meta and returns the new one.
 pub fn update(id: &str, f: impl FnOnce(Value) -> R<Value>) -> R<Value> {
     let dir = dir_for(id)?;
-    let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(dir.join(".lock")).map_err(|_| Fail::Unported)?;
+    let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(dir.join(".lock")).map_err(|_| Fail::Unsupported)?;
     unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) };
-    let current = std::fs::read_to_string(dir.join("meta.json")).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).ok_or(Fail::Unported)?;
+    let current = std::fs::read_to_string(dir.join("meta.json")).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).ok_or(Fail::Unsupported)?;
     let meta = f(current)?;
     write_meta(&dir, &meta)?;
     Ok(meta)
@@ -251,7 +251,7 @@ fn stages_for(tip: &Value) -> R<Vec<Value>> {
         Some(stack) => stack.entries.iter().map(|e| (e.branch.clone(), e.pr_number.clone())).collect(),
         None => vec![(branch.clone(), Value::Null)],
     };
-    let upto = entries.iter().position(|(b, _)| *b == branch).ok_or(Fail::Unported)?;
+    let upto = entries.iter().position(|(b, _)| *b == branch).ok_or(Fail::Unsupported)?;
     let mut stages = vec![json!({"name": "main", "ref": trunk, "sha": stage_sha(&root, &trunk)})];
     for (name, pr) in entries.into_iter().take(upto + 1) {
         let candidates = [name.clone(), format!("origin/{name}")];
@@ -346,29 +346,29 @@ fn launch(copy_from: Option<&std::path::Path>, body: impl FnOnce(&str) -> R<Map<
 
 /// run id: the UTC second, `_2`, `_3`… on a clash; database-name safe.
 fn claim_dir() -> R<(String, std::path::PathBuf)> {
-    std::fs::create_dir_all(dir()).map_err(|_| Fail::Unported)?;
+    std::fs::create_dir_all(dir()).map_err(|_| Fail::Unsupported)?;
     let stamp = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
     for n in 1.. {
         let id = if n == 1 { stamp.clone() } else { format!("{stamp}_{n}") };
         let path = dir().join(&id);
         match std::fs::create_dir(&path) {
             Ok(()) => {
-                std::fs::create_dir_all(path.join("plans")).map_err(|_| Fail::Unported)?;
+                std::fs::create_dir_all(path.join("plans")).map_err(|_| Fail::Unsupported)?;
                 return Ok((id, path));
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(_) => return Err(Fail::Unported),
+            Err(_) => return Err(Fail::Unsupported),
         }
     }
-    Err(Fail::Unported)
+    Err(Fail::Unsupported)
 }
 
 fn copy_script(source: &std::path::Path, dir: &std::path::Path) -> R<()> {
     for file in ["bench.rb", "run.json"] {
-        std::fs::copy(source.join(file), dir.join(file)).map_err(|_| Fail::Unported)?;
+        std::fs::copy(source.join(file), dir.join(file)).map_err(|_| Fail::Unsupported)?;
     }
     if let Some(plan) = crate::benchmark_pipeline::events(source).into_iter().find(|e| e.get("t") == Some(&json!("plan"))) {
-        std::fs::write(dir.join("events.jsonl"), format!("{plan}\n")).map_err(|_| Fail::Unported)?;
+        std::fs::write(dir.join("events.jsonl"), format!("{plan}\n")).map_err(|_| Fail::Unsupported)?;
     }
     Ok(())
 }
@@ -382,7 +382,7 @@ pub fn start(item: &mut WorkItem, branch: &str, request: &str, model: &str) -> R
     let settings = settings_checked(&project)?;
     let tip = crate::branch_diff::tip(item, if branch.is_empty() { None } else { Some(branch) }).map_err(|f| match f {
         crate::branch_diff::Failure::Arg(m) => Fail::Arg(m),
-        crate::branch_diff::Failure::Unported => Fail::Unported,
+        crate::branch_diff::Failure::Unsupported => Fail::Unsupported,
     })?;
     let stages = stages_for(&tip)?;
     launch(None, |id| {
@@ -414,7 +414,7 @@ pub fn rerun(id: &str) -> R<Value> {
         }
     }
     let root = text(original.get("root"));
-    let stages = original["stages"].as_array().ok_or(Fail::Unported)?;
+    let stages = original["stages"].as_array().ok_or(Fail::Unsupported)?;
     let moved: Vec<String> = stages.iter().filter(|s| stage_sha(&root, &text(s.get("ref"))).as_deref() != s.get("sha").and_then(Value::as_str)).map(|s| text(s.get("ref"))).collect();
     if !moved.is_empty() {
         return arg(format!("can't re-run {id}: {} moved since it ran — start a new benchmark", moved.join(", ")));

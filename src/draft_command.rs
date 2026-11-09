@@ -75,7 +75,7 @@ fn add(a: &[String]) -> Outcome {
             "--branch" => o.branch = Some(value),
             "--body" => body = Some(value),
             "--body-file" => body_file = Some(value),
-            _ => return Outcome::Delegate,
+            _ => return Outcome::Refused,
         }
     }
     let Some(slug) = slug.filter(|_| !extra) else { return Outcome::Done { code: 1, stdout: String::new(), stderr: ADD_HELP.to_string() } };
@@ -89,13 +89,13 @@ fn add(a: &[String]) -> Outcome {
         } else {
             std::fs::read_to_string(&file)
         };
-        let Ok(text) = text else { return Outcome::Delegate };
+        let Ok(text) = text else { return Outcome::Refused };
         body = Some(text);
     }
     let prefixed = |message: &str| abort(&format!("qm draft add: {message}"));
     let item = match WorkItem::find(slug) {
         Ok(i) => i,
-        Err(e) if e.class == UNEMITTABLE => return Outcome::Delegate,
+        Err(e) if e.class == UNEMITTABLE => return Outcome::Refused,
         Err(e) if e.class == "ArgumentError" => return prefixed(&e.message),
         Err(e) => return abort(&format!("qm: {}", e.message)),
     };
@@ -107,12 +107,12 @@ fn add(a: &[String]) -> Outcome {
     o.body = text;
     match record(&item, &o) {
         Ok((entry, replaced)) => {
-            let Some(place) = draft_where(&entry) else { return Outcome::Delegate };
+            let Some(place) = draft_where(&entry) else { return Outcome::Refused };
             let id = s(entry.get("id")).unwrap_or_default();
             done(puts(&format!("🤖 {place} drafted ({id}){}", if replaced { " — replaced your earlier draft there" } else { "" })))
         }
         Err(Fail::Arg(m)) => prefixed(&m),
-        Err(Fail::Unported) => Outcome::Delegate,
+        Err(Fail::Unsupported) => Outcome::Refused,
     }
 }
 
@@ -121,7 +121,7 @@ fn list(a: &[String]) -> Outcome {
     for arg in a {
         match arg.as_str() {
             "--json" => json = true,
-            s if s.starts_with('-') => return Outcome::Delegate, // OptionParser reads these its own way
+            s if s.starts_with('-') => return Outcome::Refused, // OptionParser reads these its own way
             _ => rest.push(arg),
         }
     }
@@ -129,14 +129,14 @@ fn list(a: &[String]) -> Outcome {
     let prefixed = |message: &str| abort(&format!("qm draft list: {message}"));
     let item = match WorkItem::find(slug) {
         Ok(i) => i,
-        Err(e) if e.class == UNEMITTABLE => return Outcome::Delegate,
+        Err(e) if e.class == UNEMITTABLE => return Outcome::Refused,
         Err(e) if e.class == "ArgumentError" => return prefixed(&e.message),
         Err(e) => return abort(&format!("qm: {}", e.message)),
     };
     if !crate::cleanup_command::valid_slug(&item.slug) {
         return prefixed(&format!("'{}' is not a work item slug", item.slug));
     }
-    let Some(entries) = drafts::entries(&item.slug) else { return Outcome::Delegate };
+    let Some(entries) = drafts::entries(&item.slug) else { return Outcome::Refused };
     if json {
         let all: Vec<Value> = entries.into_iter().map(Value::Object).collect();
         return done(puts(&drafts::pretty(&Value::Array(all))));
@@ -146,7 +146,7 @@ fn list(a: &[String]) -> Outcome {
         out.push_str("no drafts\n");
     }
     for entry in &entries {
-        let Some(line) = entry_line(entry) else { return Outcome::Delegate };
+        let Some(line) = entry_line(entry) else { return Outcome::Refused };
         out.push_str(&puts(&line));
     }
     done(out)

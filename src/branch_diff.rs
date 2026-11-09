@@ -1,7 +1,7 @@
 //! What an item's branch changes, for the chat view's diff pane: read-only git in the branch's
 //! worktree (a ref-only branch's: the project root), never a checkout or a fetch. Ported for the
 //! `branch`, `commits` and `uncommitted` scopes of an ordinary item; the PR scope, the prompt scope
-//! and Review items are Ruby's (`Unported`). Key order of the payload is Ruby's, since the page and
+//! and Review items are Ruby's (`Unsupported`). Key order of the payload is Ruby's, since the page and
 //! the tests read bytes.
 
 use regex::Regex;
@@ -27,7 +27,7 @@ pub enum Failure {
     /// Ruby's `ArgumentError` message.
     Arg(String),
     /// A scope or kind of item this port doesn't serve yet.
-    Unported,
+    Unsupported,
 }
 
 type R<T> = Result<T, Failure>;
@@ -376,7 +376,7 @@ fn cached_prs() -> R<Vec<Value>> {
     let Ok(Value::Object(cache)) = serde_json::from_str::<Value>(&text) else { return Ok(vec![]) };
     match cache.get("prs") {
         Some(Value::Array(prs)) if prs.iter().all(Value::is_object) => Ok(prs.clone()),
-        Some(Value::Array(_)) => Err(Failure::Unported),
+        Some(Value::Array(_)) => Err(Failure::Unsupported),
         _ => Ok(vec![]),
     }
 }
@@ -394,7 +394,7 @@ fn pr_available(item: &WorkItem, repo: Option<&str>, branch: Option<&str>) -> R<
 /// Where each of the item's GitHub drafts on this PR would post now (`ReviewPlan`), re-anchoring the
 /// ones a push moved. Local git, but the re-anchoring rewrites the drafts file.
 fn review_routes(item: &WorkItem, path: &str, pr: &Value, revs: &Value) -> R<Map<String, Value>> {
-    let entries = crate::drafts::entries(&item.slug).ok_or(Failure::Unported)?;
+    let entries = crate::drafts::entries(&item.slug).ok_or(Failure::Unsupported)?;
     let number = lenient(&pr["number"]);
     let mine: Vec<Map<String, Value>> = entries
         .into_iter()
@@ -406,7 +406,7 @@ fn review_routes(item: &WorkItem, path: &str, pr: &Value, revs: &Value) -> R<Map
     let plan = crate::review_plan::ReviewPlan::new(path, revs["baseRef"].as_str().unwrap_or(""), revs["headSha"].as_str().unwrap_or("")).map_err(Failure::Arg)?;
     crate::review_plan::reanchor(&plan, &mine, &item.slug).map_err(|e| match e {
         crate::review_anchors::E::Arg(m) => Failure::Arg(m),
-        crate::review_anchors::E::Unsure => Failure::Unported,
+        crate::review_anchors::E::Unsure => Failure::Unsupported,
     })
 }
 
@@ -461,7 +461,7 @@ fn gh_view(selector: &str, repo: &str) -> R<Value> {
     }
     let Ok(node) = serde_json::from_str::<Value>(&result.out) else { return arg(format!("gh pr view {selector} answered no JSON")) };
     if !node.is_object() {
-        return Err(Failure::Unported);
+        return Err(Failure::Unsupported);
     }
     Ok(json!({"repo": repo, "number": node["number"], "url": node["url"], "title": node["title"], "head": node["headRefName"], "base": node["baseRefName"], "state": node["state"]}))
 }
@@ -523,7 +523,7 @@ pub(crate) fn fetch_pr_uncached(path: &str, pr: &Value) -> Result<Value, Result<
     let reference = format!("refs/quartermaster/pr/{number}");
     fetch_now(path, pr, &reference, number, &base).map_err(|f| match f {
         Failure::Arg(m) => Ok(m),
-        Failure::Unported => Err(()),
+        Failure::Unsupported => Err(()),
     })
 }
 
@@ -552,7 +552,7 @@ fn mark_unanchorable(path: &str, base: &str, commit: &str, view_base: &str, file
                 let (side, number) = if removed { ("old", line["o"].clone()) } else { ("new", line["n"].clone()) };
                 let ok = anchors.anchorable(&file_path, &json!(side), &number, line["s"].as_str().unwrap_or(""), view_base).map_err(|e| match e {
                     crate::review_anchors::E::Arg(m) => Failure::Arg(m),
-                    crate::review_anchors::E::Unsure => Failure::Unported,
+                    crate::review_anchors::E::Unsure => Failure::Unsupported,
                 })?;
                 if !ok {
                     line.as_object_mut().unwrap().insert("gh".into(), json!(false));
@@ -611,7 +611,7 @@ pub fn call(item: &mut WorkItem, p: &Params) -> R<Map<String, Value>> {
         return arg(format!("scope must be one of: {}", SCOPES.join(", ")));
     }
     if scope == "prompt" {
-        return Err(Failure::Unported);
+        return Err(Failure::Unsupported);
     }
     let project = item.project();
     let root = crate::project_map::root_for(project.as_deref()).filter(|r| std::path::Path::new(r).is_dir());

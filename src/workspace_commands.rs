@@ -56,13 +56,13 @@ fn options(a: &[String], mode: bool) -> Option<(Option<String>, Option<String>)>
 
 fn workspace_command(name: &str, a: &[String], mode: bool, act: impl FnOnce(&mut WorkItem, Option<&str>, Option<&str>) -> Result<Report, String>) -> Outcome {
     let Some(slug) = a.first() else { return abort(&format!("usage: qm {name} SLUG{} [--worktree PATH]", if mode { " [--mode MODE]" } else { "" })) };
-    let Some((m, w)) = options(&a[1..], mode) else { return Outcome::Delegate };
+    let Some((m, w)) = options(&a[1..], mode) else { return Outcome::Refused };
     if w.as_deref().is_some_and(|p| p.starts_with('~') && p != "~" && !p.starts_with("~/")) {
-        return Outcome::Delegate;
+        return Outcome::Refused;
     }
     let mut item = match WorkItem::find(slug) {
         Ok(i) => i,
-        Err(e) if e.class == crate::error::UNEMITTABLE => return Outcome::Delegate,
+        Err(e) if e.class == crate::error::UNEMITTABLE => return Outcome::Refused,
         Err(e) => return failed(e.message),
     };
     let report = match act(&mut item, m.as_deref(), w.as_deref()) {
@@ -85,7 +85,7 @@ fn workspace_command(name: &str, a: &[String], mode: bool, act: impl FnOnce(&mut
 fn pf_status() -> Outcome {
     let config = crate::project_config::ProjectConfig::current();
     let Some(server) = config.dev_server() else { return abort(&format!("qm: no project configures a dev server: run `{}`", crate::project_config::DEV_SERVER_ANYWHERE)) };
-    let Some(status) = crate::pf::status(Some(server)) else { return Outcome::Delegate };
+    let Some(status) = crate::pf::status(Some(server)) else { return Outcome::Refused };
     let state = if status.running { if status.switching { "switching" } else { "running" } } else { "stopped" };
     let last = match status.mode.as_str() {
         Some(mode) => format!("{mode} @ {}", short_path(status.root.as_deref())),
@@ -137,10 +137,10 @@ fn flags(a: &[String], with_session: bool) -> Option<(Option<String>, bool)> {
 
 fn resume(a: &[String]) -> Outcome {
     let Some(slug) = a.first() else { return abort("usage: qm resume SLUG [--session ID] [--here]") };
-    let Some((session, here)) = flags(&a[1..], true) else { return Outcome::Delegate };
+    let Some((session, here)) = flags(&a[1..], true) else { return Outcome::Refused };
     let item = match WorkItem::find(slug) {
         Ok(i) => i,
-        Err(e) if e.class == crate::error::UNEMITTABLE => return Outcome::Delegate,
+        Err(e) if e.class == crate::error::UNEMITTABLE => return Outcome::Refused,
         Err(e) => return failed(e.message),
     };
     use crate::launcher::Resume;
@@ -153,10 +153,10 @@ fn resume(a: &[String]) -> Outcome {
 
 fn start(a: &[String]) -> Outcome {
     let Some(slug) = a.first() else { return abort("usage: qm start SLUG [--here]") };
-    let Some((_, here)) = flags(&a[1..], false) else { return Outcome::Delegate };
+    let Some((_, here)) = flags(&a[1..], false) else { return Outcome::Refused };
     let item = match WorkItem::find(slug) {
         Ok(i) => i,
-        Err(e) if e.class == crate::error::UNEMITTABLE => return Outcome::Delegate,
+        Err(e) if e.class == crate::error::UNEMITTABLE => return Outcome::Refused,
         Err(e) => return failed(e.message),
     };
     open_session(&crate::branch_diff::start_cwd(&item), &["claude"], &[("QM_ITEM", &item.slug)], &format!("qm {}", item.slug), here)

@@ -1,6 +1,6 @@
 //! The commands that take free text — `qm new TITLE` and `qm note SLUG TEXT`. The text may start with a dash
 //! (`opt_parse` leaves it alone), and `--` ends the options. Anything this port is not sure it parses or
-//! writes exactly as Ruby does is handed back as `Delegate` before anything is written.
+//! writes exactly as Ruby does is refused (`Outcome::Refused`) before anything is written.
 
 use crate::cli_format::note_line;
 use crate::note::{DEFAULT_NOTE_KIND, NOTE_KINDS};
@@ -20,7 +20,7 @@ pub fn new(a: &[String]) -> Outcome {
                 break;
             }
             flag @ ("--project" | "--branch" | "--description" | "--session" | "--pf-mode") => {
-                let Some(value) = a.get(i + 1) else { return Outcome::Delegate };
+                let Some(value) = a.get(i + 1) else { return Outcome::Refused };
                 match flag {
                     "--project" => project = value.clone(),
                     "--branch" => branch = Some(value.clone()),
@@ -30,7 +30,7 @@ pub fn new(a: &[String]) -> Outcome {
                 }
                 i += 2;
             }
-            s if looks_like_option(s) => return Outcome::Delegate,
+            s if looks_like_option(s) => return Outcome::Refused,
             s => {
                 parts.push(s);
                 i += 1;
@@ -59,7 +59,7 @@ fn looks_like_option(arg: &str) -> bool {
 
 pub fn note(a: &[String]) -> Outcome {
     if a.first().is_some_and(|s| s.starts_with('-')) {
-        return Outcome::Delegate;
+        return Outcome::Refused;
     }
     let mut kind = DEFAULT_NOTE_KIND.to_string();
     let mut parts: Vec<&str> = vec![];
@@ -72,11 +72,11 @@ pub fn note(a: &[String]) -> Outcome {
                 break;
             }
             "--kind" => {
-                let Some(value) = rest.get(i + 1) else { return Outcome::Delegate };
+                let Some(value) = rest.get(i + 1) else { return Outcome::Refused };
                 kind = value.clone();
                 i += 2;
             }
-            s if looks_like_option(s) => return Outcome::Delegate,
+            s if looks_like_option(s) => return Outcome::Refused,
             s => {
                 parts.push(s);
                 i += 1;

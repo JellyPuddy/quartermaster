@@ -163,7 +163,7 @@ pub fn run(a: &[String]) -> Outcome {
             match a.get(1) {
                 Some(path) => match write(path, &text) {
                     Ok(()) => done(puts(&format!("{} → {path}", summary(&doc)))),
-                    Err(_) => Outcome::Delegate,
+                    Err(_) => Outcome::Refused,
                 },
                 None => done(puts(&text)),
             }
@@ -177,15 +177,15 @@ pub fn run(a: &[String]) -> Outcome {
             match page_digest() {
                 Some(d) if Some(&d) == published.as_ref() => done(String::new()),
                 Some(_) => done(puts(&page().to_string_lossy())),
-                None => Outcome::Delegate,
+                None => Outcome::Refused,
             }
         }
         Some("--page-published") => match page_digest() {
             Some(d) => match write(&published_file().to_string_lossy(), &d) {
                 Ok(()) => done(String::new()),
-                Err(_) => Outcome::Delegate,
+                Err(_) => Outcome::Refused,
             },
-            None => Outcome::Delegate,
+            None => Outcome::Refused,
         },
         _ => usage(),
     }

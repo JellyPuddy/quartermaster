@@ -14,7 +14,7 @@ pub fn grep(args: &[String]) -> Outcome {
     let found = match transcript_search::call(&query) {
         Ok(f) => f,
         Err(Failure::Abort(message)) => return abort(&message),
-        Err(Failure::Ruby) => return Outcome::Delegate,
+        Err(Failure::Unsupported) => return Outcome::Refused,
     };
     if found.groups.is_empty() {
         return done("No transcript mentions that.\n".into());
@@ -31,7 +31,7 @@ pub fn grep(args: &[String]) -> Outcome {
             let date = match &hit.date {
                 Some(d) => match DateTime::parse_from_rfc3339(d) {
                     Ok(t) => t.with_timezone(&Local).format("%Y-%m-%d %H:%M").to_string(),
-                    Err(_) => return Outcome::Delegate, // Time.parse reads more shapes than RFC 3339
+                    Err(_) => return Outcome::Refused, // Time.parse reads more shapes than RFC 3339
                 },
                 None => "????-??-?? --:--".to_string(),
             };

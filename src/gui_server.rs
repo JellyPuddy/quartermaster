@@ -1,10 +1,7 @@
-//! The loopback web UI, ported route by route. `qm gui` stays Ruby until this serves every route the
-//! page uses; meanwhile `QM_RUST_GUI=1 qm gui` runs this server, which answers what is ported — the
-//! page, its assets, `/api/pulse`, `/api/diff-file` — and says `501` for the rest, so it can be put
-//! next to Ruby's GUI on the same data root and compared route by route. The server binds only
-//! 127.0.0.1, never shuts itself down (no liveness timer), and refuses foreign `Host`s and `Origin`s
-//! exactly as `LoopbackGuard` does. Not ported yet: the state build, actions, the terminal bridge,
-//! turn notifications and caffeinate.
+//! The loopback web UI: the page and its assets, the state, `/api/pulse`, the actions, the terminal
+//! bridge, turn notifications and caffeinate; `501` for a route or input it does not take. The server
+//! binds only 127.0.0.1, never shuts itself down (no liveness timer), and refuses foreign `Host`s and
+//! `Origin`s.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -207,7 +204,7 @@ fn branch_stats_payload(slug: &str, query: Option<&str>) -> Option<Value> {
         }
         Ok(_) => None,
         Err(Failure::Arg(m)) => fail(m),
-        Err(Failure::Unported) => None,
+        Err(Failure::Unsupported) => None,
     }
 }
 
@@ -239,7 +236,7 @@ fn diff_payload(slug: &str, query: Option<&str>) -> Option<Value> {
                 Some(Value::Object(out))
             }
             Err(Failure::Arg(m)) => fail(m),
-            Err(Failure::Unported) => None,
+            Err(Failure::Unsupported) => None,
         };
     }
     let params = Params { branch: get("branch"), scope: get("scope"), from: get("from"), to: get("to"), base: get("base"), fresh: get("fresh").as_deref() == Some("1") };
@@ -254,7 +251,7 @@ fn diff_payload(slug: &str, query: Option<&str>) -> Option<Value> {
             Some(Value::Object(out))
         }
         Err(Failure::Arg(m)) => fail(m),
-        Err(Failure::Unported) => None,
+        Err(Failure::Unsupported) => None,
     }
 }
 
@@ -454,7 +451,7 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
             (true, Some(q)) => match crate::ask_command::search(&q) {
                 Ok(found) => json_reply(json!({"ok": true, "hits": found.iter().map(|(slug, why)| json!({"slug": slug, "why": why})).collect::<Vec<_>>()})),
                 Err(crate::ask_command::Fail::Message(m)) => json_reply(json!({"ok": false, "error": m})),
-                Err(crate::ask_command::Fail::Ruby) => text_reply("501 Not Implemented", "unsupported input: this question"),
+                Err(crate::ask_command::Fail::Unsupported) => text_reply("501 Not Implemented", "unsupported input: this question"),
             },
             _ => text_reply("501 Not Implemented", "unsupported input: this question"),
         };
@@ -477,7 +474,7 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
                     json_reply(out)
                 }
                 Err(crate::transcript_search::Failure::Abort(m)) => json_reply(json!({"ok": false, "error": m})),
-                Err(crate::transcript_search::Failure::Ruby) => text_reply("501 Not Implemented", "unsupported input: this search"),
+                Err(crate::transcript_search::Failure::Unsupported) => text_reply("501 Not Implemented", "unsupported input: this search"),
             },
             _ => text_reply("501 Not Implemented", "unsupported input: this search"),
         };
@@ -571,11 +568,11 @@ fn random_token() -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// `qm gui` with `QM_RUST_GUI` set: serves until interrupted.
+/// `qm gui`: serves until interrupted.
 pub fn run() -> Outcome {
     let port = match port() {
         Ok(p) => p,
-        Err(Failed::Ruby) | Err(Failed::Abort(_)) => return Outcome::Delegate,
+        Err(Failed::Unsupported) | Err(Failed::Abort(_)) => return Outcome::Refused,
     };
     let url = format!("http://127.0.0.1:{port}");
     let listener = match TcpListener::bind(("127.0.0.1", port)) {
@@ -585,7 +582,7 @@ pub fn run() -> Outcome {
             open_browser(&url);
             return done(String::new());
         }
-        Err(_) => return Outcome::Delegate,
+        Err(_) => return Outcome::Refused,
     };
     println!("qm gui → {url}   (Ctrl-C to stop)");
     open_browser(&url);
@@ -637,7 +634,7 @@ fn asides_payload(slug: &str) -> Option<Value> {
     };
     let mut rows = match crate::aside::history(&item) {
         Ok(r) => r,
-        Err(crate::aside::Halt::Unported) => return None,
+        Err(crate::aside::Halt::Unsupported) => return None,
         Err(crate::aside::Halt::Refuse(m)) => return failed("RuntimeError", m),
     };
     for row in rows.iter_mut() {
@@ -684,7 +681,7 @@ fn history_payload(rest: &str, params: &Map<String, Value>) -> Option<Value> {
     match outcome {
         Ok(v) => Some(v),
         Err(crate::chat_history::Stop::Refuse(m)) => failed("ArgumentError", m),
-        Err(crate::chat_history::Stop::Unported) => None,
+        Err(crate::chat_history::Stop::Unsupported) => None,
     }
 }
 

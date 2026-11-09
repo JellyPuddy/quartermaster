@@ -54,7 +54,7 @@ pub fn apply(slug: &str, files: &mut [Value]) {
 /// Why a `set` stopped before writing.
 pub enum Halt {
     Refuse(String),
-    Unported,
+    Unsupported,
 }
 
 fn has_float(v: &Value) -> bool {
@@ -87,28 +87,28 @@ pub fn set(slug: &str, path: &Value, digest: &Value, viewed: bool) -> Result<boo
     }
     let digest = match digest {
         Value::String(d) if (16..=64).contains(&d.len()) && d.bytes().all(|c| c.is_ascii_hexdigit()) => d.clone(),
-        other => return Err(inspected(other).map(|i| Halt::Refuse(format!("{i} is not a diff digest"))).unwrap_or(Halt::Unported)),
+        other => return Err(inspected(other).map(|i| Halt::Refuse(format!("{i} is not a diff digest"))).unwrap_or(Halt::Unsupported)),
     };
     let dir = data_root::root().join("viewed");
     let file = dir.join(format!("{slug}.json"));
     if let Ok(text) = std::fs::read_to_string(&file) {
         if serde_json::from_str::<Value>(&text).is_ok_and(|v| has_float(&v)) {
-            return Err(Halt::Unported);
+            return Err(Halt::Unsupported);
         }
     }
-    std::fs::create_dir_all(&dir).map_err(|_| Halt::Unported)?;
-    let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(dir.join(format!(".{slug}.lock"))).map_err(|_| Halt::Unported)?;
+    std::fs::create_dir_all(&dir).map_err(|_| Halt::Unsupported)?;
+    let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(dir.join(format!(".{slug}.lock"))).map_err(|_| Halt::Unsupported)?;
     unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) };
     let mut data = match std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
         Some(Value::Object(d)) if d.get("marks").is_some_and(Value::is_object) => d,
         _ => serde_json::Map::from_iter([("v".to_string(), json!(1)), ("marks".to_string(), json!({}))]),
     };
-    let Some(Value::Object(all)) = data.get_mut("marks") else { return Err(Halt::Unported) };
+    let Some(Value::Object(all)) = data.get_mut("marks") else { return Err(Halt::Unsupported) };
     let mut digests: Vec<Value> = match all.shift_remove(file_path.as_str()) {
         None | Some(Value::Null) => vec![],
         Some(Value::Array(items)) => items,
         Some(Value::String(s)) => vec![Value::String(s)],
-        Some(_) => return Err(Halt::Unported),
+        Some(_) => return Err(Halt::Unsupported),
     };
     digests.retain(|d| *d != Value::String(digest.clone()));
     if viewed {
@@ -127,8 +127,8 @@ pub fn set(slug: &str, path: &Value, digest: &Value, viewed: bool) -> Result<boo
     } else {
         data.insert("v".into(), json!(1));
         let temp = format!("{}.{}.{:?}.tmp", file.display(), std::process::id(), std::thread::current().id());
-        std::fs::write(&temp, Value::Object(data).to_string()).map_err(|_| Halt::Unported)?;
-        std::fs::rename(&temp, &file).map_err(|_| Halt::Unported)?;
+        std::fs::write(&temp, Value::Object(data).to_string()).map_err(|_| Halt::Unsupported)?;
+        std::fs::rename(&temp, &file).map_err(|_| Halt::Unsupported)?;
     }
     Ok(viewed)
 }

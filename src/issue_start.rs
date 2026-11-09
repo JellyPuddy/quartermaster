@@ -14,7 +14,7 @@ pub enum Fail {
     /// The `ArgumentError` Ruby raises.
     Arg(String),
     /// A value only Ruby reads exactly.
-    Unported,
+    Unsupported,
 }
 
 type R<T> = Result<T, Fail>;
@@ -33,7 +33,7 @@ fn to_s(v: &Value) -> R<String> {
         Value::String(t) => Ok(t.clone()),
         Value::Bool(b) => Ok(b.to_string()),
         Value::Number(n) if n.is_i64() || n.is_u64() => Ok(n.to_string()),
-        _ => Err(Fail::Unported),
+        _ => Err(Fail::Unsupported),
     }
 }
 
@@ -45,7 +45,7 @@ pub fn number(value: &Value) -> R<i64> {
     if text.is_empty() || text.starts_with('0') || !text.bytes().all(|b| b.is_ascii_digit()) {
         return arg(format!("an issue number is required, not '{shown}'"));
     }
-    text.parse().map_err(|_| Fail::Unported)
+    text.parse().map_err(|_| Fail::Unsupported)
 }
 
 fn repo_for(project: &str) -> R<(String, String)> {
@@ -65,7 +65,7 @@ fn fetch_issue(root: &str, repo: &str, number: i64) -> R<Value> {
     }
     match serde_json::from_str::<Value>(&result.out) {
         Ok(v) if v.is_object() => Ok(v),
-        Ok(_) => Err(Fail::Unported),
+        Ok(_) => Err(Fail::Unsupported),
         Err(_) => arg(format!("gh issue view #{number} did not answer JSON")),
     }
 }
@@ -170,7 +170,7 @@ pub fn start(preview: &Value, from: Option<&str>, progress: &dyn Fn(&str)) -> R<
         return arg(format!("#{} is already {}", preview["number"], existing["slug"].as_str().unwrap_or("")));
     }
     let project = to_s(&preview["project"])?;
-    let n = preview["number"].as_i64().ok_or(Fail::Unported)?;
+    let n = preview["number"].as_i64().ok_or(Fail::Unsupported)?;
     let title = format!("{} (#{n})", to_s(&preview["title"])?);
     let slug = WorkItem::slugify(&title);
     if WorkItem::path_for(&slug).exists() {
@@ -190,14 +190,14 @@ pub fn start(preview: &Value, from: Option<&str>, progress: &dyn Fn(&str)) -> R<
     }
     .map_err(Fail::Arg)?;
     let description = format!("{}\n\n{}", to_s(&preview["url"])?, to_s(&preview["title"])?);
-    let created = WorkItem::create(&title, &project, None, None, Some(&description), None).map_err(|_| Fail::Unported)?;
-    let mut item = WorkItem::find(&created.slug).map_err(|_| Fail::Unported)?;
+    let created = WorkItem::create(&title, &project, None, None, Some(&description), None).map_err(|_| Fail::Unsupported)?;
+    let mut item = WorkItem::find(&created.slug).map_err(|_| Fail::Unsupported)?;
     item.link_branch(&branch).map_err(|e| Fail::Arg(e.message))?;
     if let Some(from) = from {
         let mut source = WorkItem::find(from).map_err(|e| Fail::Arg(e.message))?;
         source.add_note(&format!("#{n} started as {}", item.slug), "history").map_err(|e| Fail::Arg(e.message))?;
     }
-    let item = WorkItem::find(&item.slug).map_err(|_| Fail::Unported)?;
+    let item = WorkItem::find(&item.slug).map_err(|_| Fail::Unsupported)?;
     Ok((item, target.path))
 }
 

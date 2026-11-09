@@ -4,7 +4,7 @@
 //! copy of its index, and the two trees are diffed. Branches that moved since the prompt come from
 //! git's reflogs; a rebase since the prompt is hidden by replaying the prompt's tree onto the new
 //! base with `git merge-tree`. A port of `PromptDiff` and `PromptSnapshots`; anything it can't judge
-//! as Ruby does is `Unported`.
+//! as Ruby does is `Unsupported`.
 
 use std::process::{Command, Stdio};
 
@@ -59,7 +59,7 @@ fn time(value: &str) -> R<Option<f64>> {
         return Ok(Some(t));
     }
     if Regex::new(r"\A[0-9]{4}-[0-9]{2}-[0-9]{2}").unwrap().is_match(value) {
-        return Err(Failure::Unported);
+        return Err(Failure::Unsupported);
     }
     Ok(None)
 }
@@ -77,7 +77,7 @@ struct Snapshot {
 fn snapshots_for(session: &Session, log: &SessionLog) -> R<Vec<Snapshot>> {
     let path = crate::data_root::root().join("prompt-snapshots.jsonl");
     let Ok(bytes) = std::fs::read(&path) else { return Ok(vec![]) };
-    let text = String::from_utf8(bytes).map_err(|_| Failure::Unported)?;
+    let text = String::from_utf8(bytes).map_err(|_| Failure::Unsupported)?;
     let tree = Regex::new(r"\A[0-9a-fA-F]{40}([0-9a-fA-F]{24})?\z").unwrap();
     let mut out: Vec<Snapshot> = vec![];
     for line in text.split_inclusive('\n') {
@@ -85,7 +85,7 @@ fn snapshots_for(session: &Session, log: &SessionLog) -> R<Vec<Snapshot>> {
         let t = match e.get("tree") {
             None | Some(Value::Null) => String::new(),
             Some(Value::String(s)) => s.clone(),
-            Some(_) => return Err(Failure::Unported),
+            Some(_) => return Err(Failure::Unsupported),
         };
         let at = match e.get("at") {
             Some(Value::String(s)) => s.clone(),
@@ -97,7 +97,7 @@ fn snapshots_for(session: &Session, log: &SessionLog) -> R<Vec<Snapshot>> {
         let text_of = |k: &str| match e.get(k) {
             Some(Value::String(s)) => Ok(Some(s.clone())),
             None | Some(Value::Null) => Ok(None),
-            Some(_) => Err(Failure::Unported),
+            Some(_) => Err(Failure::Unsupported),
         };
         out.push(Snapshot { tree: t, at, cwd: text_of("cwd")?, toplevel: text_of("toplevel")?, prompt: None, prompt_at: None });
     }
@@ -113,7 +113,7 @@ fn snapshots_for(session: &Session, log: &SessionLog) -> R<Vec<Snapshot>> {
 /// What the user typed, in transcript order: (text, timestamp, time).
 fn prompts(transcript: Option<&std::path::Path>) -> R<Vec<(String, String, f64)>> {
     let Some(path) = transcript.filter(|p| p.exists()) else { return Ok(vec![]) };
-    let text = String::from_utf8(std::fs::read(path).map_err(|_| Failure::Unported)?).map_err(|_| Failure::Unported)?;
+    let text = String::from_utf8(std::fs::read(path).map_err(|_| Failure::Unsupported)?).map_err(|_| Failure::Unsupported)?;
     let mut out = vec![];
     for line in text.split_inclusive('\n') {
         let Ok(Value::Object(e)) = serde_json::from_str::<Value>(line) else { continue };
@@ -121,11 +121,11 @@ fn prompts(transcript: Option<&std::path::Path>) -> R<Vec<(String, String, f64)>
         if e.get("type").and_then(Value::as_str) != Some("user") || truthy("isSidechain") || truthy("isCompactSummary") {
             continue;
         }
-        let prompt = crate::transcripts::prompt_text(&e).map_err(|_| Failure::Unported)?;
+        let prompt = crate::transcripts::prompt_text(&e).map_err(|_| Failure::Unsupported)?;
         let ts = match e.get("timestamp") {
             Some(Value::String(s)) => Some(s.clone()),
             None | Some(Value::Null) => None,
-            Some(_) => return Err(Failure::Unported),
+            Some(_) => return Err(Failure::Unsupported),
         };
         let at = match &ts {
             Some(s) => time(s)?,
@@ -160,7 +160,7 @@ fn label(snapshots: &mut [Snapshot], prompts: &[(String, String, f64)]) -> R<()>
 }
 
 fn chat_session(item: &WorkItem, log: &SessionLog) -> R<Option<Session>> {
-    let sessions: Vec<Session> = log.item_sessions(item).map_err(|_| Failure::Unported)?.into_iter().filter(|s| s.captured).collect();
+    let sessions: Vec<Session> = log.item_sessions(item).map_err(|_| Failure::Unsupported)?.into_iter().filter(|s| s.captured).collect();
     let live: Vec<&Session> = sessions.iter().filter(|s| s.live).collect();
     let tmux = crate::tmux::Tmux::new();
     let pane = if tmux.live(&item.slug) { tmux.pane_pid(&item.slug) } else { None };

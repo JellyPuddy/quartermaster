@@ -447,7 +447,7 @@ impl WorkItem {
             }
             let (at, end) = front_edit::block(lines, "sessions").expect("sessions present");
             if lines[at] != "sessions:" {
-                return Err(QmError::new("RuntimeError", "front matter 'sessions' is not a block list; edit it with the Ruby qm"));
+                return Err(QmError::new("RuntimeError", "front matter 'sessions' is not a block list; edit the file by hand"));
             }
             let mut keep: Vec<String> = vec![];
             for (s, e) in front_edit::items(lines, at, end) {
@@ -732,7 +732,7 @@ impl WorkItem {
             }
             let (at, end) = front_edit::block(lines, "sessions").expect("sessions present");
             if lines[at] != "sessions:" {
-                return Err(QmError::new("RuntimeError", "front matter 'sessions' is not a block list; edit it with the Ruby qm"));
+                return Err(QmError::new("RuntimeError", "front matter 'sessions' is not a block list; edit the file by hand"));
             }
             for (s, e) in front_edit::items(lines, at, end) {
                 let entry = lines[s..e].join("\n");

@@ -1,6 +1,5 @@
 //! `qm pr-requires`: record, remove and list the earlier PRs or commits a PR waits on to be deployed.
-//! Local bookkeeping only; `gh` is asked read-only questions. `qm pr` (it opens a browser and may ask
-//! fzf which branch) stays Ruby.
+//! Local bookkeeping only; `gh` is asked read-only questions.
 
 use regex::Regex;
 use serde_json::{Map, Value};
@@ -41,7 +40,7 @@ pub fn run(args: &[String]) -> Outcome {
         let value = |i: usize| args.get(i + 1).cloned();
         match args[i].as_str() {
             flag @ ("--pr" | "--session" | "--note") => {
-                let Some(v) = value(i) else { return Outcome::Delegate };
+                let Some(v) = value(i) else { return Outcome::Refused };
                 match flag {
                     "--pr" => o.pr = Some(v),
                     "--session" => o.session = Some(v),
@@ -57,7 +56,7 @@ pub fn run(args: &[String]) -> Outcome {
                 o.list = true;
                 i += 1;
             }
-            s if s.starts_with('-') && s != "-" => return Outcome::Delegate, // OptionParser reads these its own way
+            s if s.starts_with('-') && s != "-" => return Outcome::Refused, // OptionParser reads these its own way
             s => {
                 rest.push(s.to_string());
                 i += 1;
@@ -71,7 +70,7 @@ pub fn run(args: &[String]) -> Outcome {
     match perform(&o, &rest, &cwd) {
         Ok(out) => done(out),
         Err(Fail::Arg(message)) => abort(&format!("qm: {message}")),
-        Err(Fail::Ruby) => Outcome::Delegate,
+        Err(Fail::Unsupported) => Outcome::Refused,
     }
 }
 
@@ -106,7 +105,7 @@ fn text(entry: &Map<String, Value>, key: &str) -> R<String> {
     match entry.get(key) {
         None | Some(Value::Null) => Ok(String::new()),
         Some(Value::String(s)) => Ok(s.clone()),
-        _ => Err(Fail::Ruby),
+        _ => Err(Fail::Unsupported),
     }
 }
 
@@ -115,7 +114,7 @@ fn list(spec: Option<&str>, cwd: &str) -> R<String> {
         Ok(url) => Some(url),
         Err(Fail::Arg(message)) if spec.is_some() => return Err(Fail::Arg(message)),
         Err(Fail::Arg(_)) => None,
-        Err(Fail::Ruby) => return Err(Fail::Ruby),
+        Err(Fail::Unsupported) => return Err(Fail::Unsupported),
     };
     let mut entries: Vec<(String, Vec<Map<String, Value>>)> = match &pr {
         Some(url) => vec![(url.clone(), store::for_pr(url)?)],

@@ -47,7 +47,7 @@ fn arg<T>(m: impl Into<String>) -> R<T> {
 fn from_run(f: run::Fail) -> Stop {
     match f {
         run::Fail::Arg(m) => Stop::Arg(m),
-        run::Fail::Unported => Stop::Other("RuntimeError", "the run folder could not be read or written".into()),
+        run::Fail::Unsupported => Stop::Other("RuntimeError", "the run folder could not be read or written".into()),
     }
 }
 

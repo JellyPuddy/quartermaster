@@ -35,20 +35,20 @@ pub fn writes_file() -> std::path::PathBuf {
 }
 
 /// A `Err` is a value this port does not read exactly.
-pub struct Unported;
+pub struct Unsupported;
 
-fn scalar(v: &Value) -> Result<String, Unported> {
+fn scalar(v: &Value) -> Result<String, Unsupported> {
     match v {
         Value::Null => Ok(String::new()),
         Value::String(t) => Ok(t.clone()),
         Value::Bool(b) => Ok(b.to_string()),
         Value::Number(n) if n.is_i64() || n.is_u64() => Ok(n.to_string()),
-        _ => Err(Unported),
+        _ => Err(Unsupported),
     }
 }
 
 /// The id of a claude.ai artifact link (with or without a query or trailing slash), else the cleaned text.
-pub fn board_key(url: &Value) -> Result<String, Unported> {
+pub fn board_key(url: &Value) -> Result<String, Unsupported> {
     let text = scalar(url)?;
     let url = strip(&text);
     if let Some(c) = Regex::new(r"/artifact/([^/?#]+)").unwrap().captures(url) {
@@ -124,7 +124,7 @@ fn stamp(mut data: Map<String, Value>, ts: Option<&Value>) -> Map<String, Value>
     data
 }
 
-fn str_replace(doc: Option<&Value>, write: &Map<String, Value>) -> Result<Option<Map<String, Value>>, Unported> {
+fn str_replace(doc: Option<&Value>, write: &Map<String, Value>) -> Result<Option<Map<String, Value>>, Unsupported> {
     let Some(Value::Object(doc)) = doc else { return Ok(None) };
     let (Some(Value::String(field)), Some(Value::String(old))) = (write.get("field"), write.get("old_str")) else { return Ok(None) };
     let Some(Value::String(current)) = doc.get(field) else { return Ok(None) };
@@ -162,7 +162,7 @@ fn failed(response: Option<&Value>) -> bool {
 }
 
 impl Mirror {
-    fn fold_line(&mut self, line: &[u8]) -> Result<(), Unported> {
+    fn fold_line(&mut self, line: &[u8]) -> Result<(), Unsupported> {
         let Ok(Value::Object(entry)) = serde_json::from_slice::<Value>(line) else { return Ok(()) };
         let payload = match entry.get("payload") {
             Some(Value::Object(p)) => p.clone(),
@@ -172,7 +172,7 @@ impl Mirror {
         self.fold(&payload, ts.as_ref())
     }
 
-    fn fold(&mut self, payload: &Map<String, Value>, ts: Option<&Value>) -> Result<(), Unported> {
+    fn fold(&mut self, payload: &Map<String, Value>, ts: Option<&Value>) -> Result<(), Unsupported> {
         let Some(Value::String(tool)) = payload.get("tool_name") else { return Ok(()) };
         if !tool.ends_with("ArtifactData") {
             return Ok(());
@@ -205,12 +205,12 @@ impl Mirror {
         Ok(())
     }
 
-    fn apply(&mut self, board: &str, write: &Map<String, Value>, ts: Option<&Value>) -> Result<(), Unported> {
+    fn apply(&mut self, board: &str, write: &Map<String, Value>, ts: Option<&Value>) -> Result<(), Unsupported> {
         let (Some(Value::String(collection)), Some(Value::String(doc_id))) = (write.get("collection"), write.get("doc_id")) else { return Ok(()) };
         let boards = self.boards.entry(board.to_string()).or_insert_with(|| json!({}));
-        let Some(collections) = boards.as_object_mut() else { return Err(Unported) };
+        let Some(collections) = boards.as_object_mut() else { return Err(Unsupported) };
         let docs = collections.entry(collection.clone()).or_insert_with(|| json!({}));
-        let Some(docs) = docs.as_object_mut() else { return Err(Unported) };
+        let Some(docs) = docs.as_object_mut() else { return Err(Unsupported) };
         match write.get("op").and_then(Value::as_str) {
             Some("delete") => {
                 docs.shift_remove(doc_id);
@@ -225,7 +225,7 @@ impl Mirror {
                     let base = match docs.get(doc_id) {
                         Some(Value::Object(b)) => b.clone(),
                         None => Map::new(),
-                        Some(_) => return Err(Unported),
+                        Some(_) => return Err(Unsupported),
                     };
                     docs.insert(doc_id.clone(), Value::Object(stamp(deep_merge(&base, &data), ts)));
                 }
@@ -241,7 +241,7 @@ impl Mirror {
     }
 
     /// Folds whatever was appended since the last call.
-    fn refresh(&mut self, path: &std::path::Path) -> Result<(), Unported> {
+    fn refresh(&mut self, path: &std::path::Path) -> Result<(), Unsupported> {
         let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
         if size < self.offset {
             *self = Mirror::default();
@@ -262,7 +262,7 @@ impl Mirror {
 }
 
 /// The board's task rows, newest batch first and in plan order within a batch.
-pub fn rows(url: &Value) -> Result<Vec<Value>, Unported> {
+pub fn rows(url: &Value) -> Result<Vec<Value>, Unsupported> {
     let path = writes_file();
     let key = board_key(url)?;
     let docs: Docs = {
@@ -273,7 +273,7 @@ pub fn rows(url: &Value) -> Result<Vec<Value>, Unported> {
     };
     let mut rows: Vec<Map<String, Value>> = vec![];
     for (doc_id, data) in &docs {
-        let Value::Object(data) = data else { return Err(Unported) };
+        let Value::Object(data) = data else { return Err(Unsupported) };
         let mut row = Map::new();
         row.insert("doc_id".into(), json!(doc_id));
         for f in ROW_FIELDS {
@@ -302,7 +302,7 @@ pub fn rows(url: &Value) -> Result<Vec<Value>, Unported> {
 }
 
 /// Rows of an item's board (via its `board:` record), or `[]` without one.
-pub fn rows_for(item: &WorkItem) -> Result<Vec<Value>, Unported> {
+pub fn rows_for(item: &WorkItem) -> Result<Vec<Value>, Unsupported> {
     match item.board() {
         Some(url) => rows(&json!(url)),
         None => Ok(vec![]),
@@ -310,7 +310,7 @@ pub fn rows_for(item: &WorkItem) -> Result<Vec<Value>, Unported> {
 }
 
 /// Answers a BLOCKED row by writing `<answers_dir>/<doc_id>.md`, the file the blocked sub-agent polls for.
-pub fn answer(item: &WorkItem, doc_id: &str, text: &str) -> Result<std::path::PathBuf, Result<String, Unported>> {
+pub fn answer(item: &WorkItem, doc_id: &str, text: &str) -> Result<std::path::PathBuf, Result<String, Unsupported>> {
     let Some(board) = item.board() else { return Err(Ok(format!("'{}' has no status board", item.slug))) };
     let Some(dir) = item.board_answers_dir() else { return Err(Ok(format!("'{}' has no answers directory (qm board {} URL --answers-dir DIR)", item.slug, item.slug))) };
     let valid = !doc_id.is_empty() && doc_id.chars().count() <= 200 && doc_id != "." && doc_id != ".." && doc_id.chars().all(|c| c.is_ascii_alphanumeric() || "_-.~:@+".contains(c));
@@ -330,11 +330,11 @@ pub fn answer(item: &WorkItem, doc_id: &str, text: &str) -> Result<std::path::Pa
         return Err(Ok(format!("row '{doc_id}' is {status}, not blocked")));
     }
     let dir = std::path::PathBuf::from(dir);
-    std::fs::create_dir_all(&dir).map_err(|_| Err(Unported))?;
+    std::fs::create_dir_all(&dir).map_err(|_| Err(Unsupported))?;
     let target = dir.join(format!("{doc_id}.md"));
     let temp = dir.join(format!(".{doc_id}.md.{}.tmp", std::process::id()));
     let body = if text.ends_with('\n') { text.to_string() } else { format!("{text}\n") };
-    std::fs::write(&temp, body).map_err(|_| Err(Unported))?;
-    std::fs::rename(&temp, &target).map_err(|_| Err(Unported))?;
+    std::fs::write(&temp, body).map_err(|_| Err(Unsupported))?;
+    std::fs::rename(&temp, &target).map_err(|_| Err(Unsupported))?;
     Ok(target)
 }

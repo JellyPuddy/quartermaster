@@ -13,7 +13,7 @@ const MAX_CODE: usize = 500;
 
 pub enum Fail {
     Refuse(String),
-    Unported,
+    Unsupported,
 }
 
 pub struct Payload {
@@ -33,7 +33,7 @@ fn to_s(v: Option<&Value>) -> Result<String, Fail> {
         Some(Value::String(t)) => Ok(t.clone()),
         Some(Value::Bool(b)) => Ok(b.to_string()),
         Some(Value::Number(n)) if n.is_i64() || n.is_u64() => Ok(n.to_string()),
-        _ => Err(Fail::Unported),
+        _ => Err(Fail::Unsupported),
     }
 }
 
@@ -75,8 +75,8 @@ fn inspect(v: Option<&Value>) -> Result<String, Fail> {
         None | Some(Value::Null) => Ok("nil".into()),
         Some(Value::Bool(b)) => Ok(b.to_string()),
         Some(Value::Number(n)) if n.is_i64() || n.is_u64() => Ok(n.to_string()),
-        Some(Value::String(t)) => inspect_ascii(t).ok_or(Fail::Unported),
-        _ => Err(Fail::Unported),
+        Some(Value::String(t)) => inspect_ascii(t).ok_or(Fail::Unsupported),
+        _ => Err(Fail::Unsupported),
     }
 }
 
