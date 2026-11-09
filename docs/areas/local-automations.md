@@ -38,7 +38,7 @@ run_id:, session_id:)` → `{item_slug:, tmux:}` once a chat runs, or `{waiting:
 queued. `#problem(flow, item)` says why a flow can't take an item (unknown flow, a `needs` field
 missing or blank; a cron run's nil item lacks every field); `#start` raises it, and for a yml the
 store would refuse. Both pass claude `--session-id` (qm's uuid), then `--model`,
-`--permission-mode`, `--allowedTools` (one value, so it can't swallow the prompt) when set.
+`--permission-mode`, `--allowedTools=<a,b>` (one `=` value, so the variadic flag can't swallow the prompt) when set.
 - `chat` (`ChatFlow`): tmux `<slug>--run-<run id>` on qm's socket running `Launcher#chat_command`
   (`QM_CHAT_COMMAND` swaps it) with `QM_ITEM=<automation slug>`, `CLAUDE*` unset by Tmux; cwd the
   yml's `cwd`, else the project root, else home. The prompt is `<slug>.prompt.md`, plus for an

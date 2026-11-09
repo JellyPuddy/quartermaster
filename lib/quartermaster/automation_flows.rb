@@ -58,14 +58,12 @@ module Quartermaster
     end
 
     # The claude flags a local automation's yml sets, before the prompt.
-    # --allowedTools takes one comma-joined value: the flag is variadic and
-    # would swallow the prompt after it.
     def self.flags(record, session_id)
       tools = Array(record["allowed_tools"])
       ["--session-id", session_id,
        *(record["model"] ? ["--model", record["model"].to_s] : []),
        *(record["permission_mode"] ? ["--permission-mode", record["permission_mode"].to_s] : []),
-       *(tools.empty? ? [] : ["--allowedTools", tools.join(",")])]
+       *(tools.empty? ? [] : ["--allowedTools=#{tools.join(",")}"])]
     end
   end
 end

@@ -50,7 +50,7 @@ class AutomationFlowsTest < Minitest::Test
       assert_equal "nightly-triage--run-ab12cd34", opened[:name]
       assert_equal cwd, opened[:cwd]
       assert_equal ["claude", "--session-id", SID, "--model", "sonnet", "--permission-mode", "acceptEdits",
-                    "--allowedTools", "Bash(gh:*),Read", "Triage the inbox.\n"], opened[:argv]
+                    "--allowedTools=Bash(gh:*),Read", "Triage the inbox.\n"], opened[:argv]
       assert_equal({ "QM_ITEM" => "nightly-triage" }, opened[:env])
     end
   end
