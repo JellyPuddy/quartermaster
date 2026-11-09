@@ -53,6 +53,11 @@ goes in the commit message.
   publishing.
 - [settings](areas/settings.md) — read when you touch config.yml's key list (`config_schema`), its
   validation, or how qm edits and writes the file.
+- [automations](areas/automations.md) — read when you touch an automation's local files
+  (`automations/<slug>.yml` and `.prompt.md`) or its schedule (UTC cron ↔ local weekdays and time).
+- [local-automations](areas/local-automations.md) — read when you touch `runner: local` automations:
+  their yml fields and validation, local-time cron, the run log (`<slug>.runs.jsonl`), the tick and
+  its launchd installer.
 - [cli](areas/cli.md) — read when you touch a `qm` command, the bare-`qm` fzf viewer or live
   sessions listing.
 - [testing](areas/testing.md) — read when you add a test or golden, use the Ruby oracle, or
