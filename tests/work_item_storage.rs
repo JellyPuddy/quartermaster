@@ -85,3 +85,13 @@ fn a_stale_handle_never_resurrects_a_deleted_item() {
     assert_eq!(error.message, "no work item 'gone'");
     assert!(!WorkItem::path_for("gone").exists());
 }
+
+#[test]
+fn the_new_item_action_reports_a_title_without_letters_or_digits() {
+    let _guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let qm = Qm::new();
+    std::env::set_var("QM_ROOT", qm.root.path());
+    let reply = quartermaster::gui_actions::dispatch(&serde_json::json!({"cmd": "new", "args": {"title": "日本語 タイトル", "project": "Nowhere"}})).unwrap();
+    assert_eq!(reply, serde_json::json!({"ok": false, "error": "title needs at least one letter or digit (a-z, 0-9) for its slug"}));
+    assert!(!qm.root.path().join("work-items/.md").exists());
+}

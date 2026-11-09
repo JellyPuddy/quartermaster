@@ -272,3 +272,22 @@ fn new_pf_mode_is_checked_against_the_project_s_dev_server() {
     ];
     golden("work_items_pf_mode.txt", &transcript(&qm, "tunnel-work", &steps));
 }
+
+const NO_SLUG: &str = "qm: title needs at least one letter or digit (a-z, 0-9) for its slug\n";
+
+#[test]
+fn accented_titles_are_transliterated_into_their_slug() {
+    let qm = Qm::new();
+    qm.ok(&["new", "ünï", "--project", "MyApp"]);
+    qm.ok(&["new", "Café Crème", "--project", "MyApp"]);
+    assert!(qm.exists("work-items/uni.md") && qm.exists("work-items/cafe-creme.md"));
+}
+
+#[test]
+fn new_refuses_a_title_without_letters_or_digits_and_writes_nothing() {
+    let qm = Qm::new();
+    let out = qm.run(&["new", "日本語 タイトル"]);
+    assert_eq!((out.code, out.stdout.as_str(), out.stderr.as_str()), (1, "", NO_SLUG));
+    let files: Vec<_> = std::fs::read_dir(qm.root.path().join("work-items")).map(|d| d.map(|e| e.unwrap().file_name()).collect()).unwrap_or_default();
+    assert!(files.iter().all(|f: &std::ffi::OsString| f == ".lock"), "{files:?}");
+}

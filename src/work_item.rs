@@ -353,20 +353,7 @@ impl WorkItem {
     }
 
     pub fn slugify(title: &str) -> String {
-        let mut slug = String::new();
-        let mut dash = false;
-        for c in title.to_lowercase().chars() {
-            if c.is_ascii_lowercase() || c.is_ascii_digit() {
-                if dash && !slug.is_empty() {
-                    slug.push('-');
-                }
-                dash = false;
-                slug.push(c);
-            } else {
-                dash = true;
-            }
-        }
-        slug
+        crate::slug::slug_words(title)
     }
 
     /// A new item; `Unemittable` when its front matter is something only Ruby writes faithfully.
@@ -374,7 +361,7 @@ impl WorkItem {
         let slug = Self::slugify(title);
         let unemittable = |what: &str| QmError::new(UNEMITTABLE, format!("cannot write {what} like Ruby"));
         if slug.is_empty() {
-            return Err(QmError::argument("the title needs a letter or digit (a-z, 0-9) to make its slug from"));
+            return Err(QmError::argument("title needs at least one letter or digit (a-z, 0-9) for its slug"));
         }
         let mut lines = vec!["v: 1".to_string()];
         lines.extend(psych::pair("title", title).ok_or_else(|| unemittable("the title"))?);

@@ -80,9 +80,9 @@ fn world() -> World {
     qm.ok(&["new", "Item with ünï title", "--project", "demo"]);
     let _ = std::fs::write(
         qm.root.path().join("work-items/item.md"),
-        std::fs::read_to_string(qm.root.path().join("work-items/item-with-n-title.md")).unwrap().replace("sessions: []\n", "").replacen("\n---\n", "\nsessions:\n- id: s-resumable\n- id: s-live\n---\n", 1),
+        std::fs::read_to_string(qm.root.path().join("work-items/item-with-uni-title.md")).unwrap().replace("sessions: []\n", "").replacen("\n---\n", "\nsessions:\n- id: s-resumable\n- id: s-live\n---\n", 1),
     );
-    let _ = std::fs::remove_file(qm.root.path().join("work-items/item-with-n-title.md"));
+    let _ = std::fs::remove_file(qm.root.path().join("work-items/item-with-uni-title.md"));
     World { qm, home, projects }
 }
 

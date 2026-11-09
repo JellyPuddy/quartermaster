@@ -21,8 +21,8 @@
   `issue_drafts`, `usage`, `psych_scalars`, …) are still here and skip unless `QM_RUBY_ORACLE` names a
   checkout of that commit: `git worktree add ../qm-ruby 6c25480 && QM_RUBY_ORACLE=$PWD/../qm-ruby cargo
   test`. They need Ruby 3.3 and compare byte for byte; where the Rust behaviour was deliberately changed
-  after the port (option errors, titles with no ASCII letter, YAML a Psych-exact writer would spell
-  differently) the tests that pinned the old behaviour are gone.
+  after the port (option errors, titles with no letter or digit after transliteration, accents folded
+  to ASCII instead of dropped, YAML a Psych-exact writer would spell differently) the tests that pinned the old behaviour are gone.
 - **Regenerating a golden from the oracle.** `QM_UPDATE_GOLDEN=1 QM_BIN=$ORACLE/quartermaster cargo test
   --test NAME` writes what Ruby printed; only do it for a behaviour you mean to keep.
 - **Docs and size.** `tests/docs_shape.rs` checks the shape of `docs/`; `tests/size_ratchet.rs` keeps big

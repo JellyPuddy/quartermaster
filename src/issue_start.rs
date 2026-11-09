@@ -200,3 +200,14 @@ pub fn start(preview: &Value, from: Option<&str>, progress: &dyn Fn(&str)) -> R<
     let item = WorkItem::find(&item.slug).map_err(|_| Fail::Unported)?;
     Ok((item, target.path))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::branch_name;
+
+    #[test]
+    fn a_title_without_letters_or_digits_gets_a_number_only_branch() {
+        assert_eq!(branch_name(123, "日本語 タイトル"), "issue/123");
+        assert_eq!(branch_name(123, "Café au lait"), "issue/123-cafe-au-lait");
+    }
+}

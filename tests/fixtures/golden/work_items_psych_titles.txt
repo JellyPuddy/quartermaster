@@ -125,7 +125,7 @@
   branches:
   - 'null'
 === "~" / project "09" → exit 1
-qm: the title needs a letter or digit (a-z, 0-9) to make its slug from
+qm: title needs at least one letter or digit (a-z, 0-9) for its slug
 === "'quoted'" / project "yes" → exit 0
 ---
   v: 1
@@ -190,7 +190,7 @@ qm: the title needs a letter or digit (a-z, 0-9) to make its slug from
   branches:
   - café ünï
 === "日本語 タイトル" / project "/srv/x" → exit 1
-qm: the title needs a letter or digit (a-z, 0-9) to make its slug from
+qm: title needs at least one letter or digit (a-z, 0-9) for its slug
 === "tab\there" / project "a: b" → exit 0
 ---
   v: 1
@@ -488,7 +488,7 @@ qm: invalid option: -.inf
   branches:
   - ".NaN"
 === "<<" / project "" → exit 1
-qm: the title needs a letter or digit (a-z, 0-9) to make its slug from
+qm: title needs at least one letter or digit (a-z, 0-9) for its slug
 === "= equals" / project "demo" → exit 0
 ---
   v: 1

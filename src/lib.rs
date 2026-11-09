@@ -103,6 +103,7 @@ pub mod usage_ledger;
 pub mod viewed_marks;
 pub mod item_usage;
 pub mod aside;
+pub mod slug;
 pub mod item_deletion;
 pub mod atomic_file;
 pub mod launcher;
