@@ -173,8 +173,9 @@ pub fn serve(mut stream: TcpStream, mut reader: BufReader<TcpStream>, key: &str,
     let tmux = crate::tmux::Tmux::new();
     let mut master: i32 = 0;
     let mut slave: i32 = 0;
-    let size = libc::winsize { ws_row: rows, ws_col: cols, ws_xpixel: 0, ws_ypixel: 0 };
-    if unsafe { libc::openpty(&mut master, &mut slave, std::ptr::null_mut(), std::ptr::null(), &size) } != 0 {
+    let mut size = libc::winsize { ws_row: rows, ws_col: cols, ws_xpixel: 0, ws_ypixel: 0 };
+    // macOS takes `*mut` for the terminal settings and the size where Linux takes `*const`; `*mut` fits both
+    if unsafe { libc::openpty(&mut master, &mut slave, std::ptr::null_mut(), std::ptr::null_mut(), &mut size) } != 0 {
         return;
     }
     let (master_fd, slave_fd) = unsafe { (OwnedFd::from_raw_fd(master), OwnedFd::from_raw_fd(slave)) };
