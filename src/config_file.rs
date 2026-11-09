@@ -58,6 +58,16 @@ pub fn parse_value(source: &str) -> Value {
     }
 }
 
+/// A value typed for `path`: on a boolean key `yes`, `no`, `on` and `off` are the booleans Psych read them as
+/// (serde_yaml reads them as text).
+pub fn typed_for(path: &str, value: Value) -> Value {
+    let boolean = schema::lookup(path).is_some_and(|k| k.kind == "bool");
+    match (&value, boolean) {
+        (Value::String(s), true) => crate::yaml_scalar::psych_bool(s).map_or(value, Value::Bool),
+        _ => value,
+    }
+}
+
 fn key(k: &str) -> Value {
     Value::String(k.to_string())
 }

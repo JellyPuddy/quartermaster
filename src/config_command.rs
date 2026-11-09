@@ -20,7 +20,7 @@ pub fn run(argv: &[String]) -> Outcome {
     match (sub, path) {
         (Some("path"), _) => done(puts(&data_root::config_file().to_string_lossy())),
         (Some("get"), path) => get(path.map(String::as_str)),
-        (Some("set"), Some(path)) if !rest.is_empty() => set(path, parse_value(&rest.join(" "))),
+        (Some("set"), Some(path)) if !rest.is_empty() => set(path, crate::config_file::typed_for(path, parse_value(&rest.join(" ")))),
         (Some("unset"), Some(path)) => unset(path),
         _ => abort(USAGE),
     }

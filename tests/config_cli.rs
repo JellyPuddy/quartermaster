@@ -207,3 +207,15 @@ fn help_lists_qm_config() {
     let o = world().qm.run(&["help"]);
     assert!(o.stdout.contains("qm config get [PATH]") && o.stdout.contains("qm config set PATH VALUE"), "{}", o.stdout);
 }
+
+#[test]
+fn a_yes_on_a_boolean_key_is_stored_as_the_boolean_psych_read_it_as() {
+    let qm = Qm::new();
+    let out = qm.run_with(&["config", "set", "automations.local_paused", "yes"], "", &[]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    let file = qm.read("config.yml");
+    assert!(file.contains("local_paused: true"), "{file}");
+    let out = qm.run_with(&["config", "set", "automations.local_paused", "off"], "", &[]);
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert!(qm.read("config.yml").contains("local_paused: false"));
+}

@@ -34,3 +34,23 @@ pub fn string(v: Option<&Value>) -> Option<String> {
         _ => None,
     }
 }
+
+/// A boolean as Psych (YAML 1.1) reads a plain scalar: `yes`, `true` and `on` are true, `no`, `false` and `off`
+/// false, in any case; `y` and `n` stay strings. serde_yaml reads only `true` and `false`.
+pub fn psych_bool(text: &str) -> Option<bool> {
+    match text.to_ascii_lowercase().as_str() {
+        "yes" | "true" | "on" => Some(true),
+        "no" | "false" | "off" => Some(false),
+        _ => None,
+    }
+}
+
+/// A key the user switches with a boolean, read the Psych way; `None` when it holds neither a boolean nor a
+/// spelling of one.
+pub fn switch(value: &Value) -> Option<bool> {
+    match value {
+        Value::Bool(b) => Some(*b),
+        Value::String(s) => psych_bool(s),
+        _ => None,
+    }
+}

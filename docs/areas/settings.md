@@ -38,7 +38,7 @@ folder and PATH checks go through a `Probe`; tests pass a stub.
 **File** — `ConfigFile::load` holds the text, the parsed mapping and the text's SHA-256 digest.
 `get` / `set` / `unset` take dotted paths (opening a shorthand into its mapping); `set` refuses a
 path the schema doesn't know, `unset` also takes an unknown key under a governed mapping (to
-drop a typo). `parse_value` reads a CLI value as YAML (`[dev, ngrok]` a list, `true` a bool, `4` a
+drop a typo). `parse_value` reads a CLI value as YAML (`[dev, ngrok]` a list, `true` a bool (on a `bool` key `yes`/`no`/`on`/`off` are bools too, `config_file::typed_for`), `4` a
 number; unreadable text stays a string). `replace` swaps in a whole mapping (the GUI's draft).
 `write(digest)` refuses with `Invalid` (carrying the issues) while there are errors and with
 `Stale` when the file's digest isn't the one the editor loaded; otherwise, holding the

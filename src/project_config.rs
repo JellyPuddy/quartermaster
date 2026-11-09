@@ -247,7 +247,8 @@ impl ProjectConfig {
             _ => default,
         };
         let local_automations = LocalAutomations {
-            paused: automations.get("local_paused") == Some(&Value::Bool(true)),
+            // an off switch: a value that is no boolean pauses rather than runs
+            paused: automations.get("local_paused").is_some_and(|v| !v.is_null() && crate::yaml_scalar::switch(v).unwrap_or(true)),
             max_running: number("local_max_running", 2.0),
             hold_five_hour: number("local_hold_five_hour", 80.0),
             hold_seven_day: number("local_hold_seven_day", 90.0),

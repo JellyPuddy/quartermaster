@@ -201,11 +201,25 @@ impl AutomationStore {
     fn load_record(&self, slug: &str) -> Res<Record> {
         let text = fs::read_to_string(self.yml_path(slug)?)?;
         Ok(match serde_yaml::from_str::<Value>(&text) {
-            Ok(Value::Object(map)) => map,
+            Ok(Value::Object(map)) => with_enabled_as_psych_reads_it(map),
             Ok(_) => Record::new(),
             Err(e) => return Err(e.into()),
         })
     }
+}
+
+/// `enabled` is the user's off switch: `no` and `off` turn the automation off as Psych read them; a value
+/// that is no boolean at all counts as off, never as on.
+fn with_enabled_as_psych_reads_it(mut record: Record) -> Record {
+    let read = match record.get("enabled") {
+        None | Some(Value::Null) | Some(Value::Bool(_)) => None,
+        Some(Value::String(s)) => Some(crate::yaml_scalar::psych_bool(s).unwrap_or(false)),
+        Some(_) => Some(false),
+    };
+    if let Some(on) = read {
+        record.insert("enabled".into(), Value::Bool(on));
+    }
+    record
 }
 
 /// `v` first, then the known fields in their order, then every other key as stored.

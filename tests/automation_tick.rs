@@ -223,6 +223,46 @@ fn paused_runs_no_guard_and_starts_nothing() {
     assert_eq!(automation_tick::state(&world.automations())["paused"], true);
 }
 
+/// The user's hand edit of `<slug>.yml`: Psych read `no`, `off` and the like as booleans.
+fn hand_edit_enabled(world: &ChatWorld, slug: &str, spelling: &str) {
+    let path = world.automations().join(format!("{slug}.yml"));
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("enabled: true"), "{text}");
+    std::fs::write(&path, text.replace("enabled: true", &format!("enabled: {spelling}"))).unwrap();
+}
+
+#[test]
+fn enabled_spelled_the_yaml_1_1_way_or_not_a_boolean_turns_the_automation_off() {
+    let _env = ENV.lock().unwrap_or_else(|p| p.into_inner());
+    for spelling in ["no", "No", "off", "OFF", "maybe"] {
+        let world = ChatWorld::new("tick");
+        let marker = world.dir.path().join("guard-ran");
+        world.write_automation("triage", json!({"when": format!("touch {}; echo a", marker.display())}));
+        hand_edit_enabled(&world, "triage", spelling);
+        tick(&world, now());
+        assert!(!marker.exists(), "enabled: {spelling} ran its guard");
+    }
+    let world = ChatWorld::new("tick");
+    let marker = world.dir.path().join("guard-ran");
+    world.write_automation("triage", json!({"when": format!("touch {}; echo a", marker.display())}));
+    hand_edit_enabled(&world, "triage", "yes");
+    tick(&world, now());
+    assert!(marker.exists(), "enabled: yes should still run");
+}
+
+#[test]
+fn local_paused_spelled_the_yaml_1_1_way_or_not_a_boolean_pauses() {
+    let _env = ENV.lock().unwrap_or_else(|p| p.into_inner());
+    for (spelling, paused) in [("yes", true), ("On", true), ("maybe", true), ("no", false), ("off", false)] {
+        let world = ChatWorld::new("tick");
+        world.config(&format!("automations:\n  local_paused: {spelling}\n"));
+        let marker = world.dir.path().join("guard-ran");
+        world.write_automation("triage", json!({"when": format!("touch {}; echo a", marker.display())}));
+        let summary = tick(&world, now());
+        assert_eq!((summary.paused, marker.exists()), (paused, !paused), "local_paused: {spelling}");
+    }
+}
+
 #[test]
 fn a_disabled_automation_runs_no_guard_and_starts_only_its_manual_and_retry_runs() {
     let _env = ENV.lock().unwrap_or_else(|p| p.into_inner());

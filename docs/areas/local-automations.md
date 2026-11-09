@@ -175,16 +175,16 @@ and recent runs (`chat` = its live `--run-` tmux or a pr-review run's Review ite
   rest go on.
 - qm only ever kills a `--run-` tmux session (closing or timing out), never an item's own chat, and never a
   run the user typed into; a typed-into run is theirs until its session ends.
+- Off switches are read as Psych (YAML 1.1) read them: `enabled` and `local_paused` take `yes`/`no`/`on`/`off`
+  in any case (`yaml_scalar::psych_bool`); a non-boolean counts as off (`enabled`) or paused, never as on.
 - Lifecycle runs every tick, paused or not; `local_paused` holds every start, `enabled: false` only cron and
   guard runs (its `manual`/`retry` ones start, under hold and cap, to try it by hand).
-- `notify: quiet` keeps a run out of attention and notifications (`RunLog::quiet_session_ids`); a timeout
-  notification still fires, since a timeout is a failure to fix.
+- `notify: quiet` keeps a run out of attention and notifications (`RunLog::quiet_session_ids`), not a timeout's.
 - The LaunchAgent changes only on the user's command or button; `installed` reads only the plist.
 - Guards and tmux go through `command_runner` and `Tmux`; tests run the real tmux on a `qm-test-…` socket
-  with a stand-in for claude, a stand-in `gh` and `terminal-notifier` on PATH, a stand-in `launchctl` and a temp LaunchAgents
+  with stand-ins for claude, `gh`, `terminal-notifier` and `launchctl` on PATH and a temp LaunchAgents
   directory, never a real guard target, claude, GitHub, notification or launchd.
-- No TZ switching: the offset comes from `local_schedule::offset_minutes`.
-- Cron search is bounded: 8 days back (`due`), nine years ahead (`next_after`), by local days.
+- No TZ switching (`local_schedule::offset_minutes`); cron search is bounded: 8 days back, nine years ahead.
 - The run log is append-only; readers skip non-JSON lines and unknown events and fields.
 - Dedupe at queue time: a key is consumed when queued or refused; only `retry` queues it again, never
   automatically. Cron runs coalesce to one queued per automation; guard items queue FIFO.
