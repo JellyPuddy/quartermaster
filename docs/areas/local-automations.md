@@ -1,7 +1,7 @@
 # Local automations
 
-**Code:** `src/local_cron.rs`, `src/automation_flows.rs`, `src/chat_flow.rs`, `src/pr_review_flow.rs`, `src/automation_guard.rs`, `src/run_log.rs`, `src/run_fold.rs`, `src/random_id.rs`
-**Tests:** `tests/automation_config.rs`, `tests/automation_flows.rs`, `tests/automation_guard.rs`, `tests/local_cron.rs`, `tests/run_log.rs`, `tests/automation_store.rs`
+**Code:** `src/local_cron.rs`, `src/automation_flows.rs`, `src/chat_flow.rs`, `src/pr_review_flow.rs`, `src/automation_tick.rs`, `src/automation_guard.rs`, `src/run_lifecycle.rs`, `src/run_log.rs`, `src/run_fold.rs`, `src/random_id.rs`
+**Tests:** `tests/automation_config.rs`, `tests/automation_flows.rs`, `tests/automation_guard.rs`, `tests/automation_tick.rs`, `tests/automation_run_lifecycle.rs`, `tests/local_cron.rs`, `tests/run_log.rs`, `tests/automation_store.rs`
 **Depends on:** [automations](automations.md) (the store, the item; `local_schedule`'s DST rule), [work-items](work-items.md)
 
 ## What it does
@@ -55,6 +55,48 @@ with a 60 s limit (`call_bounded` kills the process group). Each non-empty stdou
 object with a string `key` as is, any non-JSON line `{key: line, line: line}`; a JSON object without one is
 a problem for that line. A non-zero exit or timeout fails the whole guard ("guard failed: <stderr tail>").
 
+**Tick** — `AutomationTick::call(now)` is one scheduler pass. It takes `automations/tick.lock` with a
+non-blocking flock (held: answers `Tick::Locked` and does nothing), then:
+1. Unless `automations.local_paused`, for each local automation not `enabled: false` with a valid `cron`: a
+   scheduled minute in (its last `checked`, or the previous tick, or 300 s ago; now] runs its guard, or
+   without one queues a cron run (`enqueue_cron`, coalesced); then `checked`. An empty `cron` is
+   manual-only. A bad cron or yml goes in tick.json's `problems`.
+2. The guard (**Guard** above) in the automation's cwd. An item the flow can't take (`problem`) is a
+   `guard_error`; one it refuses (`refusal`) goes to `refuse_item` (reported once, never queued); the rest
+   go through `enqueue_item` (seen keys skipped), trigger `guard`. A failed guard is one `guard_error`,
+   nothing queued; a clean run writes `guard_ran`.
+3. Usage hold: the rate-limits snapshot with five-hour used ≥ `automations.local_hold_five_hour` (80) or
+   weekly ≥ `automations.local_hold_seven_day` (90) holds every start ("5h at 84%"); a reset five-hour
+   window, or no snapshot, holds nothing. Guards still run.
+4. Lifecycle (`run_lifecycle`), paused, held or disabled alike, for every started run. A run is busy while
+   its session (`SessionLog`, by qm's `session_id`) is live and `ChatAttention::turn_for` says working,
+   waiting or none (no prompt yet); before its SessionStart hook ran, while its tmux lives. A run is typed
+   into once its session had a second prompt (the event fold's `prompts`).
+   - A live run whose turn says `your_turn` (Stop, no background work) gets `finished`; one whose chat is
+     gone gets `failed` (nothing killed), even if typed into: its session ended mid-turn ("session ended
+     before the run finished"), or no session and no live tmux five minutes (`START_GRACE`) after
+     `started` ("its chat ended before the session started").
+   - A finished `--run-` chat not typed into, sat in `your_turn` for an hour (`CLOSE_AFTER`, from the
+     turn's `since`), is killed and gets `closed`; a pr-review run stays `finished`.
+   - A live, busy run not typed into, `timeout_minutes` (30) after `started`: `timed_out`, its `--run-`
+     tmux killed (a Review chat stays open, and the item's note "run <id> timed out after 30 min" says so)
+     and a notification, quiet or not. A blocked run never times out.
+5. Cap: `automations.local_max_running` (default 2) minus the live runs that are busy, counted after the
+   lifecycle, so a run timed out frees its slot in the same tick.
+6. Unless paused or held, queued runs start oldest-first across automations while slots are free (of a
+   disabled automation only its `manual` and `retry` runs): `flows::start` with a fresh uuid, then
+   `started`. A flow answering `Waiting` leaves the run queued with that reason and uses no slot; one that
+   fails with `Refused` marks it `refused`, any other error `failed`, with the message.
+7. Writes `automations/tick.json` atomically: `{v: 1, last_tick_at, paused, held, running, max_running,
+   problems}` (`automation_tick::state` reads it, empty when missing).
+
+`call` answers the `Summary` (`queued`, `started`, `failed`, `finished`, `closed`, `timed_out` as `(slug, run
+id)` pairs, `problems`, `paused`, `held`, `running`, `max_running`; `to_json` shapes it for the CLI), or none
+after an error (logged to `qm.log` as `automation-tick`). `dry_run(slug)` runs the guard and answers `items`
+(new, the flow takes them), `seen` (also a key repeated in the output) and `problems` (refusals too),
+writing nothing; it fails for an automation without a guard and on a failing guard. `queue_guard(slug,
+trigger)` runs the guard now and queues its new items, returning their run ids.
+
 **Run log** — `RunLog::new(slug, dir)` is `automations/<slug>.runs.jsonl`, one `{v: 1, at, event, …}` line
 per event, appended under a flock; a writer that decides from the fold (`enqueue_item`, `enqueue_cron`,
 `retry`, `waiting`, `refuse_item`) re-reads it and appends under that one flock, so a tick and a CLI or GUI
@@ -82,8 +124,15 @@ and flow as a new `retry` run, past dedupe; refuses unknown, queued or live runs
 - `bypassPermissions` is refused for local automations at the store and again when a flow starts.
 - pr-review never runs outside `repos` (queue, start, retry); no list means no repo, never all.
 - Only a `chat` run gets a `--run-` tmux session; a `pr-review` run lives in its Review item's chat.
+- One tick at a time (the flock), never waiting for runs; one automation's error goes in `problems`, the
+  rest go on.
+- qm only ever kills a `--run-` tmux session (closing or timing out), never an item's own chat, and never a
+  run the user typed into; a typed-into run is theirs until its session ends.
+- Lifecycle runs every tick, paused or not; `local_paused` holds every start, `enabled: false` only cron and
+  guard runs (its `manual`/`retry` ones start, under hold and cap, to try it by hand).
 - Guards and tmux go through `command_runner` and `Tmux`; tests run the real tmux on a `qm-test-…` socket
-  with a stand-in for claude, and a stand-in `gh` on PATH, never a real guard target, claude or GitHub.
+  with a stand-in for claude, a stand-in `gh` and `terminal-notifier` on PATH, never a real guard target,
+  claude, GitHub or notification.
 - No TZ switching: the offset comes from `local_schedule::offset_minutes`.
 - Cron search is bounded: 8 days back (`due`), nine years ahead (`next_after`), by local days.
 - The run log is append-only; readers skip non-JSON lines and unknown events and fields.
@@ -92,6 +141,7 @@ and flow as a new `retry` run, past dedupe; refuses unknown, queued or live runs
 
 ## Data
 
+- `automations/tick.json` — the last tick (`v: 1`), replaced each tick; `tick.lock` — its flock.
 - `automations/<slug>.runs.jsonl` — a local automation's run log, `v: 1` per line, append-only.
 - config.yml `automations.local_paused`, `local_max_running`, `local_hold_five_hour`, `local_hold_seven_day`
   (`config_schema`, read through `ProjectConfig::local_automations`: `paused`, `max_running`,

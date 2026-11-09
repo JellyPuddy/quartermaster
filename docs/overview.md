@@ -33,7 +33,7 @@ worktrees — derives from these two layers plus a few more append-only hook log
 |---|---|---|
 | `sessions.jsonl` | session start/end events, append-only | [capture](areas/capture.md) |
 | `work-items/<slug>.md` | one work item each; `work-items/.lock` serialises writes | [work items](areas/work-items.md) |
-| `automations/<slug>.yml`, `<slug>.prompt.md` (+ `.bak`); `<slug>.runs.jsonl` | an automation's settings (`v: 1`) and its prompt, the source of truth push sends; a local one's run log, append-only ([local automations](areas/local-automations.md)) | [automations](areas/automations.md) |
+| `automations/<slug>.yml`, `<slug>.prompt.md` (+ `.bak`); `<slug>.runs.jsonl`; `tick.json`, `tick.lock` | an automation's settings (`v: 1`) and its prompt, the source of truth push sends; a local one's run log, append-only; the last local tick (`v: 1`) and its flock ([local automations](areas/local-automations.md)) | [automations](areas/automations.md) |
 | `config.yml` (+ `.bak`, `.config.yml.lock`) | projects and their settings (below), `prices:` overrides; `.bak` is the file before qm's last write | [settings](areas/settings.md) |
 | `qm.log` | hook and background errors; network blips once per outage | [capture](areas/capture.md) |
 | `errors-seen-at` | iso8601 time the user last marked qm.log errors seen (absent: count the last 24 h) | [capture](areas/capture.md) |
