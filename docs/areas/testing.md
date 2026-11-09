@@ -1,6 +1,6 @@
 # Testing
 
-**Code:** `Cargo.toml`, `tests/common/mod.rs`, `tests/docs_shape.rs`, `tests/size_ratchet.rs`, `tests/size_limits.json`
+**Code:** `Cargo.toml`, `tests/common/mod.rs`, `tests/common/chat.rs`, `tests/docs_shape.rs`, `tests/size_ratchet.rs`, `tests/size_limits.json`
 **Tests:** `tests/docs_shape.rs`, `tests/size_ratchet.rs`, `tests/launcher.rs`
 
 ## What it does
@@ -16,6 +16,9 @@
   `open`, `osascript`, the dev server, the IDE, `tmux` runs on a `qm-test-…` socket), and a GUI the
   commands talk to is a canned TCP server in the test. Nothing touches the user's real data, sessions or
   machine.
+- **Chat worlds.** A test that starts chats (`tests/common/chat.rs`) gets a data root, a stand-in for claude
+  that records its `QM_ITEM`, cwd and arguments, stand-in `gh`, `terminal-notifier` and `launchctl`, and the real
+  tmux on a throwaway `qm-test-…` socket killed when the world drops; the guards it runs are real `sh -c`.
 - **The Ruby oracle.** Until commit 6c25480 qm was written in Ruby and the port was verified by running
   both side by side. Those differential tests (`tests/gui.rs`, `chat_attention`, `cleanup`, `interop`,
   `issue_drafts`, `usage`, `psych_scalars`, …) are still here and skip unless `QM_RUBY_ORACLE` names a

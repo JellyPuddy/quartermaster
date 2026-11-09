@@ -1,7 +1,7 @@
 # Local automations
 
-**Code:** `src/run_chats.rs`, `src/local_cron.rs`, `src/automation_flows.rs`, `src/chat_flow.rs`, `src/pr_review_flow.rs`, `src/automation_tick.rs`, `src/automation_guard.rs`, `src/run_lifecycle.rs`, `src/run_log.rs`, `src/run_fold.rs`, `src/random_id.rs`
-**Tests:** `tests/run_chats.rs`, `tests/quiet_runs.rs`, `tests/automation_config.rs`, `tests/automation_flows.rs`, `tests/automation_guard.rs`, `tests/automation_tick.rs`, `tests/automation_run_lifecycle.rs`, `tests/local_cron.rs`, `tests/run_log.rs`, `tests/automation_store.rs`
+**Code:** `src/run_chats.rs`, `src/local_cron.rs`, `src/automation_flows.rs`, `src/chat_flow.rs`, `src/pr_review_flow.rs`, `src/automation_tick.rs`, `src/automation_guard.rs`, `src/run_lifecycle.rs`, `src/tick_installer.rs`, `src/run_log.rs`, `src/run_fold.rs`, `src/random_id.rs`
+**Tests:** `tests/tick_installer.rs`, `tests/run_chats.rs`, `tests/quiet_runs.rs`, `tests/automation_config.rs`, `tests/automation_flows.rs`, `tests/automation_guard.rs`, `tests/automation_tick.rs`, `tests/automation_run_lifecycle.rs`, `tests/local_cron.rs`, `tests/run_log.rs`, `tests/automation_store.rs`
 **Depends on:** [automations](automations.md) (the store, the item; `local_schedule`'s DST rule), [work-items](work-items.md)
 
 ## What it does
@@ -109,6 +109,16 @@ after an error (logged to `qm.log` as `automation-tick`). `dry_run(slug)` runs t
 writing nothing; it fails for an automation without a guard and on a failing guard. `queue_guard(slug,
 trigger)` runs the guard now and queues its new items, returning their run ids.
 
+**Tick installer** — `TickInstaller` owns the LaunchAgent `com.quartermaster.automation-tick` at
+`~/Library/LaunchAgents/<label>.plist` (directory injectable). Its hand-written plist (values XML-escaped):
+`ProgramArguments` = the `quartermaster` launcher's realpath, `automation`, `tick`; `StartInterval` 300;
+`RunAtLoad` false; stdout and stderr appended to `<root>/automations/tick.log`; `EnvironmentVariables` = the
+installing process's `PATH` (launchd's has no asdf shims, Homebrew, tmux or claude) plus `QM_ROOT` when set.
+`install` writes the plist atomically, runs `launchctl bootout gui/<uid>/<label>` (failure ignored, so a
+reinstall picks up a changed plist), then `launchctl bootstrap gui/<uid> <plist>`; a failed bootstrap removes
+the plist and fails with launchctl's message. `uninstall` boots out and removes the plist. `installed` = the
+plist exists.
+
 **Run log** — `RunLog::new(slug, dir)` is `automations/<slug>.runs.jsonl`, one `{v: 1, at, event, …}` line
 per event, appended under a flock; a writer that decides from the fold (`enqueue_item`, `enqueue_cron`,
 `retry`, `waiting`, `refuse_item`) re-reads it and appends under that one flock, so a tick and a CLI or GUI
@@ -144,9 +154,10 @@ and flow as a new `retry` run, past dedupe; refuses unknown, queued or live runs
   guard runs (its `manual`/`retry` ones start, under hold and cap, to try it by hand).
 - `notify: quiet` keeps a run out of attention and notifications (`RunLog::quiet_session_ids`); a timeout
   notification still fires, since a timeout is a failure to fix.
+- The LaunchAgent changes only on the user's command or button; `installed` reads only the plist.
 - Guards and tmux go through `command_runner` and `Tmux`; tests run the real tmux on a `qm-test-…` socket
-  with a stand-in for claude, a stand-in `gh` and `terminal-notifier` on PATH, never a real guard target,
-  claude, GitHub or notification.
+  with a stand-in for claude, a stand-in `gh` and `terminal-notifier` on PATH, a stand-in `launchctl` and a temp LaunchAgents
+  directory, never a real guard target, claude, GitHub, notification or launchd.
 - No TZ switching: the offset comes from `local_schedule::offset_minutes`.
 - Cron search is bounded: 8 days back (`due`), nine years ahead (`next_after`), by local days.
 - The run log is append-only; readers skip non-JSON lines and unknown events and fields.
@@ -155,6 +166,8 @@ and flow as a new `retry` run, past dedupe; refuses unknown, queued or live runs
 
 ## Data
 
+- `~/Library/LaunchAgents/com.quartermaster.automation-tick.plist` — outside the data root.
+- `automations/tick.log` — the tick's stdout and stderr, appended by launchd.
 - `automations/tick.json` — the last tick (`v: 1`), replaced each tick; `tick.lock` — its flock.
 - `automations/<slug>.runs.jsonl` — a local automation's run log, `v: 1` per line, append-only.
 - config.yml `automations.local_paused`, `local_max_running`, `local_hold_five_hour`, `local_hold_seven_day`

@@ -112,6 +112,7 @@ pub mod session_detail;
 pub mod show_command;
 pub mod session_rows;
 pub mod terminal_bridge;
+pub mod tick_installer;
 pub mod tmux;
 pub mod overview;
 pub mod statusline;
