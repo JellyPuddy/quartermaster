@@ -98,6 +98,9 @@ editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
   it, keeping the file's mode), so readers that take no lock — the GUI, the viewer, `qm list`,
   every mutator's first `find` — see the old or the new item, never a truncated one. A plain
   write let concurrent `qm note`s fail with "malformed work item file".
+- **A frontmatter change touches only the changed key's lines** (`front_edit`); every other line
+  of the user's file stays byte for byte. `config.yml` is the one file qm rewrites whole
+  ([settings](settings.md)).
 - **The stored note format is parsed and written only by `Note`** (`NOTE_LINE`). The kind
   marker is omitted for the default, so pre-kind notes and ordinary notes read identically —
   no migration was needed.

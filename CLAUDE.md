@@ -10,7 +10,7 @@ point at it, so never rename or move it; it runs `target/release/qm` (`cargo bui
 ## Where things live
 
 - **Docs:** `docs/README.md` indexes `overview.md`, `rejected.md` and one page per area
-  (`docs/areas/*.md`): its `**Code:**` line names the files it owns, `## Rules` the constraints.
+  (`docs/areas/*.md`): `**Code:**` names the files it owns, `## Rules` the constraints.
   Read it before touching that code and update it in the same commit — rewrite, don't append;
   why goes in the commit message.
 - **Data:** `~/.claude/quartermaster/`, overridden by `QM_ROOT` (tests always do). Every file
@@ -21,8 +21,6 @@ point at it, so never rename or move it; it runs `target/release/qm` (`cargo bui
 - Hooks live in user-level `~/.claude/settings.json` → `docs/areas/capture.md`.
 
 ## Hard constraints
-
-One line each; reasons are on the page pointed to.
 
 **Across every area**
 - **Few dependencies** (`serde_json`, `serde_yaml`, `regex`, `chrono`, `libc`): a hook is one
@@ -43,7 +41,9 @@ One line each; reasons are on the page pointed to.
   and (with `QM_RUBY_ORACLE`) comparisons against the last Ruby commit 6c25480 →
   `docs/areas/testing.md`. Change a golden only for a behavior you mean to change.
 - **Edit user files minimally**: the changed key's lines only, flocked, atomic; YAML qm
-  can't spell exactly like Psych is double-quoted → `docs/areas/work-items.md`.
+  can't spell exactly like Psych is double-quoted → `docs/areas/work-items.md`. Exception:
+  `config.yml` is rewritten whole, comments dropped, old copy kept as `.bak` →
+  `docs/areas/settings.md`.
 - **`QM_ASIDE` beats every linking rule**: an aside is never attached, logged as attention or
   distilled; any new per-session surface honors it → `docs/areas/asides.md`.
 
@@ -66,18 +66,18 @@ One line each; reasons are on the page pointed to.
   `LOCAL_ACTIONS` (`gui_server.rs`); the terminal WebSocket and `/api/drop` also need the
   per-start token → `docs/areas/gui-shell.md`.
 - **Chats: one tmux session per item on the `qm` socket, named by slug; the program runs with
-  every `CLAUDE*` var unset** (else transcript saving turns off) → `docs/areas/chats.md`.
+  every `CLAUDE*` var unset** (else transcripts aren't saved) → `docs/areas/chats.md`.
 - **GUI long actions run on `gui_jobs` threads, never under the action mutex** → `docs/areas/gui-shell.md`.
 
 ## Conventions
 
 - **Build through `/delegate-build`** if a change needs a new test, a full-suite run or >3
-  files; small features take its light path (one task, builder + reviewer).
-- Name by intent, not implementation; rationale goes in commit messages, not code comments.
+  files; small features take its light path.
+- Name by intent, not implementation; rationale goes in commit messages.
 - One module per concern under `src/`, intent-named (`session_log`, `work_item`, …); the GUI
   page is real assets under `gui/`.
 - Tests: `cargo test`; mutation-check a change by breaking the code and watching a test fail.
-  Test capture changes before starting real sessions. Throwaway test repos need `-c
+  Test capture changes before real sessions. Throwaway test repos need `-c
   commit.gpgsign=false` and one commit (unborn branches have no branch name); commits to this
   repo are always signed.
 - Big files and this file may only shrink (`tests/size_ratchet.rs`): split along a real seam,

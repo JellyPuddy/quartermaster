@@ -133,8 +133,10 @@ overwrite it.
 
 - `config_schema` is the one list of config keys: a new key goes there, in docs/overview.md
   §config.yml (a test checks every path is named) and nowhere else as a hand-kept list.
-- qm owns the written layout: every write re-emits the whole file and drops comments; the
-  previous file survives as `config.yml.bak`. This is the one user file qm rewrites whole.
+- qm owns the written layout: every write (`qm config`, Settings, the automations pause toggle)
+  re-emits the whole file and drops comments; the previous file survives as `config.yml.bak`.
+  This is the one user file qm rewrites whole, the named exception to CLAUDE.md's "edit user
+  files minimally" (work items change only the edited key's lines, `front_edit`).
 - Keys the schema doesn't govern (unknown top-level keys and their subtrees) are kept verbatim;
   an unknown key under a governed mapping is an error, never silently dropped.
 - Errors block a write; warnings never do — a folder or command may be missing only on this
