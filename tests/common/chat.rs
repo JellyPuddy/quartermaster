@@ -30,6 +30,9 @@ impl ChatWorld {
         let standin = world.chats().join("claude");
         std::fs::write(&standin, "#!/bin/sh\nd=$(dirname \"$0\")\nprintf '%s\\0' \"$QM_ITEM\" \"$(pwd -P)\" \"$@\" > \"$d/chat-$$.tmp\"\nmv \"$d/chat-$$.tmp\" \"$d/chat-$$.log\"\nexec sleep 120\n").unwrap();
         std::fs::set_permissions(&standin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let home = world.dir.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        std::env::set_var("HOME", &home);
         std::env::set_var("QM_ROOT", world.root());
         std::env::set_var("QM_TRANSCRIPTS_DIR", world.dir.path().join("transcripts"));
         std::env::set_var("QM_TMUX_SOCKET", &world.socket);
@@ -117,4 +120,36 @@ pub fn wait_for(done: impl Fn() -> bool, what: &str) {
 pub fn repo_with_origin(dir: &Path, origin: &str) {
     super::repo(dir, "main");
     super::git(dir, &["remote", "add", "origin", origin]);
+}
+
+/// A world with one project, WebApp, whose checkout's origin is acme/WebApp and whose review skill is its own.
+pub fn with_webapp(tag: &str) -> (ChatWorld, PathBuf) {
+    let world = ChatWorld::new(tag);
+    let repo = world.dir.path().join("repo");
+    repo_with_origin(&repo, "git@github.com:acme/WebApp.git");
+    std::fs::write(world.root().join("config.yml"), format!("projects:\n  WebApp:\n    root: {}\n    review_skill: /review-app-pr\n", repo.display())).unwrap();
+    (world, repo)
+}
+
+impl ChatWorld {
+    /// A `gh` stand-in first on PATH (and nowhere in ~/bin): it records its arguments and answers as told.
+    pub fn gh(&self, stdout: &str, stderr: &str, code: i32) {
+        let bin = self.dir.path().join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("gh.out"), stdout).unwrap();
+        std::fs::write(bin.join("gh.err"), stderr).unwrap();
+        let script = format!("#!/bin/sh\nd=$(dirname \"$0\")\nprintf '%s\\0' \"$@\" >> \"$d/gh.log\"\necho >> \"$d/gh.log\"\ncat \"$d/gh.out\"\ncat \"$d/gh.err\" >&2\nexit {code}\n");
+        std::fs::write(bin.join("gh"), script).unwrap();
+        std::fs::set_permissions(bin.join("gh"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        let path = std::env::var("PATH").unwrap_or_default();
+        if !path.starts_with(&bin.display().to_string()) {
+            std::env::set_var("PATH", format!("{}:{path}", bin.display()));
+        }
+    }
+
+    /// The argument lists `gh` was run with, one per call.
+    pub fn gh_calls(&self) -> Vec<Vec<String>> {
+        let text = std::fs::read_to_string(self.dir.path().join("bin/gh.log")).unwrap_or_default();
+        text.lines().map(|line| line.split('\0').filter(|a| !a.is_empty()).map(String::from).collect()).collect()
+    }
 }

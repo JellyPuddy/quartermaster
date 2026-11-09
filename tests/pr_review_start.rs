@@ -17,15 +17,6 @@ fn pr() -> Value {
     json!({"url": URL, "number": 42, "title": "Add the thing", "repo": "acme/WebApp", "author": "someone", "head": "feature-x", "base": "main"})
 }
 
-/// A world with one project, WebApp, whose checkout's origin is acme/WebApp and whose review skill is its own.
-fn with_project() -> (ChatWorld, std::path::PathBuf) {
-    let world = ChatWorld::new("prstart");
-    let repo = world.dir.path().join("repo");
-    repo_with_origin(&repo, "git@github.com:acme/WebApp.git");
-    std::fs::write(world.root().join("config.yml"), format!("projects:\n  WebApp:\n    root: {}\n    review_skill: /review-app-pr\n", repo.display())).unwrap();
-    (world, repo)
-}
-
 fn argv_of(started: &Started) -> &[String] {
     &started.args
 }
@@ -33,7 +24,7 @@ fn argv_of(started: &Started) -> &[String] {
 #[test]
 fn start_puts_extra_argv_before_the_kickoff_and_appends_the_suffix() {
     let _env = ENV.lock().unwrap_or_else(|p| p.into_inner());
-    let (world, repo) = with_project();
+    let (world, repo) = with_webapp("prstart");
     let extra: Vec<String> = ["--session-id", "abc", "--model", "opus"].iter().map(|s| s.to_string()).collect();
     let reply = pr_review_start::start(&pr(), &extra, Some("Focus on the migrations.")).unwrap();
     let slug = "review-webapp-42-add-the-thing";
@@ -54,7 +45,7 @@ fn start_puts_extra_argv_before_the_kickoff_and_appends_the_suffix() {
 #[test]
 fn a_blank_suffix_leaves_the_kickoff_as_the_review_button_sends_it() {
     let _env = ENV.lock().unwrap_or_else(|p| p.into_inner());
-    let (world, _) = with_project();
+    let (world, _) = with_webapp("prstart");
     pr_review_start::start(&pr(), &[], Some("  ")).unwrap();
     let started = &world.wait_started(1)[0];
     assert_eq!(started.args.len(), 1);
@@ -64,7 +55,7 @@ fn a_blank_suffix_leaves_the_kickoff_as_the_review_button_sends_it() {
 #[test]
 fn live_reports_the_review_chat_without_starting_or_creating_anything() {
     let _env = ENV.lock().unwrap_or_else(|p| p.into_inner());
-    let (world, _) = with_project();
+    let (world, _) = with_webapp("prstart");
     assert!(!pr_review_start::live(&pr()).unwrap());
     assert!(WorkItem::all().unwrap().is_empty(), "asking must not create the Review item");
     let slug = pr_review_start::item_for(&pr()).unwrap().slug;
@@ -77,7 +68,7 @@ fn live_reports_the_review_chat_without_starting_or_creating_anything() {
 #[test]
 fn a_session_running_outside_a_pane_is_live_and_refuses_a_start() {
     let _env = ENV.lock().unwrap_or_else(|p| p.into_inner());
-    let (world, _) = with_project();
+    let (world, _) = with_webapp("prstart");
     let mut item = pr_review_start::item_for(&pr()).unwrap();
     item.attach_session("s-outside").unwrap();
     let start = json!({"v": 1, "event": "start", "session_id": "s-outside", "cwd": "/", "pid": std::process::id(), "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)});
@@ -91,7 +82,7 @@ fn a_session_running_outside_a_pane_is_live_and_refuses_a_start() {
 #[test]
 fn a_live_pane_is_attached_not_restarted() {
     let _env = ENV.lock().unwrap_or_else(|p| p.into_inner());
-    let (world, _) = with_project();
+    let (world, _) = with_webapp("prstart");
     let slug = pr_review_start::item_for(&pr()).unwrap().slug;
     assert!(world.tmux(&["new-session", "-d", "-s", &slug, "sleep", "60"]).0);
     let extra = vec!["--session-id".to_string(), "x".to_string()];
@@ -102,7 +93,7 @@ fn a_live_pane_is_attached_not_restarted() {
 #[test]
 fn a_resolved_review_item_is_reopened() {
     let _env = ENV.lock().unwrap_or_else(|p| p.into_inner());
-    let (world, _) = with_project();
+    let (world, _) = with_webapp("prstart");
     let mut item = pr_review_start::item_for(&pr()).unwrap();
     item.update_state("resolved").unwrap();
     pr_review_start::start(&pr(), &[], None).unwrap();
