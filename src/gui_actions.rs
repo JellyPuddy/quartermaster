@@ -333,14 +333,14 @@ fn issues(cmd: &str, slug: &str, args: &Args) -> R<Value> {
         if !i::is_issue_file(&name) {
             return Err(fail(format!("'{name}' is not an issue file")));
         }
-        let acknowledged = i::acknowledge(slug, &name).map_err(|_| Stop::Unported)?;
+        let acknowledged = i::acknowledge(slug, &name).map_err(|e| fail(format!("can't acknowledge '{name}': {e}")))?;
         return Ok(json!({"ok": true, "acknowledged": acknowledged}));
     }
     if !crate::drafts::writable(slug) {
         return Err(Stop::Unported);
     }
-    let loaded = i::load(slug).ok_or(Stop::Unported)?;
-    loaded.record().map_err(|_| Stop::Unported)?;
+    let loaded = i::load(slug);
+    loaded.record().map_err(|e| fail(format!("can't keep the issue drafts' snapshots: {e}")))?;
     let created: Vec<String> = loaded.issues.iter().filter(|x| x.number.is_some()).map(|x| x.file.clone()).collect();
     for name in &created {
         i::delete(slug, name).map_err(|_| Stop::Unported)?;
@@ -805,14 +805,6 @@ fn strings_of(v: &Value) -> R<Vec<String>> {
     }
 }
 
-/// Whether the cleanup of this scope involves anything only Ruby reads or writes exactly.
-fn cleanup_leaves_to_ruby(scope: &str) -> bool {
-    if scope == "sweep" {
-        return !crate::cleanup::sweep_supported() || !crate::cleanup::swept_slugs().is_some_and(|s| s.iter().all(|slug| crate::drafts::writable(slug)));
-    }
-    crate::cleanup_command::leaves_to_ruby(scope) || !crate::drafts::writable(scope)
-}
-
 /// `Cleanup::Outcome#to_h`, and the result the dialog shows (`cleanup_result`).
 fn cleanup_result(outcomes: &[crate::cleanup_run::Outcome]) -> Value {
     let mut counts: Vec<(&str, usize)> = vec![];
@@ -846,9 +838,6 @@ fn cleanup(args: &Args) -> R<Value> {
     if scope != "sweep" {
         find(&scope)?;
     }
-    if cleanup_leaves_to_ruby(&scope) {
-        return Err(Stop::Unported);
-    }
     let key = scope.clone();
     let name = scope.clone();
     Ok(crate::gui_jobs::background(&name, "cleaning up…", false, move || {
@@ -866,9 +855,6 @@ fn cleanup(args: &Args) -> R<Value> {
 /// The checklist a cleanup or sweep dialog shows (`/api/cleanup-plan`); `None` for what is Ruby's.
 pub fn cleanup_plan(scope: &Value) -> Option<Value> {
     let scope = to_s(scope).ok()?;
-    if cleanup_leaves_to_ruby(&scope) && (scope == "sweep" || WorkItem::find(&scope).is_ok()) {
-        return None;
-    }
     let planned = if scope == "sweep" {
         crate::cleanup::plan_sweep()
     } else {
@@ -1056,9 +1042,6 @@ fn state(slug: &str, args: &Args) -> R<Value> {
         Value::String(s) => s.clone(),
         _ => return Err(fail(format!("state must be one of: {}", STATES.join(", ")))),
     };
-    if state == "resolved" && crate::cleanup_command::leaves_to_ruby(&item.slug) {
-        return Err(Stop::Unported); // the plan lists issue drafts, and only Ruby reads some of those
-    }
     item.update_state(&state).map_err(error)?;
     if state != "resolved" {
         return Ok(ok());

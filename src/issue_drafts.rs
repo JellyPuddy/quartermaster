@@ -2,10 +2,10 @@
 //! Claude writes them; qm only reads them, apart from the revision snapshots under `.prev/` that every
 //! read keeps (what it saw last and before that) and the pruning of snapshots whose file is gone.
 //!
-//! Reading is split so a command can decide before it writes anything: `load` only reads, and says
-//! `None` when the files hold something this port can't judge exactly as Ruby's Psych does (a YAML
-//! error, a date, an alias, a number written with a leading zero, a non-UTF-8 file …) — the command
-//! then goes to Ruby. `Loaded::record` is what writes the snapshots, and is safe to repeat.
+//! Reading is split so a command can decide before it writes anything: `load` only reads, and a file
+//! it can't read as an issue (a YAML error, a date, an alias, a number written with a leading zero, a
+//! non-UTF-8 file …) comes back as an error entry beside the issues. `Loaded::record` is what writes
+//! the snapshots, and is safe to repeat.
 
 use std::path::{Path, PathBuf};
 
@@ -61,54 +61,57 @@ pub struct Data {
 enum Parsed {
     Issue(Data),
     Error(String),
-    Unsure,
 }
 
 pub fn dir(slug: &str) -> PathBuf {
     data_root::root().join("issues").join(slug)
 }
 
-/// `IssueDrafts#files`: the item's `*.md` files, dotfiles out, by name. `None` for a name that is not UTF-8.
-pub fn files(slug: &str) -> Option<Vec<String>> {
-    let Ok(entries) = std::fs::read_dir(dir(slug)) else { return Some(vec![]) };
-    let mut names = vec![];
-    for entry in entries.filter_map(|e| e.ok()) {
-        let name = entry.file_name().into_string().ok()?;
-        if name.ends_with(".md") && !name.starts_with('.') && name.len() > 3 {
-            names.push(name);
-        }
-    }
+/// `IssueDrafts#files`: the item's `*.md` files, dotfiles out, by name. A name that is not UTF-8 is left out.
+pub fn files(slug: &str) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(dir(slug)) else { return vec![] };
+    let mut names: Vec<String> = entries
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|name| name.ends_with(".md") && !name.starts_with('.') && name.len() > 3)
+        .collect();
     names.sort();
-    Some(names)
+    names
 }
 
-/// Whether `load` can answer for this item (a pure check: nothing is written).
-pub fn supported(slug: &str) -> bool {
-    crate::cleanup_command::valid_slug(slug) && load(slug).is_some()
-}
-
-pub fn load(slug: &str) -> Option<Loaded> {
-    let names = files(slug)?;
+pub fn load(slug: &str) -> Loaded {
+    let names = files(slug);
     let dir = dir(slug);
     let (mut issues, mut errors, mut seen) = (vec![], vec![], vec![]);
     for name in &names {
         let path = dir.join(name);
-        if !std::fs::metadata(&path).ok()?.is_file() {
-            return None;
-        }
-        let content = String::from_utf8(std::fs::read(&path).ok()?).ok()?;
+        let content = match std::fs::metadata(&path) {
+            Ok(m) if !m.is_file() => {
+                errors.push(Broken { file: name.clone(), error: "not a file".into() });
+                continue;
+            }
+            Err(e) => {
+                errors.push(Broken { file: name.clone(), error: format!("can't be read: {e}") });
+                continue;
+            }
+            Ok(_) => match std::fs::read(&path).map_err(|e| e.to_string()).and_then(|b| String::from_utf8(b).map_err(|_| "is not UTF-8 text".to_string())) {
+                Ok(c) => c,
+                Err(e) => {
+                    errors.push(Broken { file: name.clone(), error: format!("can't be read: {e}") });
+                    continue;
+                }
+            },
+        };
         match parse(&content) {
-            Parsed::Unsure => return None,
             Parsed::Error(error) => errors.push(Broken { file: name.clone(), error }),
             Parsed::Issue(data) => {
-                snapshot_is_readable(&dir, name, &content)?;
                 let version = crate::sha1::hex(content.as_bytes())[..12].to_string();
                 issues.push(Issue { file: name.clone(), title: data.title.clone(), number: data.number, version, data });
                 seen.push((name.clone(), content));
             }
         }
     }
-    Some(Loaded { dir, names, issues, errors, seen })
+    Loaded { dir, names, issues, errors, seen }
 }
 
 impl Loaded {
@@ -123,6 +126,10 @@ impl Loaded {
     }
 }
 
+/// What an error entry says of front matter qm does not read the way Psych would: a tag, an anchor, a date, a
+/// float or a number written with a leading zero. Quote the value to keep it text.
+const UNREAD: &str = "frontmatter holds a YAML construct qm doesn't read (a tag, anchor, date, float or number with a leading zero): quote the value";
+
 fn parse(content: &str) -> Parsed {
     let frontmatter = Regex::new(r"(?s)\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\z)(.*)\z").unwrap();
     let Some(caps) = frontmatter.captures(content) else {
@@ -130,20 +137,20 @@ fn parse(content: &str) -> Parsed {
     };
     let front = &caps[1];
     if unsure_text(front) {
-        return Parsed::Unsure;
+        return Parsed::Error(UNREAD.into());
     }
     let value: Yaml = if front.trim().is_empty() {
         Yaml::Null
     } else {
         match serde_yaml::from_str(front) {
             Ok(v) => v,
-            Err(_) => return Parsed::Unsure,
+            Err(e) => return Parsed::Error(format!("frontmatter is not valid YAML: {e}")),
         }
     };
     let map = match value {
         Yaml::Mapping(m) => m,
         Yaml::Null | Yaml::Bool(false) => serde_yaml::Mapping::new(),
-        Yaml::Tagged(_) => return Parsed::Unsure,
+        Yaml::Tagged(_) => return Parsed::Error(UNREAD.into()),
         _ => return Parsed::Error("frontmatter is not a set of fields".into()),
     };
     match fields(&map) {
@@ -153,7 +160,7 @@ fn parse(content: &str) -> Parsed {
             Parsed::Issue(data)
         }
         Ok(Err(message)) => Parsed::Error(message),
-        Err(()) => Parsed::Unsure,
+        Err(()) => Parsed::Error(UNREAD.into()),
     }
 }
 
@@ -280,15 +287,6 @@ fn read_snapshot(dir: &Path, name: &str) -> Option<serde_json::Map<String, Json>
     }
 }
 
-/// A snapshot whose time of reading isn't a number would be read by Ruby with `to_f` on whatever it
-/// is; only numbers (and nothing) are reproduced.
-fn snapshot_is_readable(dir: &Path, name: &str, content: &str) -> Option<()> {
-    match read_snapshot(dir, name) {
-        Some(m) if m["seen"].as_str() != Some(content) => matches!(m.get("seen_at"), None | Some(Json::Null) | Some(Json::Number(_))).then_some(()),
-        _ => Some(()),
-    }
-}
-
 fn remember(dir: &Path, name: &str, content: &str) -> std::io::Result<serde_json::Map<String, Json>> {
     let old = read_snapshot(dir, name);
     if let Some(m) = old.as_ref().filter(|m| m["seen"].as_str() == Some(content)) {
@@ -320,24 +318,21 @@ pub fn is_issue_file(name: &str) -> bool {
 }
 
 /// `IssueDrafts#acknowledge`: the file's current revision stops reading as changed. `Ok(false)` when
-/// there is no such file or it doesn't parse; `Err` for what this port can't judge as Ruby does.
-pub fn acknowledge(slug: &str, name: &str) -> Result<bool, ()> {
+/// there is no such file or it doesn't parse.
+pub fn acknowledge(slug: &str, name: &str) -> std::io::Result<bool> {
     let dir = dir(slug);
     let path = dir.join(name);
     if !path.is_file() {
         return Ok(false);
     }
-    let content = String::from_utf8(std::fs::read(&path).map_err(|_| ())?).map_err(|_| ())?;
-    match parse(&content) {
-        Parsed::Unsure => return Err(()),
-        Parsed::Error(_) => return Ok(false),
-        Parsed::Issue(_) => {}
+    let Ok(content) = String::from_utf8(std::fs::read(&path)?) else { return Ok(false) };
+    if let Parsed::Error(_) = parse(&content) {
+        return Ok(false);
     }
-    snapshot_is_readable(&dir, name, &content).ok_or(())?;
-    let mut snapshot = remember(&dir, name, &content).map_err(|_| ())?;
+    let mut snapshot = remember(&dir, name, &content)?;
     snapshot.insert("previous".into(), Json::String(content));
     snapshot.insert("acked".into(), Json::Bool(true));
-    write_snapshot(&snapshot_path(&dir, name), &Json::Object(snapshot)).map_err(|_| ())?;
+    write_snapshot(&snapshot_path(&dir, name), &Json::Object(snapshot))?;
     Ok(true)
 }
 
@@ -377,7 +372,7 @@ pub fn delete(slug: &str, name: &str) -> std::io::Result<bool> {
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_file(snapshot_path(&dir, name));
     crate::drafts::forget_issue(slug, name)?;
-    if files(slug).is_some_and(|f| f.is_empty()) {
+    if files(slug).is_empty() {
         let _ = std::fs::remove_dir_all(dir.join(".prev"));
         let _ = std::fs::remove_dir(&dir);
     }
@@ -413,9 +408,9 @@ pub fn signature() -> String {
 
 /// `IssueDrafts#read`: `{"issues", "errors"}` — the files that parse (not yet created on GitHub first), the
 /// ones that don't, each issue with the revision snapshot's verdict. Writes the snapshots as every read
-/// does. `None` for what only Ruby reads exactly.
+/// does.
 pub fn read(slug: &str) -> Option<Json> {
-    let loaded = load(slug)?;
+    let loaded = load(slug);
     let mut issues: Vec<(bool, Json)> = vec![];
     for (issue, (name, content)) in loaded.issues.iter().zip(loaded.seen.iter()) {
         let snapshot = remember(&loaded.dir, name, content).ok()?;
@@ -427,7 +422,6 @@ pub fn read(slug: &str) -> Option<Json> {
                 Some(Json::String(text)) => match parse(text) {
                     Parsed::Issue(d) => json!({"title": d.title, "body": d.body}),
                     Parsed::Error(_) => Json::Null,
-                    Parsed::Unsure => return None,
                 },
                 _ => Json::Null,
             }

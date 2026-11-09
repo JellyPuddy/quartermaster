@@ -1,5 +1,5 @@
 //! `qm cleanup SLUG` and `qm sweep` — the plan, and with `--yes` carrying it out (`cleanup_run`) — and
-//! the resolve hint `state … resolved` prints. A terminal's progress bar is Ruby's: `--yes` on a tty goes there.
+//! the resolve hint `state … resolved` prints.
 
 use crate::cleanup::{plan_item, plan_sweep, Entry};
 use crate::cli_format::{paint, puts, short_path};
@@ -11,12 +11,6 @@ use crate::work_item::WorkItem;
 pub fn valid_slug(slug: &str) -> bool {
     let mut chars = slug.chars();
     matches!(chars.next(), Some(c) if c.is_ascii_alphanumeric()) && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
-}
-
-/// Whether the plan must be Ruby's: a slug IssueDrafts would refuse, or issue-draft files this port
-/// can't read exactly as Ruby does (checked before anything is written).
-pub fn leaves_to_ruby(slug: &str) -> bool {
-    !crate::issue_drafts::supported(slug)
 }
 
 /// Resolving is when worktrees go stale, so say what cleanup would do — a hint only: a failing plan
@@ -97,16 +91,9 @@ fn options(a: &[String]) -> Option<Options> {
     Some(o)
 }
 
-fn tty() -> bool {
-    unsafe { libc::isatty(1) == 1 }
-}
-
 pub fn cleanup(a: &[String]) -> Outcome {
     let Some(o) = options(a) else { return Outcome::Delegate };
     let Some(slug) = o.rest.first() else { return abort("usage: qm cleanup SLUG [--yes] [--force PATH|BRANCH ...]") };
-    if leaves_to_ruby(slug) || (o.yes && (tty() || !crate::drafts::writable(slug))) {
-        return Outcome::Delegate;
-    }
     let item = match WorkItem::find(slug) {
         Ok(i) => i,
         Err(e) => return abort(&format!("qm: {}", e.message)),
@@ -121,13 +108,8 @@ pub fn cleanup(a: &[String]) -> Outcome {
 /// `qm sweep [--yes] [--force KEY]`: the plan over every repo, and with `--yes` carrying it out.
 pub fn sweep(a: &[String]) -> Outcome {
     let Some(o) = options(a) else { return Outcome::Delegate };
-    let writable = || crate::cleanup::swept_slugs().is_some_and(|s| s.iter().all(|slug| crate::drafts::writable(slug)));
-    if !crate::cleanup::sweep_supported() || (o.yes && (tty() || !writable())) {
-        return Outcome::Delegate;
-    }
     match plan_sweep() {
         Ok(plan) => carry_out(&plan, &o),
-        Err(e) if e.class == crate::error::UNEMITTABLE => Outcome::Delegate,
         Err(e) => abort(&format!("qm: {}", e.message)),
     }
 }

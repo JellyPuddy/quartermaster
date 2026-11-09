@@ -41,7 +41,7 @@ pub fn index() -> Option<Value> {
     let Ok(dirs) = std::fs::read_dir(data_root::root().join("issues")) else { return Some(json!({"ok": true, "items": []})) };
     let mut slugs: Vec<String> = vec![];
     for d in dirs.filter_map(|e| e.ok()) {
-        let name = d.file_name().into_string().ok()?;
+        let Ok(name) = d.file_name().into_string() else { continue };
         if d.path().is_dir() && slug_shaped(&name) {
             slugs.push(name);
         }
@@ -50,7 +50,7 @@ pub fn index() -> Option<Value> {
     let mut repos: Vec<(Option<String>, Option<String>)> = vec![];
     let mut entries: Vec<(usize, f64, i64, String, Value)> = vec![];
     for slug in slugs {
-        let files = issue_drafts::files(&slug)?;
+        let files = issue_drafts::files(&slug);
         if files.is_empty() {
             continue;
         }

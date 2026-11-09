@@ -93,9 +93,6 @@ fn retag(a: &[String]) -> Outcome {
 
 fn state(a: &[String]) -> Outcome {
     let [slug, state, ..] = a else { return abort(&format!("usage: qm state SLUG ({})", STATES.join(" | "))) };
-    if state == "resolved" && crate::cleanup_command::leaves_to_ruby(slug) {
-        return Outcome::Delegate; // the cleanup hint lists issue drafts, and only Ruby reads some of those
-    }
     let mut item = tri!(WorkItem::find(slug));
     tri!(item.update_state(state));
     // resolving is when worktrees go stale, so say what cleanup would do

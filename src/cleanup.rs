@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::command_runner;
 use crate::data_root::{self, normalize};
-use crate::error::{QmError, Res, UNEMITTABLE};
+use crate::error::{QmError, Res};
 use crate::git_repo::{GitRepo, Worktree};
 use crate::issue_drafts;
 use crate::pf::{self, Status};
@@ -260,16 +260,14 @@ impl Planner {
 
 /// One entry per issue file of the item, broken ones included: deleting takes the file's unsent
 /// issue comments along, so those are counted. Reading keeps the revision snapshots (as Ruby's does);
-/// files this port can't judge like Ruby come back as an `Unemittable` error, and callers check
-/// `issue_drafts::supported` first so that nothing has been written by then.
+/// a file that can't be read as an issue is an entry like a broken one.
 fn issue_entries(slug: &str) -> Res<Vec<Entry>> {
-    let unreadable = || QmError::new(UNEMITTABLE, "issue drafts only Ruby reads exactly");
-    if issue_drafts::files(slug).ok_or_else(unreadable)?.is_empty() {
+    if issue_drafts::files(slug).is_empty() {
         return Ok(vec![]);
     }
-    let loaded = issue_drafts::load(slug).ok_or_else(unreadable)?;
-    loaded.record().map_err(|_| unreadable())?;
-    let unsent = issue_drafts::unsent_comments(slug).ok_or_else(unreadable)?;
+    let loaded = issue_drafts::load(slug);
+    loaded.record().map_err(|e| QmError::new("IOError", format!("issue drafts of '{slug}': {e}")))?;
+    let unsent = issue_drafts::unsent_comments(slug).unwrap_or_default();
     let mut rows: Vec<(String, String, Option<u64>, Option<String>)> = loaded.issues.iter().map(|i| (i.file.clone(), i.title.clone(), i.number, None)).collect();
     rows.extend(loaded.errors.iter().map(|e| (e.file.clone(), e.file.clone(), None, Some(format!("doesn't parse: {}", e.error)))));
     rows.sort_by(|a, b| a.0.cmp(&b.0));
@@ -309,30 +307,23 @@ fn protect(mut entry: Entry, slugs: Vec<String>) -> Entry {
     entry
 }
 
-/// Slugs with an issue-drafts directory, as the sweep lists them. `None` when a name is not UTF-8.
-pub fn swept_slugs() -> Option<Vec<String>> {
-    let Ok(entries) = std::fs::read_dir(data_root::root().join("issues")) else { return Some(vec![]) };
-    let mut slugs = vec![];
-    for e in entries.filter_map(|e| e.ok()) {
-        let name = e.file_name().into_string().ok()?;
-        if e.path().is_dir() && crate::cleanup_command::valid_slug(&name) {
-            slugs.push(name);
-        }
-    }
+/// Slugs with an issue-drafts directory, as the sweep lists them. A name that is not UTF-8 is left out.
+pub fn swept_slugs() -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(data_root::root().join("issues")) else { return vec![] };
+    let mut slugs: Vec<String> = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|name| crate::cleanup_command::valid_slug(name))
+        .collect();
     slugs.sort();
-    Some(slugs)
-}
-
-/// Whether the sweep's issue-draft part is something `issue_drafts::load` can answer for (nothing written).
-pub fn sweep_supported() -> bool {
-    swept_slugs().is_some_and(|slugs| slugs.iter().all(|s| issue_drafts::supported(s)))
+    slugs
 }
 
 /// Every `.claude/worktrees/*` worktree and `worktree-*` branch across the repos qm knows, checked
 /// against the trunk and every other local branch. Anything an unresolved item still claims is listed
 /// but never pre-ticked.
 pub fn plan_sweep() -> Res<Plan> {
-    let unreadable = || QmError::new(UNEMITTABLE, "issue drafts only Ruby reads exactly");
     let mut planner = Planner::new();
     planner.open_items = WorkItem::all()?.into_iter().filter(|i| i.state().as_deref() != Some("resolved")).collect();
     let items = std::mem::take(&mut planner.open_items);
@@ -382,7 +373,7 @@ pub fn plan_sweep() -> Res<Plan> {
         entries.extend(branch_entries);
     }
     let open_slugs: Vec<&str> = items.iter().map(|i| i.slug.as_str()).collect();
-    for slug in swept_slugs().ok_or_else(unreadable)? {
+    for slug in swept_slugs() {
         let owners = if open_slugs.contains(&slug.as_str()) { vec![slug.clone()] } else { vec![] };
         for entry in issue_entries(&slug)? {
             entries.push(protect(entry, owners.clone()));

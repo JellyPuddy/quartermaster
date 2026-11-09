@@ -209,15 +209,13 @@ fn issues_payload(item: &WorkItem) -> R<Value> {
     if !issue_drafts::dir(&item.slug).is_dir() {
         return Ok(Value::Null);
     }
-    if !issue_drafts::supported(&item.slug) {
-        return Err(Unported);
-    }
-    let names = issue_drafts::files(&item.slug).ok_or(Unported)?;
-    if names.is_empty() {
+    if issue_drafts::files(&item.slug).is_empty() {
         return Ok(Value::Null);
     }
-    let loaded = issue_drafts::load(&item.slug).ok_or(Unported)?;
-    loaded.record().map_err(|_| Unported)?;
+    let loaded = issue_drafts::load(&item.slug);
+    if let Err(e) = loaded.record() {
+        data_root::log_error("gui-issues", "IOError", &e.to_string());
+    }
     let count = loaded.issues.len() + loaded.errors.len();
     if count == 0 {
         return Ok(Value::Null);
