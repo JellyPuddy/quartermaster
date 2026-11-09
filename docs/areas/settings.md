@@ -151,7 +151,8 @@ overwrite it.
 - The settings routes stay off the action mutex: the write is quick and serialised by the file's
   flock, the digest keeps editors apart, and the state build after a save runs outside every lock.
 - Code reads config only through `ConfigReader` (via `ProjectConfig`); only this layer opens
-  `config.yml` or reads keys off the raw mapping.
+  `config.yml` or reads keys off the raw mapping; the GUI's settings and automations pause toggle write it
+  through `ConfigFile`.
 - A "not configured" message names the exact `qm config set <path> <value>` command.
 
 ## Data

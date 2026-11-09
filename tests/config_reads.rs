@@ -18,7 +18,7 @@ static ENV: Mutex<()> = Mutex::new(());
 const ACCESSOR_LAYER: [&str; 8] = ["config_reader.rs", "config_schema.rs", "config_check.rs", "config_file.rs", "config_features.rs", "config_emit.rs", "config_command.rs", "project_config.rs"];
 
 /// Where `config_file()` may appear outside the layer: its definition and the Settings endpoints.
-const FILE_USERS: [&str; 2] = ["data_root.rs", "gui_settings.rs"];
+const FILE_USERS: [&str; 3] = ["data_root.rs", "gui_settings.rs", "gui_local_automations.rs"];
 
 /// Schema key names other data also uses (a JSON payload's `benchmark`, a job's label, transcripts'
 /// input/output): a read of one can't be told from a config read by its spelling, so the scan leaves them out.
