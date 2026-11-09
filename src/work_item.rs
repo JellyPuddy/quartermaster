@@ -329,11 +329,7 @@ impl WorkItem {
     }
 
     fn write_file(slug: &str, contents: &str) -> Res<()> {
-        let path = Self::path_for(slug);
-        let temp = path.with_file_name(format!(".{slug}.md.tmp-{}", std::process::id()));
-        fs::write(&temp, contents)?;
-        fs::rename(&temp, &path)?;
-        Ok(())
+        Ok(crate::atomic_file::write(&Self::path_for(slug), contents)?)
     }
 
     /// Re-reads the file under the lock, lets `edit` change the front lines and body (returning

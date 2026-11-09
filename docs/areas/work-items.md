@@ -1,7 +1,7 @@
 # Work items
 
-**Code:** `src/work_item.rs`, `src/note.rs`, `src/attention.rs`, `src/front_edit.rs`, `src/psych.rs`, `src/yaml_scalar.rs`, `src/sections.rs`, `src/distill.rs`
-**Tests:** `tests/work_items.rs`, `tests/psych_scalars.rs`, `tests/interop.rs`, `tests/show.rs`
+**Code:** `src/work_item.rs`, `src/atomic_file.rs`, `src/note.rs`, `src/attention.rs`, `src/front_edit.rs`, `src/psych.rs`, `src/yaml_scalar.rs`, `src/sections.rs`, `src/distill.rs`
+**Tests:** `tests/work_items.rs`, `tests/work_item_storage.rs`, `tests/psych_scalars.rs`, `tests/interop.rs`, `tests/show.rs`
 **Depends on:** [capture](capture.md)
 
 ## What it does
@@ -72,7 +72,13 @@ editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
 - **Every mutation runs under one global exclusive flock** (`work-items/.lock`,
   `WorkItem.with_lock` / `#locked`) spanning the whole read-modify-write, re-reading the file
   before applying; reentrant per thread so compound moves (`claim_session`) nest. Without it
-  a bulk distill's stale copy clobbered a concurrent note.
+  a bulk distill's stale copy clobbered a concurrent note. A caller's own `find` before the
+  mutation is only a handle: the mutator never writes from that copy, and an item deleted
+  meanwhile raises "no work item" instead of being written back.
+- **A save replaces the file whole** (`atomic_file::write`: temp file beside it, renamed over
+  it, keeping the file's mode), so readers that take no lock — the GUI, the viewer, `qm list`,
+  every mutator's first `find` — see the old or the new item, never a truncated one. A plain
+  write let concurrent `qm note`s fail with "malformed work item file".
 - **The stored note format is parsed and written only by `Note`** (`NOTE_LINE`). The kind
   marker is omitted for the default, so pre-kind notes and ordinary notes read identically —
   no migration was needed.
