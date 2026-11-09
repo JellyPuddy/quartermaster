@@ -11,6 +11,9 @@ use crate::error::QmError;
 use crate::session_log::Session;
 use crate::transcript_usage::{self as tu, Buckets, SYSTEM_CALL_ERROR};
 
+/// The class qm.log names for a ledger file that isn't one.
+const CORRUPT_LEDGER: &str = "Quartermaster::UsageLedger::CorruptLedger";
+
 pub struct SessionUsage {
     pub buckets: Buckets,
     pub agents: i64,
@@ -23,15 +26,21 @@ pub struct UsageLedger {
     dirty: bool,
 }
 
-/// The `sessions` of the ledger file; a missing, unreadable or malformed file reads as empty.
-fn read_sessions(path: &Path) -> Map<String, Value> {
-    match std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
-        Some(Value::Object(mut m)) => match m.remove("sessions") {
-            Some(Value::Object(s)) => s,
-            _ => Map::new(),
+/// The `sessions` of ledger text; None when it doesn't parse or isn't shaped `{sessions: {...}}`.
+fn parse(content: &[u8]) -> Option<Map<String, Value>> {
+    match serde_json::from_slice::<Value>(content).ok()? {
+        Value::Object(mut m) => match m.remove("sessions")? {
+            Value::Object(sessions) => Some(sessions),
+            _ => None,
         },
-        _ => Map::new(),
+        _ => None,
     }
+}
+
+/// The `sessions` of the ledger file; a missing, unreadable or malformed file reads as empty. Only a save,
+/// under its lock, decides what to do with one that isn't a ledger.
+fn read_sessions(path: &Path) -> Map<String, Value> {
+    std::fs::read(path).ok().and_then(|text| parse(&text)).unwrap_or_default()
 }
 
 /// `<transcript dir>/<session id>/subagents/**/*.jsonl`, sorted; hidden entries and symlinked
@@ -114,29 +123,59 @@ impl UsageLedger {
         Ok(Some(fresh))
     }
 
-    /// Writes the ledger when a lookup changed it: atomic, and merged over what another qm process
-    /// saved meanwhile (its sessions aren't dropped).
+    /// Writes the ledger when a lookup changed it: atomic, and merged over what another qm process saved
+    /// meanwhile (its sessions aren't dropped). The read-merge-write holds a flock, so a second saver merges
+    /// over the first's ledger. A file there that isn't a ledger is never overwritten: it moves aside to
+    /// `<file>.corrupt-<UTC time>` first, and qm.log says so.
     pub fn save(&mut self) {
         if !self.dirty {
             return;
         }
-        let mut merged = read_sessions(&self.path);
-        for (k, v) in self.sessions().clone() {
-            merged.insert(k, v);
-        }
-        let payload = json!({ "v": 1, "sessions": Value::Object(merged) });
-        let write = || -> std::io::Result<()> {
-            if let Some(dir) = self.path.parent() {
-                std::fs::create_dir_all(dir)?;
-            }
-            let tmp = PathBuf::from(format!("{}.{}.tmp", self.path.display(), std::process::id()));
-            std::fs::write(&tmp, payload.to_string())?;
-            std::fs::rename(&tmp, &self.path)
-        };
-        match write() {
+        let ours = self.sessions().clone();
+        match self.write_merged(ours) {
             Ok(()) => self.dirty = false,
-            Err(e) => data_root::log_error("usage-ledger", "IOError", &e.to_string()),
+            Err((class, message)) => data_root::log_error("usage-ledger", class, &message),
         }
+    }
+
+    fn write_merged(&self, ours: Map<String, Value>) -> Result<(), (&'static str, String)> {
+        use std::os::unix::io::AsRawFd;
+        let io = |e: std::io::Error| ("IOError", e.to_string());
+        let dir = self.path.parent().unwrap_or(Path::new("."));
+        std::fs::create_dir_all(dir).map_err(io)?;
+        let name = self.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let lock = std::fs::OpenOptions::new().create(true).truncate(false).read(true).write(true).open(dir.join(format!(".{name}.lock"))).map_err(io)?;
+        // SAFETY: the descriptor stays open until `lock` drops at the end of this function.
+        unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) };
+        let mut merged = self.ledger_on_disk()?;
+        merged.extend(ours);
+        let payload = json!({ "v": 1, "sessions": Value::Object(merged) });
+        crate::atomic_file::write(&self.path, &payload.to_string()).map_err(io)
+    }
+
+    /// The sessions saved on disk; a file that can't be read is an error (nothing is saved), one that reads but
+    /// isn't a ledger is set aside.
+    fn ledger_on_disk(&self) -> Result<Map<String, Value>, (&'static str, String)> {
+        let content = match std::fs::read(&self.path) {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Map::new()),
+            Err(e) => return Err(("SystemCallError", e.to_string())),
+        };
+        if let Some(sessions) = parse(&content) {
+            return Ok(sessions);
+        }
+        self.set_aside_corrupt()?;
+        Ok(Map::new())
+    }
+
+    fn set_aside_corrupt(&self) -> Result<(), (&'static str, String)> {
+        let mut aside = PathBuf::from(format!("{}.corrupt-{}", self.path.display(), chrono::Utc::now().format("%Y%m%dT%H%M%SZ")));
+        if aside.exists() {
+            aside = PathBuf::from(format!("{}-{}", aside.display(), std::process::id()));
+        }
+        std::fs::rename(&self.path, &aside).map_err(|e| ("IOError", e.to_string()))?;
+        data_root::log_error("usage-ledger", CORRUPT_LEDGER, &format!("{} is not a ledger; kept as {}", self.path.display(), aside.display()));
+        Ok(())
     }
 }
 

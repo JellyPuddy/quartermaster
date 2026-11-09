@@ -1,7 +1,7 @@
 # Side panel and header
 
 **Code:** `src/workspace.rs`, `src/board_mirror.rs`, `src/usage_ledger.rs`, `src/transcript_usage.rs`, `src/item_usage.rs`, `src/price_table.rs`, `src/caffeinate.rs`, `src/build_progress.rs`, `gui/js/chat-side.js`, `gui/js/limits.js`, `gui/css/side-panel.css`, `src/statusline.rs`, `skills/adopt-worktree/SKILL.md`, `src/price_defaults.rs`
-**Tests:** `tests/usage.rs`, `tests/statusline.rs`, `tests/gui.rs`, `tests/cli_board.rs`
+**Tests:** `tests/usage.rs`, `tests/usage_ledger_keep.rs`, `tests/statusline.rs`, `tests/gui.rs`, `tests/cli_board.rs`
 **Depends on:** [gui-shell](gui-shell.md), [worktrees](worktrees.md), [stacks](stacks.md), [capture](capture.md)
 
 ## What it does
@@ -105,7 +105,10 @@ row tooltip).
   from the byte offset of the last complete line.
 - `UsageLedger` (`usage-cache.json`) keeps those states per session for the transcript and
   `<transcript dir>/<session id>/subagents/**/*.jsonl`, checked by path + size + mtime; an
-  unchanged main transcript costs one stat. Saves are atomic and merged over another process's.
+  unchanged main transcript costs one stat. A save is atomic and merges over what is on disk
+  under a flock (`.usage-cache.json.lock`), so concurrent savers keep each other's sessions. A
+  file there that doesn't parse as a ledger reads as empty, but a save never overwrites it: it
+  moves it to `usage-cache.json.corrupt-<UTC time>` and logs a `[usage-ledger]` error first.
 - `PriceTable`: defaults from the official pricing page (cited in the class), overridable per
   model and field under `prices:` in `config.yml`. A bucket falls back `x:fast:long` → `x:fast`
   → `x`. Unknown models still count tokens; the cost is marked **partial** and names them.
@@ -152,7 +155,7 @@ of the pulse so a server-side flip repaints. `qm caffeinate on|off|auto|status` 
 - `board-writes.jsonl` is only appended to; `BoardMirror` folds new complete lines from its offset and refolds only when the file shrinks.
 - Build progress runs only on a click: no periodic runs, no always-on numbers; tool-call counts are never shown or fed in as a measure.
 - A crashed session's unterminated run never counts as running: liveness of the session is required.
-- `usage-cache.json` is a record, not a cache: once a transcript is pruned its tally is the only trace. Never prune or rebuild it.
+- `usage-cache.json` is a record, not a cache: once a transcript is pruned its tally is the only trace. Never prune or rebuild it, and never save over a file that isn't a ledger: set it aside first. qm never deletes a `.corrupt-*` copy, and only a save moves one aside, never a read.
 - Costs are API-equivalent estimates, never a bill; the cited defaults carry their date in `PriceTable`, `prices:` overrides.
 - A usage failure must never cost the whole state build (`usage` is nil then, or for an item without sessions).
 - `rateLimits` is not part of the pulse: the status line rewrites the file on every render, so the chip follows the next state build.
@@ -165,7 +168,9 @@ of the pulse so a server-side flip repaints. `qm caffeinate on|off|auto|status` 
 ## Data
 
 - `board-writes.jsonl` — append-only, one line per `ArtifactData` call.
-- `usage-cache.json` — `{v, sessions: {id → per-file TranscriptUsage states}}`, permanent.
+- `usage-cache.json` — `{v, sessions: {id → per-file TranscriptUsage states}}`, permanent;
+  `.usage-cache.json.lock` serialises saves; `usage-cache.json.corrupt-<YYYYMMDDTHHMMSSZ>` is an
+  unparseable ledger a save set aside, kept for the user to recover by hand.
 - `rate-limits.json` — the status line's last snapshot.
 - Caffeinate mode, build-progress estimates and the in-memory ledger live in the GUI process only; a restart forgets them (caffeinate starts off).
 

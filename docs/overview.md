@@ -38,7 +38,8 @@ worktrees — derives from these two layers plus a few more append-only hook log
 | `events.jsonl` + `events-fold.json` | per-prompt/tool/turn hook events and their fold cache | [attention](areas/attention.md) |
 | `board-writes.jsonl` | every `ArtifactData` call, mirrored status boards | [side panel](areas/side-panel.md) |
 | `prompt-snapshots.jsonl` | the session's worktree as a git tree at every prompt | [diff](areas/diff.md) |
-| `usage-cache.json` | per-session token tallies, kept forever | [side panel](areas/side-panel.md) |
+| `usage-cache.json` | per-session token tallies, kept forever; `.usage-cache.json.lock` serialises saves | [side panel](areas/side-panel.md) |
+| `usage-cache.json.corrupt-<UTC time>` | an unparseable ledger a save set aside instead of overwriting; never deleted by qm | [side panel](areas/side-panel.md) |
 | `rate-limits.json` | account 5h/weekly limits as the status line last saw them | [side panel](areas/side-panel.md) |
 | `drops/` | files dropped onto a GUI terminal, pruned after a week | [chats](areas/chats.md) |
 | `drafts/<slug>.json` | an item's unsent diff comments and page annotations | [drafts](areas/drafts.md) |
