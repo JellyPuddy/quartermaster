@@ -164,7 +164,13 @@ impl<'a> ConfigCheck<'a> {
 
     fn check_node(&mut self, value: &Value, pattern: &str, path: &str) {
         let Some(container) = schema::container_at(pattern) else {
-            self.check_type(schema::by_path(pattern).map(|k| k.kind).unwrap_or("string"), value, path);
+            let key = schema::by_path(pattern);
+            self.check_type(key.map(|k| k.kind).unwrap_or("string"), value, path);
+            if let (Some(options), Value::String(text)) = (key.and_then(|k| k.options), value) {
+                if !options.contains(&crate::ruby_text::strip(text)) {
+                    self.error(path, format!("must be one of: {}", options.join(", ")));
+                }
+            }
             return;
         };
         let opened;

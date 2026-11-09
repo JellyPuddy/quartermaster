@@ -20,11 +20,13 @@ pub struct Key {
     pub inherits: Option<&'static str>,
     pub default: Option<&'static str>,
     pub options_from: Option<&'static str>,
+    /// A fixed list of the values an enum takes (the alternative to `options_from`).
+    pub options: Option<&'static [&'static str]>,
 }
 
 impl Key {
     const fn new(path: &'static str, kind: &'static str, help: &'static str, section: &'static str) -> Key {
-        Key { path, kind, help, section, collapsed: false, inherits: None, default: None, options_from: None }
+        Key { path, kind, help, section, collapsed: false, inherits: None, default: None, options_from: None, options: None }
     }
     const fn rare(mut self) -> Key {
         self.collapsed = true;
@@ -43,6 +45,11 @@ impl Key {
         self
     }
 
+    const fn options(mut self, values: &'static [&'static str]) -> Key {
+        self.options = Some(values);
+        self
+    }
+
     fn to_json(&self) -> Value {
         let mut m = Map::new();
         m.insert("path".into(), json!(self.path));
@@ -54,6 +61,9 @@ impl Key {
             if let Some(v) = value {
                 m.insert(name.into(), json!(v));
             }
+        }
+        if let Some(values) = self.options {
+            m.insert("options".into(), json!(values));
         }
         Value::Object(m)
     }
@@ -108,7 +118,7 @@ macro_rules! price_key {
     };
 }
 
-pub static KEYS: [Key; 29] = [
+pub static KEYS: [Key; 30] = [
     Key::new("projects.*.root", "path", "The project's main repo root; sessions in it or its worktrees get this project.", "basics"),
     Key::new("projects.*.dev_server.command", "string", "The dev server command: qm runs `<command> switch PATH MODE`, `<command> stop`, `<command> status`.", "dev_server"),
     Key::new("projects.*.dev_server.modes", "string_list", "The modes `switch` accepts (default: one mode, `default`).", "dev_server"),
@@ -134,6 +144,7 @@ pub static KEYS: [Key; 29] = [
     price_key!("cache_write_1h", PRICE_HELP[2]),
     price_key!("cache_read", PRICE_HELP[3]),
     price_key!("output", PRICE_HELP[4]),
+    Key::new("automations.token_source", "enum", "Where the Automations tab gets a claude.ai login: `claude_code` reads Claude Code's own token from the keychain on each call (never stored or refreshed). Unset: automations are off.", "general").options(&["claude_code"]),
     Key::new("automations.local_paused", "bool", "Local automations run no guards and start no runs (running ones go on).", "general"),
     Key::new("automations.local_max_running", "number", "How many local automation runs may work at once.", "general").rare().default("2"),
     Key::new("automations.local_hold_five_hour", "number", "Local automations start no run while the 5-hour limit is used this many percent or more.", "general").rare().default("80"),

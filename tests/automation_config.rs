@@ -28,3 +28,17 @@ fn qm_config_sets_and_checks_them() {
     assert!(bad.stderr.contains("automations.local_max_running"), "{}", bad.stderr);
     assert_eq!(qm.ok(&["config", "get", "automations.local_max_running"]).trim(), "3");
 }
+
+#[test]
+fn the_token_source_is_off_until_set_and_only_claude_code_is_accepted() {
+    assert_eq!(ProjectConfig::parse("projects: {}\n").automations_token_source(), None);
+    assert_eq!(ProjectConfig::parse("automations: { token_source: claude_code }\n").automations_token_source(), Some("claude_code"));
+    let key = quartermaster::config_schema::lookup("automations.token_source").unwrap();
+    assert_eq!((key.kind, key.options), ("enum", Some(&["claude_code"][..])));
+    let qm = Qm::new();
+    let bad = qm.run(&["config", "set", "automations.token_source", "api_key"]);
+    assert_eq!(bad.code, 1);
+    assert!(bad.stderr.contains("must be one of: claude_code"), "{}", bad.stderr);
+    qm.ok(&["config", "set", "automations.token_source", "claude_code"]);
+    assert!(qm.read("config.yml").contains("automations:\n  token_source: claude_code\n"));
+}

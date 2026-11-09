@@ -14,7 +14,8 @@ name, a starter key, a model), type, help, Settings section, `collapsed` (rarely
 what an unset value falls back to (`inherits` another key, or a `default`). Types: `string`,
 `path`, `text` (multi-line), `bool`, `number`, `string_list`, `argv` (an array holding `PATH`)
 and `enum` (one of the values `options_from` names: `dev_server.default_mode` from its sibling
-`modes`, `default_project` from the project names). `CONTAINERS` are the mappings keys live in:
+`modes`, `default_project` from the project names; or of its fixed `options`:
+`automations.token_source`, checked for membership). `CONTAINERS` are the mappings keys live in:
 a `Map` takes any key, an `Object` only its listed ones; a container's `shorthand` is the key a
 plain string stands for (a project given as a path is its `root`, a `dev_server` given as a name
 its `command`). `lookup` / `container_of` / `known` resolve a concrete dotted path; `payload` is the
@@ -101,7 +102,7 @@ lands on Settings; ⌘S saves). Full width, three parts. On top a projects × fe
 project its name and root, a chip per feature from the server's `features` (on in green with its
 short value, off, inherit as a hollow accent outline with the real value in its tooltip, warning,
 error) and its work-item count; clicking the name or any cell opens that project's card (and the
-fold holding the section) and scrolls there. Below it a document: General (`default_project`, `automations.local_*`), IDE
+fold holding the section) and scrolls there. Below it a document: General (`default_project`, `automations.token_source`, `automations.local_*`), IDE
 (the global `ide_command` / `ide_label`), one card per project, collapsed by default (its summary
 shows root, item count, an unsaved dot and error/warning counts), sectioned Basics, Dev server,
 Worktrees, Pull requests, IDE override, Benchmarks, then a "Rarely changed" fold with the
@@ -115,7 +116,7 @@ last segment, an unset field's placeholder is the key it `inherits` or its `defa
 `SETTINGS_WIDGETS` (settings-widgets.js) maps each schema type to its widget: text inputs
 (`path` monospace), a checkbox, chip lists (Enter adds, Backspace removes the last, `argv`
 highlights its PATH chip and previews the command), a textarea, a number box, a select of the
-enum's `options_from` values. Prices show every model `price_defaults` knows plus the file's,
+enum's `options` or `options_from` values (an `options` select's empty choice reads "(off)"). Prices show every model `price_defaults` knows plus the file's,
 defaults as grey placeholders; a filled cell is an override and only overrides are written (a
 cleared one leaves no change). Adding a project takes its name and root (an add row survives a
 redraw); removing one confirms inline with its work-item count. Every edit posts the draft to check

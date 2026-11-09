@@ -173,7 +173,7 @@ fn unknown_top_level_keys_are_kept_but_unknown_keys_under_schema_mappings_are_er
 
 #[test]
 fn every_error() {
-    let cases: [(&str, &str, &str); 18] = [
+    let cases: [(&str, &str, &str); 19] = [
         ("projects: [::", "", "not valid YAML"),
         ("- a list", "", "not a mapping"),
         ("projects: { App: { root: 5 } }", "projects.App.root", "must be a path"),
@@ -192,6 +192,7 @@ fn every_error() {
         ("projects: {}\nloose_starters: { a: { label: A } }", "loose_starters.a.prompt", "needs a prompt"),
         ("projects: {}\nprices: { claude-x: { input: cheap } }", "prices.claude-x.input", "must be a number"),
         ("projects: {}\noverview_artifact: [a]", "overview_artifact", "must be text"),
+        ("projects: {}\nautomations: { token_source: api_key }", "automations.token_source", "one of: claude_code"),
     ];
     for (text, path, message) in cases {
         let found = issues_of(text);

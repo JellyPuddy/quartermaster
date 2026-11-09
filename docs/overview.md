@@ -98,7 +98,7 @@ issue number starts; default the first), `loose_starters.<key>.{label, prompt}` 
 default; a prompt ends mid-sentence and `LooseChat.kickoff` appends " answer my question about them: …"
 or " ask me what I want to know about them."), `prices.<model>.{input, cache_write_5m, cache_write_1h,
 cache_read, output}` ([side panel](areas/side-panel.md)), `overview_artifact` ([phone page](areas/phone-page.md)),
-`automations.local_{paused, max_running, hold_five_hour, hold_seven_day}` ([local automations](areas/local-automations.md)).
+`automations.token_source` (`claude_code` turns on claude.ai routines; unset is off, [automations](areas/automations.md)), `automations.local_{paused, max_running, hold_five_hour, hold_seven_day}` ([local automations](areas/local-automations.md)).
 
 ## Tech decisions
 

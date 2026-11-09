@@ -100,6 +100,7 @@ pub struct ProjectConfig {
     starters: Vec<Starter>,
     prices: Vec<(String, Vec<(usize, Num)>)>,
     overview_artifact: Option<String>,
+    automations_token_source: Option<String>,
     local_automations: LocalAutomations,
     failure: Option<LoadFailure>,
 }
@@ -259,6 +260,7 @@ impl ProjectConfig {
             starters,
             prices,
             overview_artifact: string(config.get("overview_artifact")),
+            automations_token_source: string(automations.get("token_source")),
             local_automations,
             failure,
         }
@@ -270,6 +272,11 @@ impl ProjectConfig {
     }
 
     /// The published phone page's claude.ai URL, None while unset.
+    /// Where RoutinesClient gets a claude.ai login (`claude_code`); None while automations are off.
+    pub fn automations_token_source(&self) -> Option<&str> {
+        self.automations_token_source.as_deref()
+    }
+
     pub fn overview_artifact(&self) -> Option<&str> {
         self.overview_artifact.as_deref()
     }
