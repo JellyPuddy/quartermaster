@@ -108,7 +108,8 @@ finishes with " answer my question about them: …" or " ask me what I want to k
   its own checkout (`branch-stats.sh`, `page.html`), never through `~/.claude/skills/`.
 - `fzf` for the terminal viewer, `gh` for GitHub (always offline-tolerant), tmux for chats.
 - **Data formats are versioned**: a `v:` field in JSONL events and work-item frontmatter;
-  bump on a breaking schema change, readers tolerate unknown fields.
+  bump on a breaking schema change, readers tolerate unknown fields. A per-line JSONL reader
+  skips a line that doesn't parse or isn't an object (`5`, `[]`, `null`), never fails on it.
 - One module per concern, named by intent (`session_log`, `work_item`, `hook`, `cli`, …).
 - Rationale lives in commit messages, not code comments or these pages.
 

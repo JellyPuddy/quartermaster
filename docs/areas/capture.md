@@ -1,7 +1,7 @@
 # Capture
 
 **Code:** `src/hook.rs`, `src/session_log.rs`, `src/project_map.rs`, `src/project_config.rs`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
-**Tests:** `tests/sessions.rs`, `tests/characterization.rs`, `tests/chat_attention.rs`
+**Tests:** `tests/non_object_lines.rs`, `tests/sessions.rs`, `tests/characterization.rs`, `tests/chat_attention.rs`
 **Depends on:** none
 
 ## What it does
@@ -93,7 +93,7 @@ fallback protocol for when the injection is missing.
 - **Path comparisons go through realpath on both sides** (`ProjectMap#normalize`): macOS
   `/var` → `/private/var` and git returning realpaths would otherwise miss matches.
 - **`sessions.jsonl` is append-only** under an exclusive `flock`, every event stamped with
-  `v`. A dismissal is another appended event, never an edit; unparseable lines are skipped.
+  `v`. A dismissal is another appended event, never an edit; a line that isn't a JSON object is skipped.
 
 ## Data
 

@@ -41,8 +41,7 @@ fn session_turns(path: &std::path::Path) -> Result<Option<Value>, ()> {
         let Ok(entry) = serde_json::from_str::<Value>(line) else { continue };
         let entry = match entry {
             Value::Object(o) => o,
-            Value::String(_) => continue, // "x"["isSidechain"] is nil
-            _ => return Ok(None),          // anything else raises, and the whole parse is nil
+            _ => continue, // a line that is no object is skipped
         };
         if !matches!(entry.get("isSidechain"), None | Some(Value::Null) | Some(Value::Bool(false))) {
             continue;

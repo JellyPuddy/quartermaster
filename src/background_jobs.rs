@@ -222,7 +222,7 @@ fn remember_shells(fold: &mut Fold, entry: &Value) -> Result<(), ()> {
 fn shell_result(fold: &mut Fold, line: &str) -> Result<bool, bool> {
     let Some(pos) = fold.shells.iter().position(|(k, _)| line.contains(k.trim_matches('"'))) else { return Ok(false) };
     let use_id = fold.shells[pos].0.clone();
-    let Ok(entry) = serde_json::from_str::<Value>(line) else { return Err(true) };
+    let Ok(entry @ Value::Object(_)) = serde_json::from_str::<Value>(line) else { return Ok(false) };
     let answers = blocks(content(&entry).map_err(|_| false)?).iter().any(|b| b.get("type") == Some(&Value::String("tool_result".into())) && b.get("tool_use_id").map(|v| v.to_string()) == Some(use_id.clone()));
     if !answers {
         return Ok(false);
@@ -252,13 +252,7 @@ fn apply(fold: &mut Fold, line: &str) -> Result<(), Abort> {
     if !MARKERS.iter().any(|m| line.contains(m)) {
         return Ok(());
     }
-    let Ok(entry) = serde_json::from_str::<Value>(line) else { return Ok(()) };
-    if !entry.is_object() && !entry.is_string() {
-        return Err(Abort);
-    }
-    if !entry.is_object() {
-        return Ok(());
-    }
+    let Ok(entry @ Value::Object(_)) = serde_json::from_str::<Value>(line) else { return Ok(()) };
     let (_, _, task_id, user_resumed) = regexes();
     if let Some(id) = stopped_id(&entry) {
         fold.remove(&id);

@@ -77,10 +77,8 @@ fn scan_lines(v: &mut Vitals, lines: &[String]) -> Result<(), ()> {
     let (mut usage_seen, mut tier): (bool, Option<&'static str>) = (false, None);
     for line in lines.iter().rev() {
         let entry = match serde_json::from_str::<Value>(line) {
-            Ok(Value::Null) | Ok(Value::Bool(false)) | Err(_) => continue,
             Ok(Value::Object(o)) => Value::Object(o),
-            Ok(Value::String(_)) => continue,
-            Ok(_) => return Err(()),
+            _ => continue,
         };
         if truthy(entry.get("isSidechain")) {
             continue;

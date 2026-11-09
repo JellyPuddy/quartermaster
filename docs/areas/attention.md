@@ -88,6 +88,8 @@ Says whose move it is in every chat, and tells the user when one needs them.
 - Read `events.jsonl` only through `EventLog`: it grows forever, and the fold persists with its
   byte offset in `events-fold.json`, so a read parses only appended bytes.
 - A partial last line waits for its newline; a replaced (new inode) or shrunk log refolds from 0.
+  A complete line that isn't a JSON object is skipped and the offset moves past it, so one stray
+  line never stalls the fold.
 - Sessions quiet for 30 days are dropped from the fold (`FORGET_AFTER`).
 
 **Notifications** (`TurnNotifier`)

@@ -69,8 +69,7 @@ pub fn first_prompt(path: Option<&Path>) -> Option<String> {
         let Ok(entry) = serde_json::from_str::<Value>(line) else { continue };
         let obj = match entry {
             Value::Object(o) => o,
-            Value::String(_) => continue,
-            _ => return None,
+            _ => continue,
         };
         if obj.get("type") != Some(&Value::String("user".into())) {
             continue;
@@ -116,8 +115,13 @@ mod tests {
     #[test]
     fn a_message_that_is_not_an_object_ends_the_search_like_rubys_dig_raising() {
         assert_eq!(first(&[r#"{"type":"user","message":"text"}"#, r#"{"type":"user","message":{"content":"later"}}"#]), None);
-        assert_eq!(first(&["5", r#"{"type":"user","message":{"content":"later"}}"#]), None);
-        assert_eq!(first(&["\"a string\"", r#"{"type":"user","message":{"content":"later"}}"#]).as_deref(), Some("later"));
+    }
+
+    #[test]
+    fn a_line_that_is_not_an_object_is_skipped() {
+        for line in ["5", "[]", "null", "\"a string\""] {
+            assert_eq!(first(&[line, r#"{"type":"user","message":{"content":"later"}}"#]).as_deref(), Some("later"));
+        }
     }
 
     #[test]

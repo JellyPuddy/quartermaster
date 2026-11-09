@@ -97,7 +97,7 @@ planning, from the stream's last 64 KB. `currentHead` is the branch's head now, 
 differs from the recorded head. `canRerun`: a final run that still has `bench.rb` and `run.json`,
 whose every stage ref still resolves to its recorded sha. `logs` names the run's log files that
 exist, in the order `bench.log`, `pipeline.log`, `bench.out`, `run.json`, `bench.rb`. Unknown fields
-and event kinds are ignored; a line that doesn't parse is skipped. `GET
+and event kinds are ignored; a line that isn't a JSON object is skipped. `GET
 /api/benchmark-plan/<run-id>/<file>` returns one saved plan as text: a plain file name inside that
 run's `plans/`, a run id matching the id pattern. `GET /api/benchmark-log/<run-id>/<name>` returns
 the last 64 KB of one of those five files as text; any other name, a missing file or a run id that
