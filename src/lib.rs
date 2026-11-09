@@ -125,6 +125,7 @@ pub mod item_deletion;
 pub mod atomic_file;
 pub mod launcher;
 pub mod list_command;
+pub mod local_cron;
 pub mod local_schedule;
 pub mod work_item;
 pub mod work_item_commands;

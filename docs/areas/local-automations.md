@@ -1,7 +1,7 @@
 # Local automations
 
-**Code:** `src/run_log.rs`, `src/run_fold.rs`, `src/random_id.rs`
-**Tests:** `tests/run_log.rs`, `tests/automation_store.rs`
+**Code:** `src/local_cron.rs`, `src/run_log.rs`, `src/run_fold.rs`, `src/random_id.rs`
+**Tests:** `tests/local_cron.rs`, `tests/run_log.rs`, `tests/automation_store.rs`
 **Depends on:** [automations](automations.md) (the store, the item; `local_schedule`'s DST rule), [work-items](work-items.md)
 
 ## What it does
@@ -19,6 +19,18 @@ record with `validate_local` and writes nothing when it fails: an error naming e
 (`bypassPermissions`, an unknown `notify`, an empty `flow`, a `timeout_minutes` not a positive whole number,
 `allowed_tools` not a list of strings, `repos` not a list of `owner/name` strings). Cloud records are never
 held to it.
+
+**Schedule** — `local_cron` reads a local automation's 5-field `cron` as wall-clock time in
+Europe/Amsterdam, not UTC as cloud crons are. Fields take `*`, numbers, lists, ranges and steps (`*/n`,
+`a-b/n`, `a/n` = from a to the field's end); weekday 0-7, 7 = Sunday. When day-of-month and weekday both
+start with something other than `*`, a day matches either; else both must match.
+- `due(cron, since, now)` — a scheduled minute lies in `(since, now]` (any number count as one; `since` at
+  most 8 days back); `last_due` gives the latest (UTC). `next_after(cron, t)` — the first scheduled minute
+  after `t`; none in nine years.
+- DST: a spring-forward-gap minute never happens; a fall-back-hour one is due at both UTC instants.
+- `label` — "Mon, Thu 08:00" / "every day 08:00" for a simple `M H * * <weekdays>` cron (`days` and `time`
+  feed the picker; `to_cron(days, time)` writes back unshifted), else the cron plus "Amsterdam time".
+  `error(cron)` — none, or what is wrong with it.
 
 **Run log** — `RunLog::new(slug, dir)` is `automations/<slug>.runs.jsonl`, one `{v: 1, at, event, …}` line
 per event, appended under a flock; a writer that decides from the fold (`enqueue_item`, `enqueue_cron`,
@@ -44,6 +56,8 @@ and flow as a new `retry` run, past dedupe; refuses unknown, queued or live runs
 
 ## Rules
 
+- No TZ switching: the offset comes from `local_schedule::offset_minutes`.
+- Cron search is bounded: 8 days back (`due`), nine years ahead (`next_after`), by local days.
 - The run log is append-only; readers skip non-JSON lines and unknown events and fields.
 - Dedupe at queue time: a key is consumed when queued or refused; only `retry` queues it again, never
   automatically. Cron runs coalesce to one queued per automation; guard items queue FIFO.
