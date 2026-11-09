@@ -287,3 +287,52 @@ fn save_and_check_refuse_a_foreign_or_missing_origin() {
     assert_eq!(w.read(), text);
     assert_eq!(send(port, "GET", "/api/settings", &[("Host", "evil.example.com".into())], "").status, "403 Forbidden");
 }
+
+/// The page and the assets the Settings view adds, as the server serves them.
+fn served(w: &World, route: &str) -> String {
+    let a = w.get(route);
+    assert_eq!(a.status, "200 OK", "{route}");
+    a.body
+}
+
+/// The page draws every field through SETTINGS_WIDGETS (settings-widgets.js), one entry per line; a schema
+/// type without one would render as a text box.
+#[test]
+fn the_page_has_a_widget_for_every_schema_type() {
+    let w = world();
+    let script = served(&w, "/assets/js/settings-widgets.js");
+    let table = regex::Regex::new(r"(?s)const SETTINGS_WIDGETS = \{\n(.*?)\n\};").unwrap().captures(&script).expect("settings-widgets.js declares SETTINGS_WIDGETS")[1].to_string();
+    let mut widgets: Vec<String> = regex::Regex::new(r"(?m)^  (\w+):").unwrap().captures_iter(&table).map(|c| c[1].to_string()).collect();
+    widgets.sort();
+    let mut types: Vec<String> = quartermaster::config_schema::TYPES.iter().map(|t| t.to_string()).collect();
+    types.sort();
+    assert_eq!(widgets, types);
+}
+
+#[test]
+fn settings_opens_from_the_header_cog_not_a_mode_tab() {
+    let w = world();
+    let page = served(&w, "/");
+    let modes = regex::Regex::new(r#"(?s)<div class="segmented" id="modes".*?</div>"#).unwrap().find(&page).expect("the mode switcher").as_str();
+    assert!(!modes.contains("settings"), "the mode switcher has no Settings tab");
+    assert!(page.contains(r#"<button class="btn icon" id="settings-btn" aria-pressed="false" title="Settings (,)" aria-label="Settings">"#));
+    assert!(page.contains("<kbd>,</kbd><span>settings</span>"));
+    assert!(served(&w, "/assets/js/events.js").contains(r#"if (e.key === ",") { e.preventDefault(); toggleSettings(); return; }"#));
+}
+
+/// Page scripts are classic tags in load order: each Settings file after the ones it calls at load time,
+/// events.js last, and every tag names a file the server serves.
+#[test]
+fn the_settings_scripts_load_in_order_and_before_events() {
+    let w = world();
+    let page = served(&w, "/");
+    let scripts: Vec<String> = regex::Regex::new(r#"<script src="(/assets/js/[a-z0-9-]+\.js)"></script>"#).unwrap().captures_iter(&page).map(|c| c[1].to_string()).collect();
+    let at = |name: &str| scripts.iter().position(|s| s == &format!("/assets/js/{name}.js")).unwrap_or_else(|| panic!("{name}.js has no script tag"));
+    assert!(at("settings-widgets") < at("settings-render") && at("settings-render") < at("settings") && at("settings") < at("events"));
+    assert_eq!(scripts.last().unwrap(), "/assets/js/events.js");
+    for script in &scripts {
+        served(&w, script);
+    }
+    assert!(page.contains(r#"<link rel="stylesheet" href="/assets/css/settings.css">"#));
+    served(&w, "/assets/css/settings.css");
+}

@@ -313,14 +313,17 @@ function prsKey(e) {
 }
 
 function setMode(m) {
+  if (m === "settings" && mode !== "settings") settingsReturnMode = mode;
   mode = m;
   document.body.dataset.mode = m;
   document.querySelectorAll("#modes button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === m)));
+  $("#settings-btn").setAttribute("aria-pressed", String(m === "settings"));
   try { localStorage.setItem("qm-mode", m); } catch (e) { /* storage blocked: the mode just isn't remembered */ }
   closePop();
   if (m === "chat") { renderChat(); pulseTick(); }
   else if (m === "prs") { renderPrs(); loadPrs(); }
   else if (m === "issues") { renderIssueList(); loadIssueIndex(); }
+  else if (m === "settings") openSettings();
   else render();
 }
 /* Opening an item from the board lands in its chat. */

@@ -33,6 +33,7 @@ $("#modes").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   setMode(b.dataset.mode);
 });
+$("#settings-btn").addEventListener("click", toggleSettings);
 
 // Tab (or programmatic focus) onto a card mirrors into the app's selection, so
 // Tab and j/k share a single highlight instead of drifting apart.
@@ -147,6 +148,11 @@ document.addEventListener("keydown", e => {
     if (openSheet) return closeDetail();
     if (ask) return clearAsk();
     if (document.activeElement === $("#search")) return $("#search").blur();
+    if (mode === "settings") {
+      // A first Esc leaves the field being typed in; the next leaves the view.
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return document.activeElement.blur();
+      return toggleSettings();
+    }
   }
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
   if (e.key === "/" && !typing && mode === "board") { e.preventDefault(); $("#search").focus(); return; }
@@ -158,9 +164,11 @@ document.addEventListener("keydown", e => {
   if (e.key === "v") { e.preventDefault(); setMode(mode === "board" ? "chat" : "board"); return; }
   if (e.key === "p") { e.preventDefault(); setMode(mode === "prs" ? "board" : "prs"); return; }
   if (e.key === "I") { e.preventDefault(); setMode(mode === "issues" ? "board" : "issues"); return; }
+  if (e.key === ",") { e.preventDefault(); toggleSettings(); return; }
   if (mode === "chat") return chatKey(e);
   if (mode === "prs") return prsKey(e);
   if (mode === "issues") return issueListKey(e);
+  if (mode === "settings") return;
 
   const it = focusedItem();
   switch (e.key) {
@@ -234,7 +242,7 @@ let savedMode = null;
 try { savedMode = localStorage.getItem("qm-mode"); } catch (e) { /* storage blocked: start on the board */ }
 refresh().then(() => {
   booted = true;
-  if (["chat", "prs", "issues"].includes(savedMode)) setMode(savedMode);
+  if (["chat", "prs", "issues", "settings"].includes(savedMode)) setMode(savedMode);
   openChatFromHash();
   importLegacyDiffDrafts();
   if (mode !== "prs") loadPrs(); // the PRs toggle's tally

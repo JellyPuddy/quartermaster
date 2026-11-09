@@ -1,6 +1,6 @@
 # Settings
 
-**Code:** `src/config_schema.rs`, `src/config_features.rs`, `src/config_check.rs`, `src/config_file.rs`, `src/config_emit.rs`, `src/config_reader.rs`, `src/config_command.rs`, `src/gui_settings.rs`
+**Code:** `src/config_schema.rs`, `src/config_features.rs`, `src/config_check.rs`, `src/config_file.rs`, `src/config_emit.rs`, `src/config_reader.rs`, `src/config_command.rs`, `src/gui_settings.rs`, `gui/js/settings.js`, `gui/js/settings-render.js`, `gui/js/settings-widgets.js`
 **Tests:** `tests/config_file.rs`, `tests/config_cli.rs`, `tests/config_reads.rs`, `tests/gui_settings.rs`
 **Depends on:** [capture](capture.md) (`ProjectConfig` reads the same file through `ConfigReader`), [gui-shell](gui-shell.md) (the router and its Origin guard)
 
@@ -93,6 +93,38 @@ made after the write, so the page's buttons follow at once; `409 {ok: false, sta
 settings}` when the file changed since `digest`, carrying the current payload to reload; `422 {ok:
 false, error, issues, features}` while the draft has errors.
 
+**The Settings view** (the GUI's fifth mode, `data-mode="settings"`, but not a mode-switcher tab:
+the header's ⚙ icon button `#settings-btn` opens it and shows pressed while it is open, with no
+tab highlighted; the button again, `,` or Esc (a first Esc only leaves a focused field) returns
+to the mode it was opened from; a mode tab or mode key leaves for its own mode, and `v` never
+lands on Settings; ⌘S saves). Full width, three parts. On top a projects × features grid: per
+project its name and root, a chip per feature from the server's `features` (on in green with its
+short value, off, inherit as a hollow accent outline with the real value in its tooltip, warning,
+error) and its work-item count; clicking the name or any cell opens that project's card (and the
+fold holding the section) and scrolls there. Below it a document: General (`default_project`), IDE
+(the global `ide_command` / `ide_label`), one card per project, collapsed by default (its summary
+shows root, item count, an unsaved dot and error/warning counts), sectioned Basics, Dev server,
+Worktrees, Pull requests, IDE override, Benchmarks, then a "Rarely changed" fold with the
+loose-chat starters, the API prices table and the phone page. Beside it a sticky column: Save
+(disabled while there are errors or no changes) with Revert and the unsaved-change count, the
+Check list (each issue jumps to its field, opening the folds above it, and flashes it; an
+unknown key's issue offers **Remove key**), and a table of contents. The form is drawn from the
+payload's schema: a section holds the keys whose `section` it is, `collapsed` keys go in a
+"More" fold (a section of only collapsed keys is a fold itself), a field's label is its key's
+last segment, an unset field's placeholder is the key it `inherits` or its `default`, and
+`SETTINGS_WIDGETS` (settings-widgets.js) maps each schema type to its widget: text inputs
+(`path` monospace), a checkbox, chip lists (Enter adds, Backspace removes the last, `argv`
+highlights its PATH chip and previews the command), a textarea, a number box, a select of the
+enum's `options_from` values. Prices show every model `price_defaults` knows plus the file's,
+defaults as grey placeholders; a filled cell is an override and only overrides are written (a
+cleared one leaves no change). Adding a project takes its name and root (an add row survives a
+redraw); removing one confirms inline with its work-item count. Every edit posts the draft to check
+(debounced 300 ms) and redraws from the answer; a save takes the answer's payload as the new loaded
+file and its state build as the board's (`applyState`), a stale save reloads the file and says the
+edits were dropped. The draft survives switching modes; opening the view reloads the file unless
+the draft has unsaved edits. A file that doesn't parse shows its error and no form, so a save can't
+overwrite it.
+
 ## Rules
 
 - `config_schema` is the one list of config keys: a new key goes there, in docs/overview.md
@@ -106,6 +138,9 @@ false, error, issues, features}` while the draft has errors.
 - A write is flocked and atomic, keeps the file's mode (`atomic_file`), keeps the previous file as
   `config.yml.bak`, and is refused as stale when the file changed since the editor loaded it.
 - Projects are never renamed (work items store the name): renaming is remove + add.
+- The form is drawn from the schema payload, never hand-written per key; a new schema type needs
+  its entry in `SETTINGS_WIDGETS` (a test compares the table with `config_schema::TYPES`).
+- The Settings view never writes a file it couldn't parse: it shows the parse error instead of a form.
 - Validation lives here only; no editor re-implements it (the GUI posts its draft to check).
 - The settings POSTs are the page's: they need our `Origin` and are not in `LOCAL_ACTIONS` (a local
   tool edits config through `qm config`).

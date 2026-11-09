@@ -32,6 +32,7 @@
 <link rel="stylesheet" href="/assets/css/prs.css">
 <link rel="stylesheet" href="/assets/css/issues-list.css">
 <link rel="stylesheet" href="/assets/css/issue-start.css">
+<link rel="stylesheet" href="/assets/css/settings.css">
 <link rel="stylesheet" href="/assets/css/responsive.css">
 </head>
 <body data-mode="board">
@@ -78,6 +79,9 @@
     <button class="btn primary" id="new-item">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
       New item <kbd style="background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.28);color:inherit">c</kbd>
+    </button>
+    <button class="btn icon" id="settings-btn" aria-pressed="false" title="Settings (,)" aria-label="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
     </button>
     <button class="btn icon" id="theme" title="Toggle theme" aria-label="Toggle theme">
       <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
@@ -163,6 +167,10 @@
     </main>
   </div>
 
+  <div class="st-wrap">
+    <main class="st-main" id="st-body"></main>
+  </div>
+
   <footer class="legend">
     <span class="tag">keyboard-first · mouse optional</span>
     <span class="grp"><kbd>v</kbd><span>board / chats</span></span>
@@ -173,6 +181,8 @@
     <span class="grp"><kbd>⇧I</kbd><span>issues</span></span>
     <span class="grp issues-only"><kbd>⏎</kbd><span>open in its chat</span></span>
     <span class="grp issues-only"><kbd>s</kbd><span>start work (created)</span></span>
+    <span class="grp"><kbd>,</kbd><span>settings</span></span>
+    <span class="grp settings-only"><kbd>⌘S</kbd><span>save</span></span>
     <span class="grp"><kbd>j</kbd><kbd>k</kbd><span>move</span></span>
     <span class="grp board-only"><kbd>←</kbd><kbd>→</kbd><span>column</span></span>
     <span class="grp chat-only"><kbd>z</kbd><span>snooze your turn</span></span>
@@ -251,6 +261,9 @@ let terminalToken = /*__TERMINAL_TOKEN__*/ null;
 <script src="/assets/js/issues-list.js"></script>
 <script src="/assets/js/issue-start.js"></script>
 <script src="/assets/js/transcript-search.js"></script>
+<script src="/assets/js/settings-widgets.js"></script>
+<script src="/assets/js/settings-render.js"></script>
+<script src="/assets/js/settings.js"></script>
 <script src="/assets/js/events.js"></script>
 </body>
 </html>
