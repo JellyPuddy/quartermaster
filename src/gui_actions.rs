@@ -97,10 +97,15 @@ pub(crate) fn find(slug: &str) -> R<WorkItem> {
     WorkItem::find(slug).map_err(error)
 }
 
+/// The actions that never hold the action mutex: a benchmark run has its own start lock and meta.json flock;
+/// the three others only read qm's files and wait on `gh`, which must not stall every other action.
+pub fn runs_unlocked(cmd: &str) -> bool {
+    cmd.starts_with("benchmark-") || ["issue-preview", "pr-thread-resolve", "review-preview"].contains(&cmd)
+}
+
 /// `Some(reply)`, or `None` when the command is not ported (or not as this input).
 pub fn dispatch(payload: &Value) -> Option<Value> {
-    // the benchmark actions never hold the action mutex: a run has its own start lock and meta.json flock
-    let unlocked = payload.get("cmd").and_then(Value::as_str).is_some_and(|c| c.starts_with("benchmark-"));
+    let unlocked = payload.get("cmd").and_then(Value::as_str).is_some_and(runs_unlocked);
     let _guard = (!unlocked).then(|| ACTION_LOCK.lock().unwrap_or_else(|p| p.into_inner()));
     match run(payload) {
         Ok(v) => Some(v),

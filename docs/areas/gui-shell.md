@@ -151,7 +151,7 @@ The Workspace buttons that drive both are in [side-panel](side-panel.md).
 - No self-shutdown, ever: the server runs until Ctrl-C. A heartbeat/bye scheme closed the server under backgrounded tabs and let a stale tab kill a newer server; don't reintroduce a liveness timer.
 - The ~1 s pulse is the page asking for news; nothing on the server reacts to it stopping (a stale pulse only makes `TurnNotifier` notify via macOS). Server threads react only to files.
 - Mutating actions run under one action mutex; anything that takes seconds hands off to `GuiJobs` and never holds it — distill used to queue every other action behind it.
-- Read-only routes (ask, grep, diff, history, workspace, cleanup-plan, PRs, issues, threads) and `GuiActions::UNLOCKED` (issue-preview, pr-thread-resolve, review-preview, and the benchmark-* actions, which have BenchmarkRun's own locks) skip the mutex.
+- Read-only routes (ask, grep, diff, history, workspace, cleanup-plan, PRs, issues, threads) and `gui_actions::runs_unlocked` (issue-preview, pr-thread-resolve, review-preview, and the benchmark-* actions, which have BenchmarkRun's own locks) skip the mutex.
 - Only one pf job at a time: pf is one shared server. A second job on a busy key is refused with the running job's label.
 - Actions call the model layer, never CLI `cmd_*`; the CLI and GUI share operations so they can't drift. `SystemExit` must become a JSON error, never a dead server.
 - A state build never blocks on gh or on spawning git per item; PR states refresh on threads.
