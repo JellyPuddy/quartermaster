@@ -9,7 +9,12 @@ pub struct Ide {
     pub command: Vec<String>,
 }
 
+/// The PRs view's Review button runs this skill when a project names none.
+pub const DEFAULT_REVIEW_SKILL: &str = "/code-review";
+
 impl Ide {
+    pub const DEFAULT_LABEL: &'static str = "IDE";
+
     /// The command with the checkout's path in: an element that is exactly `PATH` becomes the path, `PATH`
     /// inside a longer element (a `sh -c` script) the shell-escaped path.
     pub fn argv(&self, path: &str) -> Vec<String> {
@@ -88,7 +93,7 @@ pub struct Starter {
     pub prompt: String,
 }
 
-fn parse_ide(command: Option<&Value>, label: Option<&Value>) -> Option<Ide> {
+pub(crate) fn parse_ide(command: Option<&Value>, label: Option<&Value>) -> Option<Ide> {
     let items = match command {
         Some(Value::Sequence(items)) if !items.is_empty() => items,
         _ => return None,
@@ -100,14 +105,14 @@ fn parse_ide(command: Option<&Value>, label: Option<&Value>) -> Option<Ide> {
     if strip(&argv[0]).is_empty() || argv.iter().all(|a| !a.contains("PATH")) {
         return None;
     }
-    Some(Ide { label: string(label).unwrap_or_else(|| "IDE".to_string()), command: argv })
+    Some(Ide { label: string(label).unwrap_or_else(|| Ide::DEFAULT_LABEL.to_string()), command: argv })
 }
 
 fn expand(path: Option<String>) -> Option<String> {
     path.map(|p| data_root::expand_path(&p).to_string_lossy().into_owned())
 }
 
-fn parse_dev_server(value: Option<&Value>) -> Option<DevServer> {
+pub(crate) fn parse_dev_server(value: Option<&Value>) -> Option<DevServer> {
     let (command, modes_value, default_value, status_url, state_file) = match value {
         Some(Value::String(_)) => (string(value), None, None, None, None),
         Some(Value::Mapping(m)) => (string(get(m, "command")), get(m, "modes"), get(m, "default_mode"), string(get(m, "status_url")), expand(string(get(m, "state_file")))),
@@ -140,13 +145,13 @@ fn parse_project(name: String, value: &Value) -> Option<ProjectSettings> {
         ide: parse_ide(get_raw("ide_command"), get_raw("ide_label")),
         pr_prerequisites: matches!(get_raw("pr_prerequisites"), Some(Value::Bool(true))),
         test_db: string(get_raw("test_db")),
-        review_skill: string(get_raw("review_skill")).unwrap_or_else(|| "/code-review".to_string()),
+        review_skill: string(get_raw("review_skill")).unwrap_or_else(|| DEFAULT_REVIEW_SKILL.to_string()),
         benchmark: parse_benchmark(get_raw("benchmark")),
     })
 }
 
 /// Both database and skill, or no benchmarks.
-fn parse_benchmark(value: Option<&Value>) -> Option<Benchmark> {
+pub(crate) fn parse_benchmark(value: Option<&Value>) -> Option<Benchmark> {
     let Some(Value::Mapping(m)) = value else { return None };
     let database = string(get(m, "database"))?;
     let skill = expand(string(get(m, "skill")))?;
@@ -229,7 +234,7 @@ impl ProjectConfig {
 
     /// `ProjectConfig#settings(project).review_skill`: a project's own, else the default.
     pub fn review_skill(&self, project: Option<&str>) -> String {
-        self.settings(project).map(|s| s.review_skill.clone()).unwrap_or_else(|| "/code-review".to_string())
+        self.settings(project).map(|s| s.review_skill.clone()).unwrap_or_else(|| DEFAULT_REVIEW_SKILL.to_string())
     }
 
     /// Every project name, in config order.

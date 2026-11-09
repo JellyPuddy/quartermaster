@@ -33,7 +33,7 @@ worktrees — derives from these two layers plus a few more append-only hook log
 |---|---|---|
 | `sessions.jsonl` | session start/end events, append-only | [capture](areas/capture.md) |
 | `work-items/<slug>.md` | one work item each; `work-items/.lock` serialises writes | [work items](areas/work-items.md) |
-| `config.yml` | projects and their settings (below), `prices:` overrides | [capture](areas/capture.md) |
+| `config.yml` (+ `.bak`, `.config.yml.lock`) | projects and their settings (below), `prices:` overrides; `.bak` is the file before qm's last write | [settings](areas/settings.md) |
 | `qm.log` | hook and background errors; network blips once per outage | [capture](areas/capture.md) |
 | `errors-seen-at` | iso8601 time the user last marked qm.log errors seen (absent: count the last 24 h) | [capture](areas/capture.md) |
 | `events.jsonl` + `events-fold.json` | per-prompt/tool/turn hook events and their fold cache | [attention](areas/attention.md) |
@@ -67,35 +67,35 @@ assets under `gui/`, POSIX hooks under `hooks/`, and the tests under `tests/` ([
 
 ## config.yml
 
-`ProjectConfig` reads it (re-parsed only when its text changes; a broken file reads as no
-projects, and a missing or malformed key leaves its feature off). The seed has no projects,
-only commented examples. Under `projects:` a project is a repo root path (`my-app: ~/code/my-app`)
-or a mapping with `root:` plus optional feature keys; a project without a key has that feature off
-(buttons hidden, actions refused naming the setting):
+The key reference: `config_schema` lists exactly these keys ([settings](areas/settings.md)), and
+a test checks this section names each one. qm writes the file (Settings view, `qm config`) in its
+own layout, dropping comments and keeping keys it doesn't govern; the seed is its header line and
+`projects: {}`. `ProjectConfig` reads it; a broken file reads as no projects, a missing or malformed
+key leaves its feature off (buttons hidden, actions refused naming the setting). A project is a repo
+root path (`my-app: ~/code/my-app`) or a mapping:
 
-- `dev_server:` — a command name, or `{command, modes, default_mode, status_url, state_file}`.
-  qm runs `<command> switch PATH MODE`, `<command> stop`, `<command> status` (exit 0 = serving);
-  `status_url` answers JSON `{mode, root, switching}`, `state_file` holds `<mode> <root>`. Enables
-  Work on this / Switch, the mode chip (work-item key `pf_mode`), the header badge, the PRs view's
-  switch button and the session's dev-server line. One server is assumed across projects.
-- `test_db:` — a command: `<test_db> prepare` in each new worktree; cleanup lists
+- `projects.<name>.root` — the main repo root.
+- `projects.<name>.dev_server` — a command name, or `projects.<name>.dev_server.{command, modes,
+  default_mode, status_url, state_file}`. qm runs `<command> switch PATH MODE`, `<command> stop`,
+  `<command> status` (exit 0 = serving); `status_url` answers JSON `{mode, root, switching}`,
+  `state_file` holds `<mode> <root>`. Enables Work on this / Switch, the mode chip (work-item key
+  `pf_mode`), the header badge, the PRs view's switch button and the dev-server line; one server.
+- `projects.<name>.test_db` — a command: `<test_db> prepare` in each new worktree; cleanup lists
   `<test_db> drop PATH --dry-run` (one DB per line) and runs `<test_db> drop PATH`.
-- `review_skill:` — the PRs view's Review skill (default `/code-review`).
-- `pr_prerequisites: true` — PRs ship by release: sessions are told about `qm pr-requires`.
-- `benchmark:` — `{database, skill, notes}`: the Postgres database runs measure on (or clone),
-  the benchmark skill's folder, optional prompt lines; enables 🏁 ([benchmarks](areas/benchmarks.md)).
-- `ide_command:` / `ide_label:` — this project's own IDE, overriding the top-level one below.
+- `projects.<name>.review_skill` — the PRs view's Review skill (default `/code-review`).
+- `projects.<name>.pr_prerequisites` (`true`) — PRs ship by release: sessions learn `qm pr-requires`.
+- `projects.<name>.benchmark.{database, skill, notes}` — the Postgres database runs measure on (or
+  clone), the benchmark skill's folder, optional prompt lines; enables 🏁 ([benchmarks](areas/benchmarks.md)).
+- `projects.<name>.{ide_command, ide_label}` — this project's own IDE, overriding the top-level one.
 
-Top-level: `ide_command:` (an argv array with a literal `PATH` placeholder, e.g.
-`[open, -a, MyIDE, PATH]`: an element that is exactly `PATH` becomes the checkout's path, `PATH`
-inside a longer element — a `[zsh, -ic, "myide PATH"]` script — the shell-escaped path) and
-`ide_label:` (the buttons' and messages' name, default `IDE`) enable Open in <label>, Work on this's
-IDE half, the PRs view's IDE button and `qm ide`; unset, or without a `PATH`, they are hidden and
-`qm ide` refuses naming `ide_command`. `default_project:` (where a bare issue number starts; default the first project),
-`loose_starters:` (key → `label` + `prompt`, the loose-chat presets; none by default; a prompt
-ends mid-sentence, e.g. "… Then give a one-line count of them and", which `LooseChat.kickoff`
-finishes with " answer my question about them: …" or " ask me what I want to know about them."),
-`prices:` ([side panel](areas/side-panel.md)), `overview_artifact:` ([phone page](areas/phone-page.md)).
+Top-level: `ide_command` (an argv array, e.g. `[open, -a, MyIDE, PATH]`: an element exactly `PATH` becomes the
+checkout path, `PATH` inside a longer one, e.g. a `zsh -ic` script, the shell-escaped path) and `ide_label`
+(default `IDE`) enable Open in <label>, Work on this's IDE half, the PRs view's IDE button and `qm ide`; unset
+or `PATH`-less, they are hidden and `qm ide` refuses naming `ide_command`. `default_project` (where a bare
+issue number starts; default the first), `loose_starters.<key>.{label, prompt}` (loose-chat presets, none by
+default; a prompt ends mid-sentence and `LooseChat.kickoff` appends " answer my question about them: …"
+or " ask me what I want to know about them."), `prices.<model>.{input, cache_write_5m, cache_write_1h,
+cache_read, output}` ([side panel](areas/side-panel.md)), `overview_artifact` ([phone page](areas/phone-page.md)).
 
 ## Tech decisions
 

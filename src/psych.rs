@@ -398,10 +398,15 @@ fn fold(out: &mut String, col: &mut usize) {
 /// (line breaks, `<<`, marks and symbols, odd time-like shapes) is written double-quoted, which every
 /// YAML reader takes back as the same string.
 pub fn scalar(prefix_cols: usize, s: &str) -> Option<String> {
-    exact(prefix_cols, s).or_else(|| Some(serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into())))
+    exact(BEST_WIDTH, prefix_cols, s).or_else(|| Some(serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into())))
 }
 
-fn exact(prefix_cols: usize, s: &str) -> Option<String> {
+/// `scalar` for a writer that never folds (libyaml's `line_width: -1`), as config.yml is written.
+pub fn scalar_unfolded(s: &str) -> String {
+    exact(usize::MAX, 0, s).unwrap_or_else(|| serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into()))
+}
+
+fn exact(width: usize, prefix_cols: usize, s: &str) -> Option<String> {
     if s.chars().any(is_break) || s == "<<" {
         return None;
     }
@@ -422,7 +427,7 @@ fn exact(prefix_cols: usize, s: &str) -> Option<String> {
             let mut spaces = false;
             for (i, &c) in cs.iter().enumerate() {
                 if c == ' ' {
-                    if !spaces && col > BEST_WIDTH && cs.get(i + 1) != Some(&' ') {
+                    if !spaces && col > width && cs.get(i + 1) != Some(&' ') {
                         fold(&mut out, &mut col);
                     } else {
                         out.push(' ');
@@ -442,7 +447,7 @@ fn exact(prefix_cols: usize, s: &str) -> Option<String> {
             let mut spaces = false;
             for (i, &c) in cs.iter().enumerate() {
                 if c == ' ' {
-                    if !spaces && col > BEST_WIDTH && i != 0 && i != n - 1 && cs.get(i + 1) != Some(&' ') {
+                    if !spaces && col > width && i != 0 && i != n - 1 && cs.get(i + 1) != Some(&' ') {
                         fold(&mut out, &mut col);
                     } else {
                         out.push(' ');
@@ -472,7 +477,7 @@ fn exact(prefix_cols: usize, s: &str) -> Option<String> {
                     out.push_str(&e);
                     spaces = false;
                 } else if c == ' ' {
-                    if !spaces && col > BEST_WIDTH && i != 0 && i != n - 1 {
+                    if !spaces && col > width && i != 0 && i != n - 1 {
                         fold(&mut out, &mut col);
                         if cs.get(i + 1) == Some(&' ') {
                             out.push('\\');
@@ -504,7 +509,7 @@ pub fn pair(key: &str, value: &str) -> Option<Vec<String>> {
 /// `pair` for the strings whose Psych spelling this port reproduces exactly; `None` for the rest, which
 /// `pair` writes double-quoted instead.
 pub fn pair_exact(key: &str, value: &str) -> Option<Vec<String>> {
-    let text = exact(key.chars().count() + 2, value)?;
+    let text = exact(BEST_WIDTH, key.chars().count() + 2, value)?;
     Some(format!("{key}: {text}").split('\n').map(String::from).collect())
 }
 

@@ -524,6 +524,6 @@ fn the_seeded_config_matches_the_fixture() {
     let qm = Qm::new();
     qm.ok(&["new", "Seed the config"]);
     let seeded = qm.read("config.yml");
-    assert!(seeded.starts_with("# qm configuration"), "{seeded:?}");
+    assert!(seeded.starts_with("# Edited by qm"), "{seeded:?}");
     golden("config_seed.yml", &seeded);
 }
