@@ -1,6 +1,6 @@
 # GUI shell
 
-**Code:** `src/gui_server.rs`, `src/gui_launch.rs`, `src/gui_action.rs`, `src/gui_actions.rs`, `src/gui_jobs.rs`, `src/gui_state.rs`, `src/command_runner.rs`, `src/pf.rs`, `src/transcript_search.rs`, `src/ask_command.rs`, `gui/page.html`, `gui/js/core.js`, `gui/js/server.js`, `gui/js/events.js`, `gui/js/board.js`, `gui/js/detail.js`, `gui/js/session-sheet.js`, `gui/js/search.js`, `gui/js/transcript-search.js`, `gui/js/popovers.js`, `gui/js/modals.js`, `gui/js/focus.js`, `gui/js/long-actions.js`, `gui/js/errors.js`, `gui/css/base.css`, `gui/css/board.css`, `gui/css/header.css`, `gui/css/overlays.css`, `gui/css/responsive.css`, `src/grep_command.rs`
+**Code:** `src/gui_server.rs`, `src/gui_launch.rs`, `src/gui_action.rs`, `src/gui_actions.rs`, `src/gui_jobs.rs`, `src/gui_state.rs`, `src/gui_state_soft.rs`, `src/command_runner.rs`, `src/pf.rs`, `src/transcript_search.rs`, `src/ask_command.rs`, `gui/page.html`, `gui/js/core.js`, `gui/js/server.js`, `gui/js/events.js`, `gui/js/board.js`, `gui/js/detail.js`, `gui/js/session-sheet.js`, `gui/js/search.js`, `gui/js/transcript-search.js`, `gui/js/popovers.js`, `gui/js/modals.js`, `gui/js/focus.js`, `gui/js/long-actions.js`, `gui/js/errors.js`, `gui/css/base.css`, `gui/css/board.css`, `gui/css/header.css`, `gui/css/overlays.css`, `gui/css/responsive.css`, `src/grep_command.rs`
 **Tests:** `tests/command_timeout.rs`, `tests/gui.rs`, `tests/gui_guards.rs`, `tests/error_log.rs`, `tests/grep.rs`, `tests/ask.rs`
 **Depends on:** [work-items](work-items.md), [attention](attention.md), [chats](chats.md), [worktrees](worktrees.md), [side-panel](side-panel.md)
 
@@ -65,6 +65,8 @@ title, state, project, branches, issue, sessions (`sessionList` with id, tier, w
 `aside`, `asideCount`, `boardRows`, `rotations`, `usage`, `drafts`, `issues`, `benchmarkable`, `benchmarked`. One
 `git worktree list` per project root per build; PR states come from cache, expired ones are
 refetched on threads and `refreshing` tells the page to poll until they land.
+
+A state build never fails as a whole: a part it cannot read is shown empty and logged to `qm.log` (`gui_state_soft`, the way `GuiState` rescued per section) — a session whose time can't be read lists with `—`, an unreadable drafts file is no drafts, a malformed work-item file is left out (and, since `inbox` and `attention` read every item, those two are empty until it is fixed). `/api/state` and `/api/attention` have no 501.
 
 **Pulse** (`/api/pulse`, ~1 s poll on the chat view): a string of the sizes of
 `events.jsonl`, `sessions.jsonl` and the last build's mid-turn transcripts, plus the

@@ -149,7 +149,7 @@ fn building_the_state_never_rotates_or_restacks_a_chat_at_its_turn() {
     std::thread::sleep(Duration::from_millis(1100));
     w.event("Stop");
     for _ in 0..3 {
-        let state = quartermaster::gui_state::build("token").unwrap_or_else(|_| panic!("state"));
+        let state = quartermaster::gui_state::build("token");
         assert!(state["items"].as_array().is_some_and(|i| i.iter().any(|x| x["slug"] == "it")));
     }
     assert!(w.pane().trim().is_empty(), "a state build typed into the chat: {}", w.pane());

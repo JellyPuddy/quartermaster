@@ -60,6 +60,7 @@ pub mod gui_launch;
 pub mod gui_local_automations;
 pub mod gui_prs;
 pub mod gui_state;
+pub mod gui_state_soft;
 pub mod hook;
 pub mod issue_drafts;
 pub mod jsonl_lines;

@@ -35,6 +35,7 @@ pub fn writes_file() -> std::path::PathBuf {
 }
 
 /// A `Err` is a value this port does not read exactly.
+#[derive(Debug)]
 pub struct Unsupported;
 
 fn scalar(v: &Value) -> Result<String, Unsupported> {

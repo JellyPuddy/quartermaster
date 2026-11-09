@@ -84,7 +84,7 @@ fn save(config: &Value, digest: &str, token: &str) -> Reply {
     file.replace(data.clone());
     match file.write(Some(digest)) {
         Ok(_) => {
-            let state = crate::gui_state::build(token).unwrap_or(Value::Null);
+            let state = crate::gui_state::build(token);
             answer("200 OK", json!({"ok": true, "settings": payload(&ConfigFile::load(&data_root::config_file())), "state": state}))
         }
         Err(e @ WriteError::Stale) => answer("409 Conflict", json!({"ok": false, "stale": true, "error": e.message(), "settings": payload(&ConfigFile::load(&data_root::config_file()))})),

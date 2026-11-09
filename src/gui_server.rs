@@ -337,10 +337,7 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
             return json_reply(json!({"root": data_root::root_id()}));
         }
         if route == "/api/attention" {
-            return match crate::gui_state::attention_payload() {
-                Some(v) => json_reply(v),
-                None => text_reply("501 Not Implemented", "unsupported input: this attention"),
-            };
+            return json_reply(crate::gui_state::attention_payload());
         }
         if route == "/api/pulse" {
             let seen = params(query);
@@ -353,10 +350,7 @@ fn respond(guard: &Guard, token: &str, method: &str, path: &str, headers: &Map<S
             return json_reply(json!({"pulse": crate::gui_state::pulse(), "events": crate::gui_state::events_pulse(), "issues": crate::issue_drafts::signature()}));
         }
         if route == "/api/state" {
-            return match crate::gui_state::build(token) {
-                Ok(v) => json_reply(v),
-                Err(_) => text_reply("501 Not Implemented", "unsupported input: this state (status boards, benchmarks, loose chats, build progress)"),
-            };
+            return json_reply(crate::gui_state::build(token));
         }
         if route == "/api/pr-threads" {
             return match crate::review_threads::payload(&params(query)) {
@@ -630,7 +624,7 @@ fn asides_payload(slug: &str) -> Option<Value> {
         Err(crate::aside::Halt::Refuse(m)) => return failed("RuntimeError", m),
     };
     for row in rows.iter_mut() {
-        let when = crate::gui_state::relative_when(row["at"].as_str()).ok()?.unwrap_or_else(|| "—".into());
+        let when = crate::gui_state::relative_when(row["at"].as_str()).unwrap_or_else(|| "—".into());
         row["when"] = json!(when);
     }
     Some(json!({"asides": rows}))

@@ -2,13 +2,14 @@
 //! view's attention list, the dev server and the sessions' tmux panes. A port of `GuiState#build`
 //! for a GUI that has no jobs, notifier or caffeinate child of its own yet. What belongs to parts
 //! not ported — status boards, benchmarks, loose chats, build progress — is empty when the data
-//! says it would be empty in Ruby, and `Unsupported` (a 501) when it would not.
+//! says it would be empty in Ruby. A part that cannot be read is shown empty and logged (`gui_state_soft`), never a 501.
 
 use std::sync::Mutex;
 
 use serde_json::{json, Map, Value};
 
 use crate::attention::Attention;
+use crate::gui_state_soft as soft;
 use crate::chat_attention::ChatAttention;
 use crate::cli_format::short_path;
 use crate::data_root;
@@ -22,29 +23,18 @@ use crate::session_log::{Session, SessionLog};
 use crate::usage_ledger::UsageLedger;
 use crate::work_item::WorkItem;
 
-pub struct Unsupported;
-type R<T> = Result<T, Unsupported>;
-
 const MAINLINE: [&str; 3] = ["main", "master", "develop"];
 
 /// The working or blocked chats' transcripts of the last build: the pulse watches their sizes.
 static MID_TURN: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static LEDGER: Mutex<Option<UsageLedger>> = Mutex::new(None);
 
-fn text(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        Value::Null => String::new(),
-        other => other.to_string(),
-    }
-}
-
 /// `GuiState.relative_when`: "3h ago", a date past ten days; None for what Ruby can't parse.
-pub fn relative_when(ts: Option<&str>) -> R<Option<String>> {
-    let Some(ts) = ts.filter(|t| !t.is_empty()) else { return Ok(None) };
-    let Some(then) = crate::clock::parse(ts) else { return Err(Unsupported) };
+pub fn relative_when(ts: Option<&str>) -> Option<String> {
+    let ts = ts.filter(|t| !t.is_empty())?;
+    let then = crate::clock::parse(ts)?;
     let seconds = crate::clock::now_f64() - crate::clock::parse_f64(ts).unwrap_or(0.0);
-    Ok(Some(if seconds < 60.0 {
+    Some(if seconds < 60.0 {
         "just now".to_string()
     } else if seconds < 3600.0 {
         format!("{}m ago", (seconds / 60.0) as i64)
@@ -53,7 +43,7 @@ pub fn relative_when(ts: Option<&str>) -> R<Option<String>> {
     } else {
         let days = (seconds / 86_400.0) as i64;
         if days <= 10 { format!("{days}d ago") } else { then.date_naive().to_string() }
-    }))
+    })
 }
 
 /// `Time.at(seconds).utc.iso8601`.
@@ -169,15 +159,15 @@ pub fn items_checked_out_at(path: &str) -> Vec<WorkItem> {
 }
 
 /// slug → the "run/agent" keys of its build's active tasks, only for items with a live session.
-fn active_build_agents(items: &[WorkItem], log: &SessionLog) -> R<Vec<(String, Vec<String>)>> {
+fn active_build_agents(items: &[WorkItem], log: &SessionLog) -> Vec<(String, Vec<String>)> {
     let mut building = vec![];
     for item in items {
-        let keys: Vec<String> = crate::build_progress::active_agents(item, log).map_err(|_| Unsupported)?.iter().map(|a| a.key()).collect();
+        let keys: Vec<String> = crate::gui_state_soft::logged("gui-build-progress", crate::build_progress::active_agents(item, log).map_err(|_| "unsupported")).unwrap_or_default().iter().map(|a| a.key()).collect();
         if !keys.is_empty() {
             building.push((item.slug.clone(), keys));
         }
     }
-    Ok(building)
+    building
 }
 
 /// A finished task's line goes, and the whole estimate once nothing it covered is still going.
@@ -205,12 +195,12 @@ fn note_json(n: &crate::note::Note) -> Value {
 }
 
 /// The issue drafts' summary (`IssueDrafts#summary`), nil without any.
-fn issues_payload(item: &WorkItem) -> R<Value> {
+fn issues_payload(item: &WorkItem) -> Value {
     if !issue_drafts::dir(&item.slug).is_dir() {
-        return Ok(Value::Null);
+        return Value::Null;
     }
     if issue_drafts::files(&item.slug).is_empty() {
-        return Ok(Value::Null);
+        return Value::Null;
     }
     let loaded = issue_drafts::load(&item.slug);
     if let Err(e) = loaded.record() {
@@ -218,36 +208,36 @@ fn issues_payload(item: &WorkItem) -> R<Value> {
     }
     let count = loaded.issues.len() + loaded.errors.len();
     if count == 0 {
-        return Ok(Value::Null);
+        return Value::Null;
     }
     let open = loaded.issues.iter().filter(|i| i.number.is_none()).count();
     let mut ordered: Vec<&issue_drafts::Issue> = loaded.issues.iter().filter(|i| i.number.is_none()).collect();
     ordered.extend(loaded.issues.iter().filter(|i| i.number.is_some()));
     let versions: Map<String, Value> = ordered.iter().map(|i| (i.file.clone(), json!(i.version))).collect();
-    Ok(json!({"count": count, "open": open, "errors": loaded.errors.len(), "versions": versions}))
+    json!({"count": count, "open": open, "errors": loaded.errors.len(), "versions": versions})
 }
 
-fn usage_payload(item: &WorkItem, log: &SessionLog, ledger: &mut UsageLedger, prices: &PriceTable) -> R<Value> {
+fn usage_payload(item: &WorkItem, log: &SessionLog, ledger: &mut UsageLedger, prices: &PriceTable) -> Value {
     let usage = match ItemUsage::for_item(item, log, ledger, prices) {
         Ok(u) => u,
         Err(e) => {
             data_root::log_error("gui-usage", e.class, &e.message);
-            return Ok(Value::Null);
+            return Value::Null;
         }
     };
     if usage.is_empty() {
-        return Ok(Value::Null);
+        return Value::Null;
     }
     let mut rows = vec![];
     for r in &usage.rows {
         let models: Map<String, Value> = r.models.iter().map(|(m, n)| (m.clone(), json!(n))).collect();
         rows.push(json!({
-            "id": r.id, "aside": r.aside, "when": relative_when(r.when.as_deref())?.unwrap_or_else(|| "—".into()), "known": r.known, "agents": r.agents,
+            "id": r.id, "aside": r.aside, "when": relative_when(r.when.as_deref()).unwrap_or_else(|| "—".into()), "known": r.known, "agents": r.agents,
             "tokens": r.tokens, "unpriced": r.unpriced, "models": models,
             "cost": rounded(r.cost), "tokensLabel": human_tokens(r.tokens), "costLabel": dollars(r.cost)
         }));
     }
-    Ok(json!({"tokens": usage.tokens(), "cost": rounded(usage.cost()), "lowerBound": usage.lower_bound(), "partial": usage.partial(), "unpriced": usage.unpriced(), "line": usage.line(), "sessions": rows}))
+    json!({"tokens": usage.tokens(), "cost": rounded(usage.cost()), "lowerBound": usage.lower_bound(), "partial": usage.partial(), "unpriced": usage.unpriced(), "line": usage.line(), "sessions": rows})
 }
 
 struct Context<'a> {
@@ -262,10 +252,9 @@ struct Context<'a> {
     bench: Vec<Value>,
 }
 
-fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R<Value> {
+fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> Value {
     // first, so the payload's branches already include auto-linked ones
     crate::gh_stack::sync(item);
-    let config = crate::project_config::ProjectConfig::current();
     let root = crate::project_map::root_for(item.project().as_deref());
     let by_branch = root.as_deref().map(crate::branch_diff::branch_worktrees).unwrap_or_default();
     let branches = item.branches();
@@ -296,17 +285,19 @@ fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R
         }
     }
     let mut sessions = vec![];
-    for s in c.log.item_sessions(item).map_err(|_| Unsupported)? {
-        sessions.push(json!({"id": s.id, "tier": s.tier(), "when": relative_when(s.last_ts_opt().as_deref())?.unwrap_or_else(|| "—".into()), "prompt": s.first_prompt()}));
+    let listed = soft::logged("gui-sessions", c.log.item_sessions(item)).unwrap_or_else(|| {
+        let all = c.log.sessions();
+        item.session_ids().iter().map(|id| all.iter().find(|s| s.id == *id).cloned().unwrap_or_else(|| Session::uncaptured(id))).collect()
+    });
+    for s in listed {
+        sessions.push(json!({"id": s.id, "tier": s.tier(), "when": relative_when(s.last_ts_opt().as_deref()).unwrap_or_else(|| "—".into()), "prompt": s.first_prompt()}));
     }
-    let badges: Vec<Value> = c
-        .attention
-        .entries_for(item)
-        .map_err(|_| Unsupported)?
+    let badges: Vec<Value> = soft::logged("gui-badges", c.attention.entries_for(item))
+        .unwrap_or_default()
         .iter()
         .map(|e| json!({"type": match e.kind { "degrade" => "degrading", "stale" => "stale", _ => "merged" }, "label": e.message}))
         .collect();
-    let activity = c.attention.activity_at(item).map_err(|_| Unsupported)?;
+    let activity = soft::logged("gui-activity", c.attention.activity_at(item)).unwrap_or_else(|| item.file_mtime().unwrap_or(0.0));
     let updated = chrono::DateTime::from_timestamp(activity.floor() as i64, 0).map(|t| t.with_timezone(&chrono::Local).date_naive().to_string()).unwrap_or_default();
     let ids = item.session_ids();
     let paths: Vec<String> = checkouts.iter().map(|(_, p)| p.clone()).collect();
@@ -320,7 +311,7 @@ fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R
     };
     let aside = crate::chats_commands::aside_name(&item.slug);
     let benchmarkable = crate::benchmark_run::enabled(item);
-    let entries = drafts::entries(&item.slug).ok_or(Unsupported)?;
+    let entries = soft::logged("gui-drafts", drafts::entries(&item.slug).ok_or("unreadable drafts file")).unwrap_or_default();
     let mut out = Map::new();
     // WorkItem#to_h
     for (k, v) in [
@@ -354,17 +345,16 @@ fn item_payload(item: &mut WorkItem, c: &Context, ledger: &mut UsageLedger) -> R
         ("pane", json!(c.panes.contains(&item.slug))),
         ("aside", json!(c.panes.contains(&aside))),
         ("asideCount", json!(c.aside_counts.iter().find(|(s, _)| *s == item.slug).map(|(_, n)| *n).unwrap_or(0))),
-        ("boardRows", Value::Array(crate::board_mirror::rows_for(item).map_err(|_| Unsupported)?)),
+        ("boardRows", Value::Array(soft::logged("gui-board", crate::board_mirror::rows_for(item)).unwrap_or_default())),
         ("rotations", json!(item.rotation_count())),
         ("sessionList", Value::Array(sessions)),
-        ("usage", usage_payload(item, c.log, ledger, c.prices)?),
+        ("usage", usage_payload(item, c.log, ledger, c.prices)),
         ("drafts", Value::Array(entries.into_iter().map(Value::Object).collect())),
-        ("issues", issues_payload(item)?),
+        ("issues", issues_payload(item)),
     ] {
         out.insert(k.into(), v);
     }
-    let _ = config;
-    Ok(Value::Object(out))
+    Value::Object(out)
 }
 
 /// `TurnNotifier.unlinked_title`: the first prompt, shortened, else the fallback.
@@ -396,13 +386,13 @@ pub(crate) fn loose_session(log: &SessionLog, id: &str) -> Option<Session> {
     newest(mine.iter().filter(|s| s.live).collect()).or_else(|| newest(mine.iter().collect()))
 }
 
-fn chat_attention() -> R<Vec<Value>> {
+fn chat_attention() -> Vec<Value> {
     let mut attention = ChatAttention::new();
-    let entries = attention.entries().map_err(|_| Unsupported)?;
+    let entries = soft::logged("gui-attention", attention.entries()).unwrap_or_default();
     let log = SessionLog::read();
     *MID_TURN.lock().unwrap() = entries.iter().filter(|e| e.state == "working" || e.state == "blocked").filter_map(|e| e.session_id.as_deref().and_then(|id| log.session_for(id)).and_then(|s| s.transcript()).map(|p| p.to_string_lossy().into_owned())).collect();
     let now = crate::clock::now_f64();
-    Ok(entries
+    entries
         .iter()
         .map(|e| {
             let tokens = e.context_tokens;
@@ -412,11 +402,11 @@ fn chat_attention() -> R<Vec<Value>> {
                    "waitingOn": e.waiting_on, "contextTokens": tokens, "cacheWarmUntil": e.cache_warm_until.map(iso), "lastAssistantAt": e.last_assistant_at.map(iso),
                    "ctxLevel": level, "rotate": rotate})
         })
-        .collect())
+        .collect()
 }
 
 /// `GuiState#build`.
-pub fn build(token: &str) -> R<Value> {
+pub fn build(token: &str) -> Value {
     let pulse_now = pulse();
     let log = SessionLog::read();
     crate::pr_status::start_build();
@@ -435,18 +425,18 @@ pub fn build(token: &str) -> R<Value> {
             }
         }
     }
-    let mut work_items = WorkItem::all().map_err(|_| Unsupported)?;
+    let mut work_items = soft::readable_items();
     let context = Context { log: &log, attention: &attention, live_ids, pf: &status, panes: &panes, prices: &prices, aside_counts, bench: crate::benchmark_run::all() };
     let mut guard = LEDGER.lock().unwrap();
     let ledger = guard.get_or_insert_with(UsageLedger::new);
     let mut items = vec![];
     for item in work_items.iter_mut() {
-        items.push(item_payload(item, &context, ledger)?);
+        items.push(item_payload(item, &context, ledger));
     }
     ledger.save();
     drop(guard);
 
-    let building = active_build_agents(&work_items, &log)?;
+    let building = active_build_agents(&work_items, &log);
     let names: Vec<&str> = config.roots().into_iter().map(|(n, _)| n).collect();
     let mut projects: Vec<String> = names.iter().map(|s| s.to_string()).collect();
     if !projects.iter().any(|p| p == "No project") {
@@ -455,19 +445,21 @@ pub fn build(token: &str) -> R<Value> {
     let default_project = match config.default_project_raw() {
         serde_yaml::Value::Null => String::new(),
         serde_yaml::Value::String(s) => s.clone(),
-        _ => return Err(Unsupported),
+        serde_yaml::Value::Number(n) => n.to_string(),
+        serde_yaml::Value::Bool(b) => b.to_string(),
+        _ => String::new(),
     };
     let default_project = if names.contains(&default_project.as_str()) { json!(default_project) } else { json!(names.first()) };
 
     let open_loose: Vec<&str> = panes.iter().filter_map(|n| n.strip_prefix("loose--")).collect();
-    let mut inbox_sessions: Vec<Session> = log.inbox().map_err(|_| Unsupported)?.into_iter().filter(|s| !s.loose_id().is_some_and(|id| open_loose.contains(&id.as_str()))).collect();
+    let mut inbox_sessions: Vec<Session> = soft::logged("gui-inbox", log.inbox()).unwrap_or_default().into_iter().filter(|s| !s.loose_id().is_some_and(|id| open_loose.contains(&id.as_str()))).collect();
     inbox_sessions.sort_by_key(|s| s.last_ts());
     inbox_sessions.reverse();
     let mut inbox = vec![];
     for s in &inbox_sessions {
-        inbox.push(json!({"id": s.id, "prompt": s.first_prompt().unwrap_or_else(|| "(no prompt captured)".into()), "when": relative_when(s.last_ts_opt().as_deref())?.unwrap_or_else(|| "—".into()), "cwd": short_path(Some(s.cwd().as_deref().unwrap_or("?")))}));
+        inbox.push(json!({"id": s.id, "prompt": s.first_prompt().unwrap_or_else(|| "(no prompt captured)".into()), "when": relative_when(s.last_ts_opt().as_deref()).unwrap_or_else(|| "—".into()), "cwd": short_path(Some(s.cwd().as_deref().unwrap_or("?")))}));
     }
-    let attention_rows = chat_attention()?;
+    let attention_rows = chat_attention();
     let mut out = Map::new();
     for (k, v) in [
         ("items", Value::Array(items)),
@@ -497,16 +489,15 @@ pub fn build(token: &str) -> R<Value> {
     ] {
         out.insert(k.into(), v);
     }
-    let _ = text(&Value::Null);
-    Ok(Value::Object(out))
+    Value::Object(out)
 }
 
 /// `Drafts.counts`: every item's draft count, for the page's badges.
-fn draft_counts() -> Option<Value> {
-    let Ok(dir) = std::fs::read_dir(data_root::root().join("drafts")) else { return Some(json!({})) };
+fn draft_counts() -> Value {
+    let Ok(dir) = std::fs::read_dir(data_root::root().join("drafts")) else { return json!({}) };
     let mut slugs: Vec<String> = vec![];
     for e in dir.filter_map(|e| e.ok()) {
-        let name = e.file_name().into_string().ok()?;
+        let Ok(name) = e.file_name().into_string() else { continue };
         if let Some(slug) = name.strip_suffix(".json") {
             let shaped = slug.chars().next().is_some_and(|c| c.is_ascii_alphanumeric()) && slug.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'));
             if shaped {
@@ -517,19 +508,19 @@ fn draft_counts() -> Option<Value> {
     slugs.sort();
     let mut counts = Map::new();
     for slug in slugs {
-        let n = drafts::entries(&slug)?.len();
+        let n = drafts::entries(&slug).map_or(0, |e| e.len());
         if n > 0 {
             counts.insert(slug, json!(n));
         }
     }
-    Some(Value::Object(counts))
+    Value::Object(counts)
 }
 
 /// `GuiState#attention_payload`: off the chat view only whose move it is matters: the tab title's
 /// count, the notifications to show and each item's draft count.
-pub fn attention_payload() -> Option<Value> {
+pub fn attention_payload() -> Value {
     let log = SessionLog::read();
-    let attention = chat_attention().ok()?;
+    let attention = chat_attention();
     let panes = crate::tmux::Tmux::new().sessions();
-    Some(json!({"attention": attention, "notifications": crate::turn_notifier::recent(), "loose": crate::loose_chats::chats(&panes, &log), "draftCounts": draft_counts()?}))
+    json!({"attention": attention, "notifications": crate::turn_notifier::recent(), "loose": crate::loose_chats::chats(&panes, &log), "draftCounts": draft_counts()})
 }

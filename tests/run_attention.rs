@@ -110,7 +110,7 @@ fn the_gui_serves_a_live_run_chat_with_its_state_and_opens_a_run_notification_in
     let tmux = format!("nightly--run-{id}");
     world.tmux(&["new-session", "-d", "-s", &tmux, "sleep 60"]);
     world.tmux(&["new-session", "-d", "-s", "nightly", "sleep 60"]);
-    let payload = quartermaster::gui_state::attention_payload().unwrap();
+    let payload = quartermaster::gui_state::attention_payload();
     let rows: Vec<Vec<Value>> = payload["loose"].as_array().unwrap().iter().map(|c| ["name", "session", "state", "title"].iter().map(|k| c[*k].clone()).collect()).collect();
     assert_eq!(rows, [vec![json!(tmux), json!("s-run"), json!("blocked"), json!("Nightly · Thing A")]]);
     assert!(payload["attention"].as_array().unwrap().is_empty(), "the automation item has no row of its own");

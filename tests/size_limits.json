@@ -1,5 +1,5 @@
 {
-  "CLAUDE.md": 5751,
+  "CLAUDE.md": 5748,
   "gui/js/chat-side.js": 492,
   "gui/js/drafts.js": 553,
   "gui/js/issues.js": 593,
@@ -10,8 +10,8 @@
   "src/draft_messages.rs": 441,
   "src/gui_actions.rs": 1357,
   "src/gui_draft_actions.rs": 601,
-  "src/gui_server.rs": 685,
-  "src/gui_state.rs": 535,
+  "src/gui_server.rs": 679,
+  "src/gui_state.rs": 526,
   "src/issue_drafts.rs": 436,
   "src/prompt_diff.rs": 468,
   "src/psych.rs": 601,
