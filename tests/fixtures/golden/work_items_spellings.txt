@@ -192,9 +192,9 @@ From equals
 ## Snapshots
 
 $ qm "retag" "spelled" "0x1" "history"
-exit 1
---- stderr
-qm: note #0 does not exist (3 note(s))
+exit 0
+--- stdout
+[36m#1[0m [90m[history][0m DATE: equals kind
 --- spelled.md
 ---
 v: 1
