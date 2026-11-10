@@ -11,16 +11,16 @@ module Quartermaster
   # (GuiActions' drafts-send); only the entries actually sent are removed.
   #
   # Each entry: { "id", "kind" (KINDS), "comment", "rev" (bumped on every
-  # edit), "createdAt", "updatedAt" } plus its kind's fields — a diff comment its line address (DIFF_FIELDS: a range's first
-  # line in start_line/start_side, every line's text in code) and, made in
-  # the PR scope, its PR (PR_FIELDS); a GitHub comment the same, always with
-  # its PR, waits for the pending review instead of the chat. An annotation
-  # what PageAnnotations reads (ANNOTATION_FIELDS) and its batch's url/title,
-  # an issue comment its issue's file, the block's source text ("" for the
+  # edit), "createdAt", "updatedAt" } plus its kind's fields — a diff comment its line address (DIFF_FIELDS: a range's first line in
+  # start_line/start_side, every line's text in code) and, made in the PR
+  # scope, its PR (PR_FIELDS); a GitHub comment the same, always with its
+  # PR, waits for the pending review instead of the chat. An annotation what
+  # PageAnnotations reads (ANNOTATION_FIELDS) and its batch's url/title, an
+  # issue comment its issue's file, the block's source text ("" for the
   # whole issue) and the issue's title (ISSUE_FIELDS), a thread reply its
   # thread and PR (REPLY_FIELDS), which like a GitHub comment waits for the
-  # pending review; a review summary, one per PR (ReviewSummaryDrafts).
-  # `qm draft add` (ChatReviewDrafts) writes here too, from another process.
+  # pending review; a review summary (ReviewSummaryDrafts). `qm draft add`
+  # writes here too, from another process: #update's flock makes that safe.
   class Drafts
     include ReviewSummaryDrafts
 
