@@ -58,8 +58,10 @@ fallback protocol for when the injection is missing.
   `read tcp`, `i/o timeout`, `TLS handshake timeout`, `githubstatus.com`, a bare `EOF`), or
   a browser tab gone mid-response (`Errno::EPIPE`, `Errno::ECONNRESET`) — reads
   `<iso8601> [<context>] transient <Class>: <message>`. Only the contexts in
-  `FailureLog::SUCCESS_REPORTING` (`pr-inbox`, `pr-deployment`, `pr-refresh`, `gui-client`:
-  the ones that call `Quartermaster.log_success`) write just the first failure of an outage;
+  `FailureLog::SUCCESS_REPORTING` (`pr-inbox`, `pr-deployment`, `pr-refresh`, `gui-client`,
+  `todos`: the ones that call `Quartermaster.log_success`) write just the first transient
+  failure of an outage, and a context also in `FailureLog::LASTING` (`todos`: an unreadable
+  file that stays broken until the user fixes it) just the first failure of any kind;
   their next success ends it with `<iso8601> [<context>] recovered after <n> failure(s)`.
   Every other context writes each transient failure, since nothing would ever end its
   outage. A test holds the list equal to the `log_success` call sites in `lib/`.
@@ -84,7 +86,8 @@ fallback protocol for when the injection is missing.
   the launcher ([cli](cli.md)), so `qm install-hooks` prints the same snippet pinned or not.
 - **Every `qm.log` line other than a header starts with whitespace**, and only headers carry
   `[<context>] transient` or `[<context>] recovered`: readers (an error count) tell lines
-  apart by that alone. Non-transient failures are always written in full. Outage state is
+  apart by that alone. Non-transient failures are always written in full, except in a
+  `LASTING` context, where every failure is one outage. Outage state is
   per process; a fresh process may write one more first failure. A new `log_success` call
   site takes a literal context and joins `SUCCESS_REPORTING` in the same commit.
 - **Only SessionStart may print**, and only the injected context. SessionEnd and every error

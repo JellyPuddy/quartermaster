@@ -5,8 +5,8 @@ module Quartermaster
   # array whose order is the priority (index 0 on top). Every change rewrites
   # the file whole under an exclusive flock on todos.lock, so the CLI and the
   # GUI both write it directly. Fields qm doesn't know survive a rewrite. An
-  # unreadable file reads as empty and is never rewritten: changes are refused
-  # until the user fixes or removes it.
+  # unreadable file reads as empty, is logged once per outage and is never
+  # rewritten: changes are refused until the user fixes or removes it.
   class TodoList
     VERSION = 1
     DONE_SHOWN = 20
@@ -25,7 +25,8 @@ module Quartermaster
       []
     end
 
-    def open = todos.reject { |t| t["done_at"] }
+    # all: an array from #todos, so one read can feed both #open and #done_recent.
+    def open(all = todos) = all.reject { |t| t["done_at"] }
 
     # Size and mtime of todos.json, "0" without one: the GUI's pulse moves
     # when the CLI writes the list.
@@ -36,8 +37,8 @@ module Quartermaster
       "0"
     end
 
-    def done_recent(limit = DONE_SHOWN)
-      todos.select { |t| t["done_at"] }.sort_by { |t| t["done_at"].to_s }.reverse.first(limit)
+    def done_recent(all = todos, limit: DONE_SHOWN)
+      all.select { |t| t["done_at"] }.sort_by { |t| t["done_at"].to_s }.reverse.first(limit)
     end
 
     # item: a work-item slug (it must exist); the todo then shows the item's
@@ -95,11 +96,10 @@ module Quartermaster
     private
 
     def read_document
-      return { "v" => VERSION, "todos" => [] } unless File.exist?(@path)
-
-      data = JSON.parse(File.read(@path))
+      data = File.exist?(@path) ? JSON.parse(File.read(@path)) : { "v" => VERSION, "todos" => [] }
       raise TypeError, "todos.json holds no todo list" unless data.is_a?(Hash) && data.fetch("todos", []).is_a?(Array)
 
+      Quartermaster.log_success("todos")
       data.merge("todos" => data["todos"] || [])
     end
 

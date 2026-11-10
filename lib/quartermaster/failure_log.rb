@@ -8,11 +8,14 @@ module Quartermaster
   # after its context. In a SUCCESS_REPORTING context it is written only once
   # per outage, and the context's next success ends the outage with one
   # `recovered after <n> failure(s)` header; any other context could never end
-  # an outage, so it writes every failure. Outages live in this process only.
+  # an outage, so it writes every failure. In a LASTING context every failure,
+  # transient or not, counts toward the outage: it is a broken state of the
+  # user's (a file) that holds until they fix it. Outages live in this process only.
   module FailureLog
     TRANSIENT = "transient"
     # The contexts with a Quartermaster.log_success call site.
-    SUCCESS_REPORTING = %w[pr-inbox pr-deployment pr-refresh gui-client].freeze
+    SUCCESS_REPORTING = %w[pr-inbox pr-deployment pr-refresh gui-client todos].freeze
+    LASTING = %w[todos].freeze
     BACKTRACE_FRAMES = 3
     REPO = File.expand_path("../..", __dir__)
     LIB = File.join(REPO, "lib", "")
@@ -35,11 +38,10 @@ module Quartermaster
     end
 
     def failure(context, error)
-      if transient?(error)
-        return if SUCCESS_REPORTING.include?(context) && !first_of_outage?(context)
+      transient = transient?(error)
+      return if (transient || LASTING.include?(context)) && SUCCESS_REPORTING.include?(context) && !first_of_outage?(context)
 
-        tag = "#{TRANSIENT} "
-      end
+      tag = "#{TRANSIENT} " if transient
       message = error.message.to_s.split("\n").map(&:strip).reject(&:empty?).join(" ")
       append(["#{Time.now.iso8601} [#{context}] #{tag}#{error.class}: #{message}", *lib_frames(error)])
     end

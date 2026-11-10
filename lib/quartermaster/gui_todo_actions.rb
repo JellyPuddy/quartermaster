@@ -43,9 +43,10 @@ module Quartermaster
 
     # The state's todos: the open ones in order, then the newest done. A
     # todo on an item shows that item's project and title; a deleted item
-    # leaves only its slug.
+    # leaves only its slug. One read of todos.json per state build.
     def self.payload(list = TodoList.new, items: WorkItem.all.to_h { |item| [item.slug, item] })
-      (list.open + list.done_recent).map do |todo|
+      all = list.todos
+      (list.open(all) + list.done_recent(all)).map do |todo|
         item = items[todo["item"]]
         { "id" => todo["id"], "text" => todo["text"], "created" => todo["created"], "done_at" => todo["done_at"],
           "item" => todo["item"], "project" => item ? item.project : todo["project"], "itemTitle" => item&.title }

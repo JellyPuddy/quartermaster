@@ -114,6 +114,31 @@ class TodoListTest < Minitest::Test
     assert_equal "{not json", File.read(file)
   end
 
+  def test_a_corrupt_file_is_logged_once_per_outage_and_its_fix_once
+    File.write(file, "{not json")
+    3.times { list.todos }
+    failures = File.readlines(Quartermaster::LOG_FILE, chomp: true).reject { |line| line.start_with?(" ") }
+    assert_equal 1, failures.size
+    assert_match(/\[todos\] JSON::ParserError/, failures.first)
+
+    File.write(file, JSON.generate({ "v" => 1, "todos" => [] }))
+    2.times { list.todos }
+    headers = File.readlines(Quartermaster::LOG_FILE, chomp: true).reject { |line| line.start_with?(" ") }
+    assert_equal 2, headers.size
+    assert_match(/\[todos\] recovered after 3 failures\z/, headers.last)
+  end
+
+  def test_a_gui_state_build_reads_the_list_once
+    reads = 0
+    counting = list
+    counting.define_singleton_method(:todos) { (reads += 1) && super() }
+    counting.add("one")
+
+    reads = 0
+    Quartermaster::GuiTodoActions.payload(counting, items: {})
+    assert_equal 1, reads
+  end
+
   def test_the_project_is_dropped_when_an_item_is_set
     Quartermaster::WorkItem.create("Ship it", project: "App")
     on_item = list.add("check the deploy", item: "ship-it", project: "App")

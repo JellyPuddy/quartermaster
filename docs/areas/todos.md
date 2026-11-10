@@ -81,8 +81,13 @@ when the user asks, or something needs their own hands outside the session, `qm 
 - An unknown `--item` slug is an error (`WorkItem.find`), from the CLI and from `TodoList#add`.
 - Fields qm doesn't know, on the file or on a todo, survive every rewrite.
 - A missing file is an empty list. An unreadable one (not JSON, or no `todos` array) reads as
-  empty and is logged to `qm.log`; it is never rewritten — every change is refused naming the
-  file until the user fixes or removes it, so a read can't destroy what is there.
+  empty; it is never rewritten — every change is refused naming the file until the user fixes
+  or removes it, so a read can't destroy what is there.
+- An unreadable file is logged to `qm.log` once per outage, not per read: `todos` is in
+  `FailureLog::SUCCESS_REPORTING` and `LASTING` ([capture](capture.md)), every good read (a
+  missing file is one) calls `log_success("todos")`, so the fix writes one `recovered` line.
+- A state build reads `todos.json` once: `GuiTodoActions.payload` passes one `todos` array to
+  `open(all)` and `done_recent(all)`.
 - Writes always go through `TodoList`'s flock; never write `todos.json` another way.
 
 ## Data
