@@ -13,7 +13,6 @@ module Quartermaster
     # /assets/js/NAME.js, nothing else — the pattern admits no path traversal.
     ASSET_DIR = File.join(__dir__, "gui")
     ASSET_ROUTE = %r{\A/assets/(css/[a-z0-9-]+\.css|js/[a-z0-9-]+\.js)\z}
-    # The installed app's files sit at the root, so the service worker's scope is the whole page.
     APP_FILES = { "/manifest.webmanifest" => "manifest.webmanifest", "/sw.js" => "sw.js",
                   "/icons/icon-192.png" => "icons/icon-192.png", "/icons/icon-512.png" => "icons/icon-512.png" }.freeze
     ASSET_TYPES = { ".css" => "text/css; charset=utf-8", ".js" => "text/javascript; charset=utf-8",
