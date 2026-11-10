@@ -7,7 +7,7 @@ require_relative "test_helper"
 # mutations from what the test sets, records each call's operation,
 # variables and header, and passes git through to the real thing.
 class GraphqlStub < GitPassThroughRunner
-  attr_accessor :pending, :thread, :comment_error, :reply
+  attr_accessor :pending, :thread, :comment_error, :reply, :own, :submit_error
   attr_reader :graphql
 
   def initialize(origin)
@@ -32,7 +32,7 @@ class GraphqlStub < GitPassThroughRunner
       vars[key] = flag == "-F" ? Integer(val) : val
     end
     query = vars.delete("query")
-    name = query[/\b(addPullRequest\w+)\(/, 1] || "query"
+    name = query[/\b((?:add|submit)PullRequest\w+)\(/, 1] || "query"
     @graphql << { name: name, vars: vars, header: header }
     out, ok = answer(name, vars)
     Quartermaster::CommandRunner::Result.new(out: JSON.generate(out), err: ok ? "" : "gh: GraphQL error", success: ok)
@@ -46,7 +46,8 @@ class GraphqlStub < GitPassThroughRunner
       reviews = @pending ? [{ "id" => @pending, "viewerDidAuthor" => true, "comments" => { "totalCount" => 2 } }] : []
       head = `git --git-dir #{@origin} rev-parse refs/pull/7/head`.strip
       [{ "data" => { "repository" => { "pullRequest" => { "id" => "PR_1", "baseRefName" => "main", "headRefOid" => head,
-                                                          "state" => "OPEN", "reviews" => { "nodes" => reviews } } } } }, true]
+                                                          "state" => "OPEN", "viewerDidAuthor" => @own ? true : false,
+                                                          "reviews" => { "nodes" => reviews } } } } }, true]
     when "addPullRequestReview"
       [{ "data" => { name => { "pullRequestReview" => { "id" => "PRR_new" } } } }, true]
     when "addPullRequestReviewThread"
@@ -57,16 +58,17 @@ class GraphqlStub < GitPassThroughRunner
       return [{ "errors" => [{ "message" => @comment_error }] }, false] if @comment_error
 
       [{ "data" => { name => { "comment" => { "id" => "C1" } } } }, true]
+    when "submitPullRequestReview"
+      return [{ "errors" => [{ "message" => @submit_error }] }, false] if @submit_error
+
+      [{ "data" => { name => { "pullRequestReview" => { "id" => vars["review"] } } } }, true]
     end
   end
 end
 
-# Posting GitHub drafts as a pending review (PR review plan D4, D9-D11, D13)
-# and how each draft routes when the PR moved under it.
-class PrPostTest < Minitest::Test
-  include QmTestHelpers
-  include PrRepoHelpers
-
+# A PR on acme/widgets#7 with a work item on its branch, its drafts and
+# PendingReview over the stub gh: what the post and submit tests share.
+module PrPostHelpers
   LINES = ANCHOR_LINES
 
   # main: a.txt of 20 lines. The PR's c1 makes line 5 "line five". Yields
@@ -105,6 +107,16 @@ class PrPostTest < Minitest::Test
 
   def routes(repo, gh) = review(repo, gh).send(:plan).routes(drafts.entries).values
 
+  def act(gui, cmd, args) = gui.actions.dispatch("cmd" => cmd, "slug" => "feat", "args" => args)
+end
+
+# Posting GitHub drafts as a pending review (PR review plan D4, D9-D11, D13)
+# and how each draft routes when the PR moved under it.
+class PrPostTest < Minitest::Test
+  include QmTestHelpers
+  include PrRepoHelpers
+  include PrPostHelpers
+
   def test_head_drafts_go_into_a_new_pending_review_and_leave_the_store
     with_pr do |repo, c1, base, gh|
       draft(base, c1)
@@ -133,7 +145,7 @@ class PrPostTest < Minitest::Test
       post(repo, gh)
 
       assert_equal({ "pr" => "widgets#7", "url" => "https://github.com/acme/widgets/pull/7", "count" => 1, "head" => 1,
-                     "commit" => 0, "outdated" => 0, "replies" => 0, "moved" => 0, "pending" => 2 }, preview)
+                     "commit" => 0, "outdated" => 0, "replies" => 0, "moved" => 0, "pending" => 2, "viewerIsAuthor" => false }, preview)
       refute_includes gh.graphql.map { |c| c[:name] }, "addPullRequestReview"
       thread = gh.graphql.last[:vars]
       assert_equal ["PRR_mine", 4, "RIGHT", 5], thread.values_at("review", "startLine", "startSide", "line")
@@ -284,8 +296,6 @@ class PrPostTest < Minitest::Test
   end
 
   # The GUI's side: preview and post as actions, the outdated card's places.
-  def act(gui, cmd, args) = gui.actions.dispatch("cmd" => cmd, "slug" => "feat", "args" => args)
-
   def test_preview_counts_and_post_runs_as_the_items_job
     with_pr do |_repo, c1, base, gh|
       gui = Quartermaster::Gui.new(port: 4567, runner: gh, tmux: FakeTmux.new)
@@ -348,10 +358,10 @@ class PrPostScopeTest < Minitest::Test
 
   def test_the_pr_scope_routes_the_items_drafts_and_reanchors_the_moved_ones
     with_pr_repo do |repo|
-      commit(repo, "a.txt", PrPostTest::LINES)
+      commit(repo, "a.txt", PrPostHelpers::LINES)
       push(repo, "main")
       wt = add_worktree(repo, "feature", "wt-feature")
-      commit(wt, "a.txt", PrPostTest::LINES.sub("line 5\n", "line five\n"), message: "c1")
+      commit(wt, "a.txt", PrPostHelpers::LINES.sub("line 5\n", "line five\n"), message: "c1")
       c1 = sha_of(wt, "HEAD")
       push(wt, "feature:refs/pull/7/head")
       item = Quartermaster::WorkItem.create("Feat", project: "Qm", branch: "feature")
@@ -362,7 +372,7 @@ class PrPostScopeTest < Minitest::Test
       moving = store.put_diff_comment(pr.merge("line" => 5, "code" => "line five"))
       stale = store.put_diff_comment(pr.merge("line" => 4, "code" => "line 4"))
       other = store.put_diff_comment(pr.merge("number" => 8, "line" => 5, "code" => "line five"))
-      commit(wt, "a.txt", "top\n" + PrPostTest::LINES.sub("line 4\nline 5\n", "line four\nline five\n"), message: "c2")
+      commit(wt, "a.txt", "top\n" + PrPostHelpers::LINES.sub("line 4\nline 5\n", "line four\nline five\n"), message: "c2")
       push(wt, "feature:refs/pull/7/head")
 
       routes = Quartermaster::BranchDiff.new(tmux: FakeTmux.new, runner: GitPassThroughRunner.new)

@@ -2,9 +2,10 @@
 
 module Quartermaster
   # The user's pending review on one PR, filled from their GitHub drafts (PR
-  # review plan D4, D9, D13). qm never submits it: he does, on GitHub, with
-  # a verdict and a summary. GitHub keeps one pending review per user per PR
-  # (F3), so one made on github.com is added to rather than replaced.
+  # review plan D4, D9, D13) and submitted with a verdict when he clicks
+  # Submit in the GUI's verdict form (submit). GitHub keeps one pending
+  # review per user per PR (F3), so one made on github.com is added to
+  # rather than replaced, and is the one submitted.
   #
   # Each draft goes where ReviewPlan routes it: a thread on the head, a
   # comment on its commit by diff position (the deprecation-flagged route,
@@ -28,7 +29,7 @@ module Quartermaster
       query($owner: String!, $name: String!, $number: Int!) {
         repository(owner: $owner, name: $name) {
           pullRequest(number: $number) {
-            id baseRefName headRefOid state
+            id baseRefName headRefOid state viewerDidAuthor
             reviews(states: PENDING, first: 20) { nodes { id viewerDidAuthor comments { totalCount } } }
           }
         }
@@ -57,6 +58,14 @@ module Quartermaster
       }
     GRAPHQL
 
+    SUBMIT_REVIEW = <<~GRAPHQL
+      mutation($review: ID!, $event: PullRequestReviewEvent!, $body: String) {
+        submitPullRequestReview(input: { pullRequestReviewId: $review, event: $event, body: $body }) { pullRequestReview { id } }
+      }
+    GRAPHQL
+
+    EVENTS = %w[APPROVE COMMENT REQUEST_CHANGES].freeze
+
     attr_reader :repo, :number
 
     # path: a checkout of the PR's repo (the project's root) to fetch into.
@@ -78,28 +87,26 @@ module Quartermaster
     # What the confirmation says before anything is posted: how many go to
     # the head, to their commit (falling back to a file comment if GitHub
     # refuses that route), are outdated, how many replies go to their
-    # threads, and whether a pending review of the user's is already there.
+    # threads, whether a pending review of the user's is already there, and
+    # whether the PR is the user's own (only a comment can be submitted).
     def preview(entries)
       entries = postable(entries)
       replies, comments = entries.partition { |entry| reply?(entry) }
       routes = comments.empty? ? {} : plan.routes(comments)
       counts = routes.values.map { |r| r["route"] }.tally
-      pending = pr["reviews"]["nodes"].find { |r| r["viewerDidAuthor"] }
       { "pr" => label, "url" => PrPrerequisites.pr_url(@repo, @number), "count" => entries.size,
         "head" => counts.fetch("head", 0), "commit" => counts.fetch("commit", 0),
         "outdated" => counts.fetch("outdated", 0), "replies" => replies.size,
         "moved" => routes.values.count { |r| r["moved"] && r["route"] != "outdated" },
-        "pending" => pending && pending["comments"]["totalCount"] }
+        "pending" => existing_review&.dig("comments", "totalCount"), "viewerIsAuthor" => pr["viewerDidAuthor"] == true }
     end
 
     # Posts the drafts into the pending review (created when the user has none
     # on the PR) and updates the store. Returns what happened, for the
     # job's toast.
     def post(entries, drafts)
-      replies, comments = postable(entries).partition { |entry| reply?(entry) }
-      routes = comments.empty? ? {} : plan.routes(comments)
-      postable = comments.reject { |entry| routes[entry["id"]]["route"] == "outdated" }
-      result = { "posted" => 0, "failed" => [], "fallbacks" => 0, "outdated" => comments.size - postable.size }
+      postable, replies, routes, outdated = sort(entries)
+      result = { "posted" => 0, "failed" => [], "fallbacks" => 0, "outdated" => outdated }
       return result if postable.empty? && replies.empty?
 
       review = pending_review_id
@@ -118,6 +125,52 @@ module Quartermaster
       drafts.remove(posted) unless posted.empty?
       ReviewThreads.forget(@repo, @number)
       result.merge("posted" => posted.size)
+    end
+
+    # Posts the drafts as #post does, then submits the pending review with
+    # event (APPROVE, COMMENT or REQUEST_CHANGES; approve/request-changes
+    # spelt as verdicts too) and body. Refused up front: an unknown event,
+    # an approval or change request on the viewer's own PR, a change request
+    # without a body, a comment with neither a body nor any line comment. A
+    # draft that fails aborts before the submit: "submitted" stays nil.
+    # With nothing to post and no pending review, one is made on the head and
+    # submitted, so every submit goes the same way.
+    def submit(entries, drafts, event:, body:)
+      event = self.class.event(event)
+      self.class.check_body(event, body)
+      if pr["viewerDidAuthor"] && event != "COMMENT"
+        raise ArgumentError, "#{label} is your own pull request — only a comment can be submitted on it"
+      end
+
+      postable, replies, = sort(entries)
+      pending = existing_review&.dig("comments", "totalCount").to_i
+      if event == "COMMENT" && body.to_s.strip.empty? && postable.empty? && replies.empty? && pending.zero?
+        raise ArgumentError, "a comment review needs a summary when it carries no comments"
+      end
+
+      result = post(entries, drafts).merge("submitted" => nil, "comments" => nil)
+      return result unless result["failed"].empty?
+
+      data = graphql(SUBMIT_REVIEW, strings: { "review" => pending_review_id, "event" => event, "body" => body.to_s })
+      data.dig("submitPullRequestReview", "pullRequestReview", "id") or raise ArgumentError, "GitHub submitted no review on #{label}"
+      ReviewThreads.forget(@repo, @number)
+      result.merge("submitted" => event, "comments" => result["posted"] + pending)
+    end
+
+    # GitHub's event for a verdict, either spelling; an ArgumentError for
+    # anything else.
+    def self.event(verdict)
+      event = verdict.to_s.strip.upcase.tr("-", "_")
+      return event if EVENTS.include?(event)
+
+      raise ArgumentError, "'#{verdict}' is not a verdict: approve, comment or request-changes"
+    end
+
+    # The rule the server can check without GitHub: a change request says why.
+    def self.check_body(event, body)
+      return unless event == "REQUEST_CHANGES" && body.to_s.strip.empty?
+
+      raise ArgumentError, "requesting changes needs a summary saying what to change"
     end
 
     # The routes as the diff pane shows them, re-anchoring stored drafts on
@@ -150,6 +203,16 @@ module Quartermaster
 
     def postable(entries) = entries.select { |entry| POSTED_KINDS.include?(entry["kind"]) }
 
+    # [comments to post, replies, each comment's route, how many are outdated]
+    def sort(entries)
+      replies, comments = postable(entries).partition { |entry| reply?(entry) }
+      routes = comments.empty? ? {} : plan.routes(comments)
+      posted = comments.reject { |entry| routes[entry["id"]]["route"] == "outdated" }
+      [posted, replies, routes, comments.size - posted.size]
+    end
+
+    def existing_review = pr["reviews"]["nodes"].find { |r| r["viewerDidAuthor"] }
+
     def plan
       @plan ||= begin
         revs = @revisions.fetch(@path, { "repo" => @repo, "number" => @number, "base" => pr["baseRefName"] })
@@ -173,14 +236,14 @@ module Quartermaster
     end
 
     # The user's pending review (one from github.com included), else a new one
-    # on the head — no event, so it stays pending (F4).
+    # on the head — no event, so it stays pending (F4). Made once: a submit
+    # after a post takes the review the post made.
     def pending_review_id
-      existing = pr["reviews"]["nodes"].find { |r| r["viewerDidAuthor"] }
-      return existing["id"] if existing
-
-      data = graphql(ADD_REVIEW, strings: { "pr" => pr["id"], "commit" => pr["headRefOid"] })
-      data.dig("addPullRequestReview", "pullRequestReview", "id") or
-        raise ArgumentError, "GitHub made no pending review on #{label}"
+      @pending_review_id ||= existing_review&.dig("id") || begin
+        data = graphql(ADD_REVIEW, strings: { "pr" => pr["id"], "commit" => pr["headRefOid"] })
+        data.dig("addPullRequestReview", "pullRequestReview", "id") or
+          raise ArgumentError, "GitHub made no pending review on #{label}"
+      end
     end
 
     # A reply joins its thread inside the pending review (F5); a reply

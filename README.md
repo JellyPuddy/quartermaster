@@ -137,7 +137,10 @@ to benchmark your app and a `bin/example_bench.rb`); `notes` adds prompt lines. 
 The PRs view's **Review** types a review skill into the item's chat: `/code-review` by default,
 or the per-project `review_skill:`. Claude is asked to record its findings as qm drafts on the PR
 and, when done, its suggested verdict and summary (`qm draft add --summary`); you curate them in
-the diff pane's tray, and nothing goes to GitHub until you post it.
+the diff pane's tray, and nothing goes to GitHub until you post it. **Post as pending review**
+adds the drafts to your pending review; **Submit review…** posts them and submits the review with
+the verdict you pick (Approve, Comment or Request changes) and a summary. Only that click in the
+GUI submits: no command, chat or automation can.
 
 ### Loose-chat starters
 
@@ -306,8 +309,9 @@ Know this before you install it:
   todo there with `qm todo add` when you ask or when something needs your own hands.
 - **`qm gui` listens on `127.0.0.1` only** and refuses requests from other origins, but
   anything on your machine that can reach that port can drive it, and it can run commands:
-  tmux chats running `claude`, `git worktree` add and remove, `gh`, and whatever dev-server,
-  test-database and IDE commands you configure.
+  tmux chats running `claude`, `git worktree` add and remove, `gh` (which posts your review
+  drafts and, on your click in its verdict form, submits your review on GitHub), and whatever
+  dev-server, test-database and IDE commands you configure.
 - **Some features start `claude -p` in the background** (summaries, asides, benchmarks), which
   counts against your Claude usage or API bill. Benchmark runs keep their folders (script,
   results, logs) in `~/.local/share/quartermaster/benchmarks/`, outside `~/.claude`, where

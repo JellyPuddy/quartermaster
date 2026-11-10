@@ -72,10 +72,8 @@ module Quartermaster
       when "diff-viewed" then gui_diff_viewed(slug, args)
       when "draft-put" then gui_draft_put(slug, args)
       when "draft-move" then gui_draft_move(slug, args["id"].to_s, args["to"])
-      when "review-post" then gui_review_post(slug, args)
       when "thread-reply-put" then ok.merge("draft" => drafts_of(slug).put_thread_reply(args.merge("author" => "user")))
       when "pr-thread-resolve" then gui_thread_resolve(args)
-      when "review-preview" then gui_review_preview(slug, args)
       when "draft-place" then gui_draft_place(slug, args)
       when "issue-comment-put" then ok.merge("draft" => drafts_of(slug).put_issue_comment(args))
       when "draft-edit" then ok.merge("draft" => drafts_of(slug).edit(args["id"].to_s, args["comment"]))
@@ -100,6 +98,7 @@ module Quartermaster
       when "errors-seen" then ok.merge("errors" => ErrorLog.new.tap(&:mark_seen).summary)
       when *GuiBenchmarkActions::COMMANDS then GuiBenchmarkActions.new(benchmarks: @state.benchmarks, jobs: @jobs).dispatch(cmd, slug, args)
       when *GuiTodoActions::COMMANDS then GuiTodoActions.new.dispatch(cmd, args)
+      when *GuiReviewActions::COMMANDS then GuiReviewActions.new(runner: @runner, jobs: @jobs, pr_items: @pr_items).dispatch(cmd, slug, args)
       when "todo-to-item" then GuiTodoActions.new.to_item(args, tmux: @tmux)
       else GuiLooseActions.new(tmux: @tmux, jobs: @jobs).dispatch(cmd, args) || { "ok" => false, "error" => "unknown action '#{cmd}'" }
       end
@@ -452,52 +451,6 @@ module Quartermaster
 
       refusal = ReviewAnchors.refusal(root, entry)
       raise ArgumentError, refusal if refusal
-    end
-
-    # The confirmation's numbers before "Post as pending review" (D4): a gh
-    # query and a fetch, so off the action mutex.
-    def gui_review_preview(slug, args)
-      item = WorkItem.find(slug)
-      review, entries = review_drafts(item, args)
-      ok.merge("preview" => review.preview(entries))
-    end
-
-    # Posts the PR's GitHub drafts (those the tray showed) into the user's
-    # pending review as the item's background job: a GitHub call per draft.
-    def gui_review_post(slug, args)
-      item = WorkItem.find(slug)
-      review, entries = review_drafts(item, args)
-      @jobs.background(item.slug, "posting to #{review.label}…") do
-        result = review.post(entries, Drafts.new(item.slug))
-        review_post_result(review, result)
-      end
-    end
-
-    def review_post_result(review, result)
-      parts = ["#{result["posted"]} added to your pending review on #{review.label} — submit it on GitHub"]
-      parts << "#{result["outdated"]} outdated, not posted" if result["outdated"].positive?
-      out = { "ok" => result["failed"].empty?, "message" => parts.join(" · "), "review" => true }
-      out["error"] = "#{parts.join(" · ")} · #{result["failed"].size} failed and stay in the tray: " \
-                     "#{result["failed"].first}" unless result["failed"].empty?
-      if result["fallbacks"].positive?
-        out["warning"] = "#{result["fallbacks"]} couldn't go on their old commit and became file comments quoting their line"
-      end
-      out
-    end
-
-    def review_drafts(item, args)
-      root = ProjectMap.new.root_for(item.project)
-      raise ArgumentError, "no repo root configured for project '#{item.project}'" unless root && File.directory?(root)
-
-      review = PendingReview.new(root, repo: args["repo"].to_s, number: args["number"], runner: @runner)
-      entries = Drafts.new(item.slug).entries.select do |entry|
-        PendingReview::POSTED_KINDS.include?(entry["kind"]) && entry["repo"].to_s.casecmp?(review.repo) &&
-          entry["number"] == review.number
-      end
-      entries = entries.select { |entry| args["ids"].include?(entry["id"]) } if args["ids"].is_a?(Array)
-      raise ArgumentError, "no review drafts for #{review.label}" if entries.empty?
-
-      [review, entries]
     end
 
     # The outdated card (D10): "line" puts the draft on a line of the PR's
