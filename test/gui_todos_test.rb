@@ -109,6 +109,56 @@ class GuiTodosTest < Minitest::Test
     assert_empty %w[todo-add todo-edit todo-move todo-done todo-delete] - Quartermaster::GuiActions::UNLOCKED
   end
 
+  def test_to_item_creates_the_item_starts_its_chat_in_the_main_checkout_and_ties_the_todo
+    root = Dir.mktmpdir("qm-webapp")
+    configure_projects({ "WebApp" => root })
+    id = act("todo-add", text: "renew the cert", project: "Home")["todo"]["id"]
+
+    reply = act("todo-to-item", id: id, title: "Renew the TLS cert", project: "WebApp", prompt: "renew the cert")
+
+    assert_equal [true, "renew-the-tls-cert", "start"], reply.values_at("ok", "slug", "mode")
+    item = Quartermaster::WorkItem.find("renew-the-tls-cert")
+    assert_equal ["Renew the TLS cert", "WebApp"], [item.title, item.project]
+    opened = server.instance_variable_get(:@tmux).opened
+    assert_equal 1, opened.size
+    assert_equal ["renew-the-tls-cert", root, "renew-the-tls-cert"],
+                 [opened[0][:name], opened[0][:cwd], opened[0][:env]["QM_ITEM"]]
+    assert_equal "renew the cert", opened[0][:argv].last
+    todo = stored.first
+    assert_equal "renew-the-tls-cert", todo["item"]
+    refute todo.key?("project")
+    assert_match(/\A\d{4}-\d\d-\d\dT/, todo["done_at"])
+  ensure
+    FileUtils.rm_rf(root) if root
+  end
+
+  def test_to_item_without_a_prompt_starts_a_bare_chat
+    id = act("todo-add", text: "tidy the garage")["todo"]["id"]
+
+    reply = act("todo-to-item", id: id, title: "Tidy the garage", project: "Home", prompt: "  ")
+
+    assert reply["ok"], reply["error"]
+    assert_equal Quartermaster::Launcher.new.chat_command, server.instance_variable_get(:@tmux).opened[0][:argv]
+  end
+
+  def test_to_item_with_an_unknown_todo_or_no_title_creates_nothing
+    assert_equal [false, "no todo 'nope'"], act("todo-to-item", id: "nope", title: "Anything", project: "Home").values_at("ok", "error")
+    id = act("todo-add", text: "keep me open")["todo"]["id"]
+    assert_equal [false, "title is required"], act("todo-to-item", id: id, title: " ", project: "Home").values_at("ok", "error")
+
+    assert_empty Quartermaster::WorkItem.all
+    assert_empty server.instance_variable_get(:@tmux).opened
+    assert_nil todos.first["done_at"]
+  end
+
+  def test_to_item_is_refused_from_a_foreign_origin_and_not_local
+    payload = { "cmd" => "todo-to-item", "args" => { "id" => "x", "title" => "t" } }
+
+    assert_equal ["403 Forbidden", "no origin"], respond(payload, { "host" => "127.0.0.1:4567" })
+    refute_includes Quartermaster::LoopbackGuard::LOCAL_ACTIONS, "todo-to-item"
+    assert_empty Quartermaster::WorkItem.all
+  end
+
   def test_state_lists_open_todos_in_order_then_the_twenty_newest_done
     clock = Time.utc(2026, 11, 10, 9, 0, 0)
     list = Quartermaster::TodoList.new(clock: -> { clock += 60 })

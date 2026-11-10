@@ -37,7 +37,15 @@ edit, move or delete.
 `todo-edit {id, text?, project?}` (an absent field stays, `project: ""` clears it);
 `todo-move {id, before|after}` (a neighbour's id); `todo-done {id, done}` (`done: false`
 unticks); `todo-delete {id}`. They are in `GuiActions::UNLOCKED`: TodoList's flock already
-serialises them. The state's `todos` is `GuiTodoActions.payload`: the open todos in order, then
+serialises them. `todo-to-item {id, title, project?, prompt?}` (`GuiTodoActions#to_item`) is
+the → Work item: it makes the item the way the board's new item does (`WorkItem.create`, no
+project → `ProjectMap::NO_PROJECT`), starts its chat the way the chat pane's Start does
+(`Launcher#chat_plan` fresh, so in the project's main checkout, with a non-blank `prompt` as
+claude's argument, then `Tmux#open`), and marks the todo done with `item` = the new slug, its
+project dropped; it replies `{slug, mode}` like `pane-start`, for the page to switch to that
+chat. An unknown todo or a blank title is refused before anything is made. It creates an item,
+so it runs under the action mutex, not in `UNLOCKED`; it takes no GuiJobs job (nothing in it
+takes seconds). The state's `todos` is `GuiTodoActions.payload`: the open todos in order, then
 `done_recent`, each `{id, text, created, done_at, item, project, itemTitle}` where `project` is
 the item's when the todo has one (the todo's own otherwise) and `itemTitle` names that item (nil
 for a deleted one). `TodoList#signature` (todos.json's size+mtime) is part of the pulse and

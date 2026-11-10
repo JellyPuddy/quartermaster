@@ -100,6 +100,7 @@ module Quartermaster
       when "errors-seen" then ok.merge("errors" => ErrorLog.new.tap(&:mark_seen).summary)
       when *GuiBenchmarkActions::COMMANDS then GuiBenchmarkActions.new(benchmarks: @state.benchmarks, jobs: @jobs).dispatch(cmd, slug, args)
       when *GuiTodoActions::COMMANDS then GuiTodoActions.new.dispatch(cmd, args)
+      when "todo-to-item" then GuiTodoActions.new.to_item(args, tmux: @tmux)
       else GuiLooseActions.new(tmux: @tmux, jobs: @jobs).dispatch(cmd, args) || { "ok" => false, "error" => "unknown action '#{cmd}'" }
       end
     rescue SystemExit
