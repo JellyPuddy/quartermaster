@@ -11,16 +11,17 @@ module Quartermaster
   # (GuiActions' drafts-send); only the entries actually sent are removed.
   #
   # Each entry: { "id", "kind" (KINDS), "comment", "rev" (bumped on every
-  # edit), "createdAt", "updatedAt" } plus its kind's fields — a diff comment its line address (DIFF_FIELDS: a range's first line in
+  # edit), "createdAt", "updatedAt" } plus its kind's fields — a diff comment
+  # its line address (DIFF_FIELDS: a range's first line in
   # start_line/start_side, every line's text in code) and, made in the PR
-  # scope, its PR (PR_FIELDS); a GitHub comment the same, always with its
-  # PR, waits for the pending review instead of the chat. An annotation what
+  # scope, its PR (PR_FIELDS); a GitHub comment the same, always with its PR,
+  # waits for the pending review instead of the chat. An annotation what
   # PageAnnotations reads (ANNOTATION_FIELDS) and its batch's url/title, an
-  # issue comment its issue's file, the block's source text ("" for the
-  # whole issue) and the issue's title (ISSUE_FIELDS), a thread reply its
-  # thread and PR (REPLY_FIELDS), which like a GitHub comment waits for the
-  # pending review; a review summary (ReviewSummaryDrafts). `qm draft add`
-  # writes here too, from another process: #update's flock makes that safe.
+  # issue comment its issue's file, the block's source text ("" for the whole
+  # issue) and the issue's title (ISSUE_FIELDS), a thread reply its thread and
+  # PR (REPLY_FIELDS), which like a GitHub comment waits for the pending
+  # review; a review summary (ReviewSummaryDrafts). `qm draft add` writes here
+  # too, from another process: #update's flock makes that safe.
   class Drafts
     include ReviewSummaryDrafts
 
@@ -32,10 +33,9 @@ module Quartermaster
     # committed: that branch had no checkout, so its numbers are the ref's.
     DIFF_FIELDS = %w[path side line code range start_line start_side branch committed].freeze
     # repo ("owner/name") and number name the PR; base is its base sha and
-    # commit the one the comment anchors to (the head, or a selected run's
-    # last commit), both as at draft time. subject "file" is a comment on
-    # the whole file (its line only says where it shows); author "user" or
-    # "claude".
+    # commit the one the comment anchors to (the head, or a selected run's last
+    # commit), both as at draft time. subject "file" is a comment on the whole
+    # file (its line only says where it shows); author "user" or "claude".
     PR_FIELDS = %w[repo number base commit subject author].freeze
     # What Drafts#relocate may change: the address, the anchor, "pin"
     # ("commit": post on its commit, not the head — the outdated card's
