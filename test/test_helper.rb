@@ -25,6 +25,26 @@ require "time"
 require "timeout"
 
 module QmTestHelpers
+  def before_setup
+    @threads_before_test = Thread.list
+    super
+  end
+
+  # Background work a test started and left running (a GUI state build's PR
+  # refetch, say) dies with its test, so it can't write into the next test's
+  # QM_ROOT.
+  def after_teardown
+    leaked = Thread.list - @threads_before_test.to_a - [Thread.current]
+    # Killing one (a capture3 caller, say) closes streams its helper threads still read.
+    leaked.each { |thread| thread.report_on_exception = false }
+    leaked.each(&:kill).each do |thread|
+      thread.join
+    rescue StandardError
+      nil
+    end
+    super
+  end
+
   def setup
     FileUtils.rm_rf(Quartermaster::ROOT)
     FileUtils.rm_rf(Dir[File.join(Quartermaster::TRANSCRIPTS_DIR, "*")])
