@@ -93,8 +93,8 @@ app window opens outside links in Chrome itself, so in it (`display-mode: standa
 reroutes an http(s) link to another origin, from a plain `target=_blank` click (one capture-phase
 handler) or `window.open`, to the `open-url` action: `LinkOpener` accepts only absolute http(s)
 URLs and runs macOS `open <url>` through `CommandRunner`, so it lands in the default browser; if
-the POST fails the link opens as before. In a plain tab both are no-ops. The icons were generated once with a throwaway stdlib Zlib PNG writer and
-are committed as binaries; app files sit at the root, not under `/assets/`. xterm.js,
+the POST fails the link opens as before. In a plain tab both are no-ops. The icons were
+generated once with a throwaway stdlib Zlib PNG writer and are committed as binaries; app files sit at the root, not under `/assets/`. xterm.js,
 highlight.js and marked load from jsDelivr with SRI hashes. `docs/gui-mockup.html` is the
 design reference: SF for chrome, SF Mono for data (slugs, ids, states, stamps, kbd chips),
 an indigo accent reserved for focus/links/primary, semantic colours apart from it (amber
