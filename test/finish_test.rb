@@ -1,8 +1,7 @@
 # frozen_string_literal: true
 
 # Loaded by quartermaster_test.rb; also runs alone (`ruby test/finish_test.rb`).
-require_relative "test_helper"
-require_relative "history_rotation_test"
+require_relative "rotation_helpers"
 
 # Finish: Wrap up & close with the final wrap-up prompt, then the item resolved —
 # only once the chat said DONE (its turn's Stop) and its pane exited.

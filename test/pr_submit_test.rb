@@ -1,8 +1,7 @@
 # frozen_string_literal: true
 
 # Loaded by quartermaster_test.rb; also runs alone (`ruby test/pr_submit_test.rb`).
-require_relative "test_helper"
-require_relative "pr_post_test"
+require_relative "pr_post_helpers"
 
 # Submitting the user's review with a verdict (submit plan D1, D3-D7): the
 # drafts go into the pending review first, then submitPullRequestReview.

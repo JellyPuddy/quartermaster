@@ -1,8 +1,7 @@
 # frozen_string_literal: true
 
 # Loaded by quartermaster_test.rb; also runs alone (`ruby test/gui_automations_test.rb`).
-require_relative "test_helper"
-require_relative "automation_cli_test"
+require_relative "routines_fixture"
 
 # The ⚙ area's Automations tab, server side: /api/automations… through the
 # GUI router with a stub routines client (no keychain, no network). Network
@@ -10,9 +9,7 @@ require_relative "automation_cli_test"
 class GuiAutomationsTest < Minitest::Test
   include QmTestHelpers
 
-  StubClient = AutomationCliTest::StubClient
-  DIGEST = AutomationCliTest::DIGEST
-  ID = AutomationCliTest::ID
+  include RoutinesFixture
   ON = "automations:\n  token_source: claude_code\n"
 
   def setup
