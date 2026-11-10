@@ -1,0 +1,134 @@
+//! The client side of the GUI's `POST /api/action`: how the commands that act on the running GUI's
+//! chats (`rotate`, `caffeinate`, `pane-start`, `pane-resume`) reach it. The GUI owns the work — its
+//! tmux session, its terminal, the rotation job — so those commands only ask, and with no GUI they
+//! say so and do nothing. The request is the one Ruby's `Net::HTTP` sends: loopback, no `Origin`.
+
+use std::io::{Read, Write};
+use std::net::{SocketAddr, TcpStream};
+use std::time::Duration;
+
+use serde_json::{Map, Value};
+
+pub enum Failed {
+    /// `abort`'s message, printed as is.
+    Abort(String),
+    /// A port this port doesn't read like Ruby's `String#to_i`.
+    Unsupported,
+}
+
+/// `Gui.port`: `QM_GUI_PORT` (default 49737) through `to_i`, so 0 is the server's own pick (`qm gui` prints
+/// the one it got); a value outside 0–65535 is refused by name.
+pub fn port() -> Result<u16, Failed> {
+    let Ok(v) = std::env::var("QM_GUI_PORT") else { return Ok(49737) };
+    let digits: String = v.trim_start().trim_start_matches('+').chars().take_while(char::is_ascii_digit).collect();
+    let n = if digits.is_empty() { 0 } else { digits.parse::<u64>().unwrap_or(u64::MAX) };
+    u16::try_from(n).ok().filter(|_| !v.trim_start().starts_with('-')).ok_or_else(|| Failed::Abort(format!("qm: QM_GUI_PORT must be a port from 0 to 65535, not '{v}'")))
+}
+
+fn decode_chunked(mut body: &[u8]) -> Option<Vec<u8>> {
+    let mut out = vec![];
+    loop {
+        let eol = body.windows(2).position(|w| w == b"\r\n")?;
+        let size = usize::from_str_radix(std::str::from_utf8(&body[..eol]).ok()?.split(';').next()?.trim(), 16).ok()?;
+        body = &body[eol + 2..];
+        if size == 0 {
+            return Some(out);
+        }
+        out.extend_from_slice(body.get(..size)?);
+        body = body.get(size + 2..)?;
+    }
+}
+
+/// Posts one action and returns the reply; a refusal (`ok` false) aborts with its error.
+pub fn call(name: &str, cmd: &str, slug: Option<&str>, args: Value) -> Result<Map<String, Value>, Failed> {
+    post(name, cmd, slug, args, false).map(|r| r.unwrap_or_default())
+}
+
+/// As `call`, but no GUI answering is `None` rather than an abort.
+pub fn call_optional(name: &str, cmd: &str, slug: Option<&str>, args: Value) -> Result<Option<Map<String, Value>>, Failed> {
+    post(name, cmd, slug, args, true)
+}
+
+fn post(name: &str, cmd: &str, slug: Option<&str>, args: Value, optional: bool) -> Result<Option<Map<String, Value>>, Failed> {
+    let port = port()?;
+    let abort = |m: String| Failed::Abort(m);
+    let mut payload = Map::new();
+    payload.insert("cmd".into(), cmd.into());
+    if let Some(s) = slug {
+        payload.insert("slug".into(), s.into());
+    }
+    payload.insert("args".into(), args);
+    let body = serde_json::to_string(&Value::Object(payload)).unwrap();
+
+    let addr: SocketAddr = ([127, 0, 0, 1], port).into();
+    let no_gui = || abort(format!("qm {name}: no qm gui running on 127.0.0.1:{port} — nothing done (it starts with `qm gui`)"));
+    let slow = || abort(format!("qm {name}: the qm gui on 127.0.0.1:{port} did not answer in time — try again"));
+    let odd = || abort(format!("qm {name}: 127.0.0.1:{port} did not answer like a qm gui"));
+    let mut stream = match TcpStream::connect_timeout(&addr, Duration::from_secs(2)) {
+        Ok(s) => s,
+        Err(_) if optional => return Ok(None),
+        Err(_) => return Err(no_gui()),
+    };
+    if !serves_this_root(&mut stream, port) {
+        let shown = crate::cli_format::short_path(Some(&crate::data_root::root().to_string_lossy()));
+        return if optional { Ok(None) } else { Err(abort(format!("qm {name}: 127.0.0.1:{port} is not a qm gui on this data root ({shown}) — nothing done"))) };
+    }
+    let mut stream = match TcpStream::connect_timeout(&addr, Duration::from_secs(2)) {
+        Ok(s) => s,
+        Err(_) if optional => return Ok(None),
+        Err(_) => return Err(no_gui()),
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
+    let request = format!("POST /api/action HTTP/1.1\r\nContent-Type: application/json\r\nConnection: close\r\nHost: 127.0.0.1:{port}\r\nContent-Length: {}\r\n\r\n{body}", body.len());
+    if stream.write_all(request.as_bytes()).is_err() {
+        return if optional { Ok(None) } else { Err(no_gui()) };
+    }
+    let mut raw = vec![];
+    if let Err(e) = stream.read_to_end(&mut raw) {
+        return Err(if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) { slow() } else { odd() });
+    }
+    let split = raw.windows(4).position(|w| w == b"\r\n\r\n").ok_or_else(slow)?;
+    let head = String::from_utf8_lossy(&raw[..split]).to_ascii_lowercase();
+    let mut payload = raw[split + 4..].to_vec();
+    if head.contains("transfer-encoding: chunked") {
+        payload = decode_chunked(&payload).ok_or_else(odd)?;
+    } else if let Some(n) = head.lines().find_map(|l| l.strip_prefix("content-length:")).and_then(|v| v.trim().parse::<usize>().ok()) {
+        payload.truncate(n);
+    }
+    let Ok(Value::Object(reply)) = serde_json::from_slice::<Value>(&payload) else { return Err(odd()) };
+    if matches!(reply.get("ok"), None | Some(Value::Null) | Some(Value::Bool(false))) {
+        let error = match reply.get("error") {
+            None | Some(Value::Null) => String::new(),
+            Some(Value::String(s)) => s.clone(),
+            Some(other) => other.to_string(),
+        };
+        return Err(abort(format!("qm {name}: {error}")));
+    }
+    Ok(Some(reply))
+}
+
+/// Asks the GUI behind `stream` (one request, then the connection ends) which data root it serves: a GUI on
+/// another root, or a server that names no root, is no GUI of this root's. The check runs before the action
+/// rather than on its reply, because by the time a reply arrives the wrong GUI has already acted.
+fn serves_this_root(stream: &mut TcpStream, port: u16) -> bool {
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
+    let request = format!("GET /api/root HTTP/1.1\r\nConnection: close\r\nHost: 127.0.0.1:{port}\r\n\r\n");
+    let mut raw = vec![];
+    if stream.write_all(request.as_bytes()).is_err() || stream.read_to_end(&mut raw).is_err() {
+        return false;
+    }
+    let Some(split) = raw.windows(4).position(|w| w == b"\r\n\r\n") else { return false };
+    let head = String::from_utf8_lossy(&raw[..split]).to_ascii_lowercase();
+    let mut payload = raw[split + 4..].to_vec();
+    if head.contains("transfer-encoding: chunked") {
+        let Some(plain) = decode_chunked(&payload) else { return false };
+        payload = plain;
+    }
+    let ok = head.lines().next().is_some_and(|l| l.split_whitespace().nth(1) == Some("200"));
+    ok && serde_json::from_slice::<Value>(&payload).ok().and_then(|v| v.get("root").and_then(Value::as_str).map(String::from)).as_deref() == Some(crate::data_root::root_id().as_str())
+}
+
+pub fn truthy(v: Option<&Value>) -> bool {
+    !matches!(v, None | Some(Value::Null) | Some(Value::Bool(false)))
+}
+

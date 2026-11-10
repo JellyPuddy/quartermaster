@@ -1,0 +1,232 @@
+$ qm "new" "Tunnel work" "--project" "web" "--pf-mode" "tunnel"
+exit 0
+--- stdout
+tunnel-work
+--- tunnel-work.md
+---
+v: 1
+title: Tunnel work
+state: in_progress
+project: web
+created: 'DATE'
+pf_mode: tunnel
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "new" "Bad mode" "--project" "web" "--pf-mode" "prod"
+exit 1
+--- stderr
+qm: devsrv mode must be one of: dev, tunnel
+--- tunnel-work.md
+---
+v: 1
+title: Tunnel work
+state: in_progress
+project: web
+created: 'DATE'
+pf_mode: tunnel
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "new" "Tunnel work" "--project" "web" "--pf-mode" "prod"
+exit 1
+--- stderr
+qm: work item 'tunnel-work' already exists
+--- tunnel-work.md
+---
+v: 1
+title: Tunnel work
+state: in_progress
+project: web
+created: 'DATE'
+pf_mode: tunnel
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "new" "No server" "--project" "plain" "--pf-mode" "dev"
+exit 1
+--- stderr
+qm: plain has no dev server: run `qm config set projects.plain.dev_server.command <command>`
+--- tunnel-work.md
+---
+v: 1
+title: Tunnel work
+state: in_progress
+project: web
+created: 'DATE'
+pf_mode: tunnel
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "new" "Unknown project" "--project" "ghost" "--pf-mode" "dev"
+exit 1
+--- stderr
+qm: ghost has no dev server: run `qm config set projects.ghost.dev_server.command <command>`
+--- tunnel-work.md
+---
+v: 1
+title: Tunnel work
+state: in_progress
+project: web
+created: 'DATE'
+pf_mode: tunnel
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "new" "Solo" "--project" "one" "--pf-mode" "default"
+exit 0
+--- stdout
+solo
+--- tunnel-work.md
+---
+v: 1
+title: Tunnel work
+state: in_progress
+project: web
+created: 'DATE'
+pf_mode: tunnel
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "new" "Yes mode" "--branch" "b" "--session" "s1" "--project" "web" "--pf-mode" "dev" "--description" "d"
+exit 0
+--- stdout
+yes-mode
+--- tunnel-work.md
+---
+v: 1
+title: Tunnel work
+state: in_progress
+project: web
+created: 'DATE'
+pf_mode: tunnel
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "new" "Trailing" "--pf-mode"
+exit 1
+--- stderr
+qm: missing argument: --pf-mode
+--- tunnel-work.md
+---
+v: 1
+title: Tunnel work
+state: in_progress
+project: web
+created: 'DATE'
+pf_mode: tunnel
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "new" "--pf-mode=dev" "Joined" "--project" "web"
+exit 0
+--- stdout
+joined
+--- tunnel-work.md
+---
+v: 1
+title: Tunnel work
+state: in_progress
+project: web
+created: 'DATE'
+pf_mode: tunnel
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+
+$ qm "show" "tunnel-work"
+exit 0
+--- stdout
+[1mTunnel work[0m
+in_progress · web · devsrv tunnel · created DATE
+
+[1mSessions[0m
+(none)
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+--- tunnel-work.md
+---
+v: 1
+title: Tunnel work
+state: in_progress
+project: web
+created: 'DATE'
+pf_mode: tunnel
+---
+
+## Description
+
+_TODO_
+
+## Notes
+
+## Snapshots
+

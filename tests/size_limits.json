@@ -1,0 +1,20 @@
+{
+  "CLAUDE.md": 5748,
+  "gui/js/chat-side.js": 492,
+  "gui/js/drafts.js": 553,
+  "gui/js/issues.js": 593,
+  "src/benchmark_run.rs": 462,
+  "src/branch_diff.rs": 769,
+  "src/build_progress.rs": 450,
+  "src/cleanup.rs": 486,
+  "src/draft_messages.rs": 441,
+  "src/gui_actions.rs": 1357,
+  "src/gui_draft_actions.rs": 601,
+  "src/gui_server.rs": 679,
+  "src/gui_state.rs": 526,
+  "src/issue_drafts.rs": 436,
+  "src/prompt_diff.rs": 468,
+  "src/psych.rs": 601,
+  "src/work_item.rs": 851,
+  "tests/gui.rs": 5974
+}

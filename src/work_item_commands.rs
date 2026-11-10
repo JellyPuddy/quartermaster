@@ -1,0 +1,378 @@
+//! The work-item commands of the CLI, ported from `Cli#cmd_*`. Anything this port is not sure it
+//! parses or writes exactly as Ruby does is refused (`Outcome::Refused`) before anything is written.
+
+use std::io::Read;
+
+use crate::cli_format::{ljust, note_line};
+use crate::error::{QmError, UNEMITTABLE};
+use crate::git::git;
+pub use crate::outcome::Outcome;
+use crate::outcome::{abort, done};
+use crate::note::NOTE_KINDS;
+use crate::ruby_text::strip;
+use crate::attention::Attention;
+use crate::work_item::{Snooze, WorkItem, STATES};
+
+/// An error as `Cli#run` reports it: `qm: <message>`, or a refusal when qm can't write the value faithfully.
+pub(crate) fn failed(e: QmError) -> Outcome {
+    if e.class == UNEMITTABLE {
+        Outcome::Refused
+    } else {
+        abort(&format!("qm: {}", e.message))
+    }
+}
+
+macro_rules! tri {
+    ($e:expr) => {
+        match $e {
+            Ok(v) => v,
+            Err(e) => return failed(e),
+        }
+    };
+}
+pub(crate) use tri;
+
+/// `Some(outcome)` for the commands ported here, `None` for every other word.
+pub fn run(command: &str, args: &[String]) -> Option<Outcome> {
+    Some(match command {
+        "new" => crate::free_text_commands::new(args),
+        "note" => crate::free_text_commands::note(args),
+        "retag" => retag(args),
+        "state" => state(args),
+        "link-branch" => link_branch(args),
+        "unlink-branch" => unlink_branch(args),
+        "board" => board(args),
+        "board-rows" => board_rows(args),
+        "board-answer" => board_answer(args),
+        "pf-mode" => pf_mode(args),
+        "move" => move_to(args),
+        "retitle" => retitle(args),
+        "describe" => describe(args),
+        "detach" => detach(args),
+        "attach" => attach(args),
+        "ack" => ack(args),
+        "cleanup" => crate::cleanup_command::cleanup(args),
+        "pr" => pr(args),
+        "pr-requires" => crate::pr_requires_command::run(args),
+        "sweep" => crate::cleanup_command::sweep(args),
+        "issues-dir" => issues_dir(args),
+        "draft" => crate::draft_command::run(args),
+        "snooze" => snooze(args),
+        "list" => crate::list_command::list(args),
+        _ => return None,
+    })
+}
+
+/// Where the /draft-issues skill writes an item's issue files: created here, printed.
+fn issues_dir(a: &[String]) -> Outcome {
+    let Some(slug) = a.first() else { return abort("usage: qm issues-dir SLUG") };
+    if slug.starts_with('-') {
+        return Outcome::Refused;
+    }
+    if !crate::cleanup_command::valid_slug(slug) {
+        return abort(&format!("qm: '{slug}' is not a work item slug"));
+    }
+    tri!(WorkItem::find(slug));
+    let dir = crate::issue_drafts::dir(slug);
+    if std::fs::create_dir_all(&dir).is_err() {
+        return Outcome::Refused;
+    }
+    done(format!("{}\n", dir.display()))
+}
+
+fn retag(a: &[String]) -> Outcome {
+    let [slug, position, kind, ..] = a else {
+        return abort(&format!("usage: qm retag SLUG POSITION KIND ({}) — POSITION is the number qm show prints", NOTE_KINDS.join(" | ")));
+    };
+    // `Integer(position, exception: false) || 0`: the whole text must be an integer (`3x`, `3.5` and `3,` are not
+    // one, so they name no note), and `+3`, ` 3 `, `0x3` and `-3` are
+    let position = match crate::ruby_text::kernel_integer_text(position) {
+        Ok(n) => n.unwrap_or(0),
+        Err(()) => return Outcome::Refused,
+    };
+    let mut item = tri!(WorkItem::find(slug));
+    let note = tri!(item.update_note_kind(position, kind));
+    done(format!("{}\n", note_line(&note)))
+}
+
+fn state(a: &[String]) -> Outcome {
+    let [slug, state, ..] = a else { return abort(&format!("usage: qm state SLUG ({})", STATES.join(" | "))) };
+    let mut item = tri!(WorkItem::find(slug));
+    tri!(item.update_state(state));
+    // resolving is when worktrees go stale, so say what cleanup would do
+    done(if state == "resolved" { crate::cleanup_command::offer(&item) } else { String::new() })
+}
+
+fn link_branch(a: &[String]) -> Outcome {
+    let mut temp = false;
+    let mut positional: Vec<&String> = vec![];
+    for arg in a {
+        match arg.as_str() {
+            "--temp" => temp = true,
+            s if s.starts_with('-') => return Outcome::Refused,
+            _ => positional.push(arg),
+        }
+    }
+    let cwd = std::env::current_dir().ok();
+    let branch = positional
+        .get(1)
+        .map(|b| b.to_string())
+        .or_else(|| git(cwd.as_deref().and_then(|p| p.to_str()), &["rev-parse", "--abbrev-ref", "HEAD"]));
+    let (Some(slug), Some(branch)) = (positional.first(), branch) else {
+        return abort("usage: qm link-branch SLUG [BRANCH] [--temp]  (BRANCH defaults to the current branch)");
+    };
+    let mut item = tri!(WorkItem::find(slug));
+    if temp {
+        if item.branches().contains(&branch) {
+            return abort(&format!("qm: '{branch}' is already a linked branch of '{slug}'; unlink it first"));
+        }
+        tri!(item.add_temp_branch(&branch));
+        done(format!("{slug} → temp: {}\n", item.temp_branches().join(", ")))
+    } else {
+        tri!(item.link_branch(&branch));
+        done(format!("{slug} → {}\n", item.branches().join(", ")))
+    }
+}
+
+fn unlink_branch(a: &[String]) -> Outcome {
+    let [slug, branch, ..] = a else { return abort("usage: qm unlink-branch SLUG BRANCH") };
+    let mut item = tri!(WorkItem::find(slug));
+    if !item.branches().contains(branch) {
+        return abort(&format!("qm: '{slug}' has no branch '{branch}'"));
+    }
+    tri!(item.unlink_branch(branch));
+    let left = item.branches();
+    done(format!("{slug} → {}\n", if left.is_empty() { "(no branches)".to_string() } else { left.join(", ") }))
+}
+
+fn board(a: &[String]) -> Outcome {
+    let mut answers_dir: Option<&String> = None;
+    let mut positional: Vec<&String> = vec![];
+    let mut i = 0;
+    while i < a.len() {
+        match a[i].as_str() {
+            "--answers-dir" => {
+                let Some(value) = a.get(i + 1) else { return Outcome::Refused };
+                answers_dir = Some(value);
+                i += 2;
+            }
+            s if s.starts_with('-') => return Outcome::Refused,
+            _ => {
+                positional.push(&a[i]);
+                i += 1;
+            }
+        }
+    }
+    if answers_dir.is_some_and(|d| d.starts_with('~') && d != "~" && !d.starts_with("~/")) {
+        return Outcome::Refused; // `~user` expansion
+    }
+    let Some(slug) = positional.first() else { return abort("usage: qm board SLUG [URL [--answers-dir DIR] | clear]") };
+    let url = positional.get(1).map(|u| u.as_str());
+    if answers_dir.is_some() && matches!(url, None | Some("clear")) {
+        return abort("qm: --answers-dir needs a board URL");
+    }
+    let mut item = tri!(WorkItem::find(slug));
+    match url {
+        None => match item.board() {
+            Some(b) => done(format!("{b}\n")),
+            None => Outcome::Done { code: 1, stdout: String::new(), stderr: String::new() },
+        },
+        Some("clear") => {
+            tri!(item.unlink_board());
+            done(format!("{slug} → (no status board)\n"))
+        }
+        Some(url) => {
+            tri!(item.link_board(url, answers_dir.map(String::as_str)));
+            let answers = item.board_answers_dir().map(|d| format!(" (answers: {d})")).unwrap_or_default();
+            done(format!("{slug} → {url}{answers}\n"))
+        }
+    }
+}
+
+fn move_to(a: &[String]) -> Outcome {
+    let [slug, project, ..] = a else { return abort("usage: qm move SLUG PROJECT") };
+    let mut item = tri!(WorkItem::find(slug));
+    tri!(item.move_to(project));
+    done(format!("{slug} → {project}\n"))
+}
+
+/// `qm pr SLUG`: the branch's PR in the browser; a choice of branches is the fzf picker's (Ruby's).
+fn pr(a: &[String]) -> Outcome {
+    let Some(slug) = a.first() else { return abort("usage: qm pr SLUG") };
+    let item = tri!(WorkItem::find(slug));
+    let branches = item.branches();
+    let mut chosen = None;
+    if branches.len() > 1 {
+        if !crate::viewer::fzf_available() {
+            return abort("qm: the viewer needs fzf (brew install fzf)");
+        }
+        match crate::viewer::pick(&branches, &format!("PR of {} >", item.slug)).filter(|b| !b.is_empty()) {
+            Some(b) => chosen = Some(b),
+            None => return done(String::new()),
+        }
+    }
+    match crate::pr_status::PrStatus::new(crate::clock::now_f64() as i64).open_web(&item, chosen.as_deref()) {
+        Ok(_) => done(String::new()),
+        Err(Some(m)) => abort(&format!("qm: {m}")),
+        Err(None) => Outcome::Refused,
+    }
+}
+
+fn retitle(a: &[String]) -> Outcome {
+    let title = strip(&crate::opt_parse::words(a.get(1..).unwrap_or(&[])).join(" ")).to_string();
+    let Some(slug) = a.first().filter(|_| !title.is_empty()) else {
+        return abort("usage: qm retitle SLUG [--] NEW_TITLE  (the slug never changes)");
+    };
+    let mut item = tri!(WorkItem::find(slug));
+    tri!(item.retitle(&title));
+    done(format!("{slug}: {title}\n"))
+}
+
+fn describe(a: &[String]) -> Outcome {
+    let mut text = strip(&crate::opt_parse::words(a.get(1..).unwrap_or(&[])).join(" ")).to_string();
+    if text.is_empty() || text == "-" {
+        let mut piped = String::new();
+        let _ = std::io::stdin().read_to_string(&mut piped);
+        text = strip(&piped).to_string();
+    }
+    let Some(slug) = a.first().filter(|_| !text.is_empty()) else {
+        return abort("usage: qm describe SLUG [--] TEXT  (or pipe the text on stdin)");
+    };
+    let mut item = tri!(WorkItem::find(slug));
+    tri!(item.describe(&text));
+    done(String::new())
+}
+
+/// "detached from 'other'" for each item the session left, then the chat pane follows it.
+pub(crate) fn report_claim(vacated: &[String], session_id: &str, slug: &str, stdout: &mut String, stderr: &mut String) {
+    for other in vacated {
+        stdout.push_str(&format!("detached from '{other}'\n"));
+    }
+    if let Some(warning) = crate::pane_follows_session::follow(session_id, vacated, slug) {
+        stderr.push_str(&format!("qm: {warning}\n"));
+    }
+}
+
+/// `SLUG --session ID`; None when the arguments are some other shape Ruby's parser would read.
+fn slug_and_session(a: &[String]) -> Result<(Option<&String>, Option<&String>), ()> {
+    if a.first().is_some_and(|s| s.starts_with('-')) {
+        return Err(());
+    }
+    match a.get(1..).unwrap_or(&[]) {
+        [] => Ok((a.first(), None)),
+        [flag, id] if flag == "--session" => Ok((a.first(), Some(id))),
+        _ => Err(()),
+    }
+}
+
+fn attach(a: &[String]) -> Outcome {
+    let Ok((slug, session)) = slug_and_session(a) else { return Outcome::Refused };
+    let (Some(slug), Some(session)) = (slug, session) else { return abort("usage: qm attach SLUG --session SESSION_ID") };
+    let mut item = tri!(WorkItem::find(slug));
+    let vacated = tri!(item.claim_session(session));
+    let (mut stdout, mut stderr) = (String::new(), String::new());
+    report_claim(&vacated, session, slug, &mut stdout, &mut stderr);
+    Outcome::Done { code: 0, stdout, stderr }
+}
+
+fn detach(a: &[String]) -> Outcome {
+    let Ok((slug, session)) = slug_and_session(a) else { return Outcome::Refused };
+    let (Some(slug), Some(session)) = (slug, session) else { return abort("usage: qm detach SLUG --session SESSION_ID") };
+    let mut item = tri!(WorkItem::find(slug));
+    tri!(item.detach_session(session));
+    done(String::new())
+}
+
+fn ack(a: &[String]) -> Outcome {
+    let Some(slug) = a.first() else { return abort("usage: qm ack SLUG [SESSION_ID]") };
+    let mut item = tri!(WorkItem::find(slug));
+    let attention = Attention::new(std::time::SystemTime::now());
+    let ids = tri!(attention.acknowledge_all(&mut item, a.get(1).map(String::as_str)));
+    if ids.is_empty() {
+        done(format!("{slug}: no degradation warnings to acknowledge\n"))
+    } else {
+        done(format!("{slug}: acknowledged degradation of {} session(s)\n", ids.len()))
+    }
+}
+
+pub(crate) fn snooze(a: &[String]) -> Outcome {
+    let usage = || abort("usage: qm snooze SLUG (1d | 7d | Nd | turn | clear)");
+    let [slug, duration, ..] = a else { return usage() };
+    let mut item = tri!(WorkItem::find(slug));
+    match item.snooze(duration) {
+        Ok(Snooze::Cleared) => done(format!("{slug}: snooze cleared\n")),
+        Ok(Snooze::Turn) => done(format!("{slug}: your-turn snoozed until the chat's next turn ends\n")),
+        Ok(Snooze::Until(date)) => done(format!("{slug}: snoozed until {date}\n")),
+        Err(e) if e.class == "ArgumentError" => usage(),
+        Err(e) => failed(e),
+    }
+}
+
+/// The item's board as mirrored from board-writes.jsonl, a row per line (`--json`: full rows).
+fn board_rows(a: &[String]) -> Outcome {
+    let json = a.iter().any(|x| x == "--json");
+    let rest: Vec<&String> = a.iter().filter(|x| *x != "--json").collect();
+    let Some(slug) = rest.first() else { return abort("usage: qm board-rows SLUG [--json]") };
+    let item = tri!(WorkItem::find(slug));
+    if item.board().is_none() {
+        return abort(&format!("qm: '{slug}' has no status board"));
+    }
+    let Ok(rows) = crate::board_mirror::rows_for(&item) else { return Outcome::Refused };
+    if json {
+        return done(format!("{}\n", crate::drafts::pretty(&serde_json::Value::Array(rows))));
+    }
+    if rows.is_empty() {
+        return done(format!("(no rows mirrored for {})\n", item.board().unwrap_or_default()));
+    }
+    let text = |v: &serde_json::Value| match v {
+        serde_json::Value::Null => Some(String::new()),
+        serde_json::Value::String(t) => Some(t.clone()),
+        serde_json::Value::Bool(b) => Some(b.to_string()),
+        serde_json::Value::Number(n) if n.is_i64() || n.is_u64() => Some(n.to_string()),
+        _ => None,
+    };
+    let mut out = String::new();
+    let width = rows.iter().map(|r| r["doc_id"].as_str().unwrap_or("").chars().count()).max().unwrap_or(0);
+    for r in &rows {
+        let (Some(status), Some(title), Some(note)) = (text(&r["status"]), text(&r["title"]), text(&r["note"])) else { return Outcome::Refused };
+        let mut line = format!("{}  {}  {title}", ljust(r["doc_id"].as_str().unwrap_or(""), width), ljust(&status, 8));
+        if !note.is_empty() {
+            line += &format!(" — {note}");
+        }
+        out += &format!("{line}\n");
+    }
+    done(out)
+}
+
+fn board_answer(a: &[String]) -> Outcome {
+    let (Some(slug), Some(doc_id)) = (a.first(), a.get(1)) else { return abort("usage: qm board-answer SLUG ROW_ID TEXT  ('-' or no TEXT reads stdin)") };
+    let words = crate::opt_parse::words(&a[2..]);
+    let text = if words.is_empty() || words == ["-"] {
+        let mut piped = String::new();
+        let _ = std::io::stdin().read_to_string(&mut piped);
+        piped
+    } else {
+        words.join(" ")
+    };
+    let item = tri!(WorkItem::find(slug));
+    match crate::board_mirror::answer(&item, doc_id, &text) {
+        Ok(path) => done(format!("{}\n", path.display())),
+        Err(Ok(m)) => abort(&format!("qm: {m}")),
+        Err(Err(_)) => Outcome::Refused,
+    }
+}
+
+/// Bare `qm pf-mode SLUG` prints the mode, like `qm board SLUG`.
+fn pf_mode(a: &[String]) -> Outcome {
+    let Some(slug) = a.first() else { return abort("usage: qm pf-mode SLUG [MODE]") };
+    let mut item = tri!(WorkItem::find(slug));
+    let command = crate::project_config::ProjectConfig::current().settings(item.project().as_deref()).and_then(|s| s.dev_server.as_ref().map(|d| d.command.clone()));
+    let Some(mode) = a.get(1) else {
+        return match item.pf_mode() {
+            Some(m) => done(format!("{m}\n")),
+            None => abort(&format!("qm: '{slug}' is {}, which has no dev server: run `{}`", item.project().unwrap_or_default(), crate::project_config::config_command(&item.project().unwrap_or_default(), "dev_server.command", "<command>"))),
+        };
+    };
+    tri!(item.update_pf_mode(mode));
+    done(format!("{slug} → {} {mode}\n", command.unwrap_or_default()))
+}

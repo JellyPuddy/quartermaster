@@ -1,7 +1,7 @@
 # Phone page
 
-**Code:** `lib/quartermaster/overview.rb`, `skills/work-items/SKILL.md`, `skills/work-items/page.html`
-**Tests:** `test/overview_test.rb`
+**Code:** `skills/work-items/SKILL.md`, `skills/work-items/page.html`
+**Tests:** `tests/cli_overview.rs`, `tests/cli_board.rs`
 **Depends on:** [work-items](work-items.md), [attention](attention.md), [side-panel](side-panel.md)
 
 ## What it does
@@ -15,11 +15,11 @@ artifact instead, filled by a chat running the `/work-items` skill.
 `{slug, title, state, project, branches, chat: {state, since, snoozed, waitingOn}, paneLive,
 lastActivity, openNotes: [{position, stamp, text}], board}`.
 - Chat state is `ChatAttention`'s; items without an entry read `none`, with activity from
-  their newest session. `paneLive` comes from one `Tmux#sessions` listing.
-- `openNotes` are the `open` ones among `WorkItem#injectable_notes`, so the page shows exactly
+  their newest session. `paneLive` comes from one `tmux::sessions` listing.
+- `openNotes` are the `open` ones among `work_item::injectable_notes`, so the page shows exactly
   the blockers a session gets injected.
-- `rateLimits` is `RateLimits#payload` (see [side-panel](side-panel.md)).
-- Order: in progress first, then fridge; within a state ChatAttention's rank (blocked, your
+- `rateLimits` is `gui_state::rate_limits` (see [side-panel](side-panel.md)).
+- Order: in progress first, then fridge; within a state `chat_attention`'s rank (blocked, your
   turn, working, waiting, none), then newest activity, then slug. Resolved items are only
   counted; automations (`kind: automation`) are neither shown nor counted.
 - With PATH it writes atomically (temp file + rename) and prints a one-line summary; without,
@@ -36,7 +36,7 @@ greyed with "seen 8 h ago" past 6 h).
 
 **Config** — `overview_artifact:` in `config.yml` holds the published page's URL;
 `qm overview --url` prints it (exit 1 naming `qm config set overview_artifact <its claude.ai URL>`
-while unset); `Overview.artifact_url` asks `ProjectConfig.current` for it (a broken config reads as unset).
+while unset); it asks `project_config::current` for it (a broken config reads as unset).
 
 **Republishing** — `qm overview --page` prints the page file's path when its SHA-256 differs
 from the one `qm overview --page-published` recorded in `overview-page.sha256`, else nothing.

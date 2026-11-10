@@ -1,23 +1,20 @@
 # CLI and viewer
 
-**Code:** `lib/quartermaster/cli.rb`, `lib/quartermaster/cli_format.rb`, `lib/quartermaster/cli_viewer.rb`, `lib/quartermaster/cli_attention.rb`, `lib/quartermaster/cli_chats.rb`, `lib/quartermaster/cli_prs.rb`, `lib/quartermaster/cli_cleanup.rb`, `lib/quartermaster/cli_workspace.rb`, `lib/quartermaster/cli_setup.rb`, `lib/quartermaster/free_text_args.rb`, `lib/quartermaster/viewer.rb`, `lib/quartermaster/feature_use.rb`, `lib/quartermaster/ruby_pin.rb`, `lib/quartermaster/ruby_floor.rb`, `lib/quartermaster/doctor.rb`, `quartermaster`
-**Tests:** `test/viewer_test.rb`, `test/free_text_args_test.rb`, `test/feature_use_test.rb`, `test/ruby_pin_test.rb`, `test/doctor_test.rb`
+**Code:** `src/cli.rs`, `src/cli_format.rs`, `src/viewer_commands.rs`, `src/session_rows.rs`, `src/show_command.rs`, `src/session_detail.rs`, `src/attention_command.rs`, `src/overview.rs`, `src/chats_commands.rs`, `src/pr_requires_command.rs`, `src/draft_command.rs`, `src/cleanup_command.rs`, `src/workspace_commands.rs`, `src/viewer.rs`, `src/feature_use.rs`, `quartermaster`, `src/main.rs`, `src/lib.rs`, `src/outcome.rs`, `src/delegate.rs`, `src/opt_parse.rs`, `src/session_commands.rs`, `src/doctor.rs`, `src/list_command.rs`, `src/work_item_commands.rs`, `src/free_text_commands.rs`, `src/error.rs`, `src/clock.rs`, `src/ruby_format.rs`, `src/ruby_num.rs`, `src/ruby_text.rs`, `src/data_root.rs`, `src/git.rs`, `src/sha1.rs`, `src/sha256.rs`
+**Tests:** `tests/free_text_args.rs`, `tests/viewer.rs`, `tests/cli_feature_use.rs`, `tests/cli_launch.rs`, `tests/gui_handoff.rs`, `tests/cli_overview.rs`, `tests/launcher.rs`, `tests/doctor.rs`, `tests/characterization.rs`
 **Depends on:** [work-items](work-items.md), [linking](linking.md), [gui-shell](gui-shell.md)
 
 ## What it does
 
-`qm` is shared by the user, Claude and the hooks. `./quartermaster` is a launcher only, one
-file that is both `sh` and Ruby. Run directly, its `sh` half reads `$QM_ROOT/ruby-version`
-(`RubyPin`) and, when it names a version asdf has installed (or there is no asdf), exports it as
-`ASDF_RUBY_VERSION` and `MISE_RUBY_VERSION`, overriding any inherited value (kept in
-`QM_OUTER_*`, which the Ruby half restores before running anything, so the chats, dev servers and
-IDEs qm starts run on their own directory's Ruby); then it execs
-`ruby` on the same file, which starts at the `#!ruby` line. No file, an empty one, or a version
-asdf lacks: plain `ruby`, resolved as the cwd pins it. Loaded by Ruby (tests, `RbConfig.ruby
-EXECUTABLE`), the `sh` half is a `=begin` comment. The Ruby half runs `RubyFloor` before anything
-else (see [capture](capture.md)), then requires `lib/quartermaster` through its realpath, so the
-`~/bin/qm` and `~/bin/quartermaster` symlinks keep working, and runs `CLI#run`. Help text comes from `CliFormat::USAGE_SECTIONS`;
-`qm help` is authoritative. Commands, one line each (flags in `qm help`):
+`qm` is shared by the user, Claude and the hooks. `./quartermaster` is a launcher only: a POSIX
+`sh` script that follows its own symlinks (so `~/bin/qm`, `~/bin/quartermaster` and the hook
+registrations keep working wherever the checkout is) and execs `target/release/qm` (`QM_BIN` names
+another binary; `delegate::checkout()` finds the checkout from the running binary's own path, `<checkout>/target/<profile>/qm`, at run time, so GUI assets, the tick LaunchAgent and `install-hooks` follow a moved checkout); with no binary it says to run `cargo build --release`, except for a hook or `statusline`, which
+exit 0 silently. `src/cli.rs` records the command in `feature-use.jsonl`, rewrites the command's
+options through `src/opt_parse.rs` (any unambiguous abbreviation of a long option, `--name=value`,
+`-n5`, options among the arguments; an unknown one is `qm: invalid option: --x`) and runs the command.
+A command that can't take its arguments as given (an odd value in a file it reads, say) says
+`qm: can't do this as given`. Help text is `src/usage.txt`; `qm help` is authoritative. Commands, one line each (flags in `qm help`):
 
 **Viewer and GUI**
 - `qm` — the fzf viewer in a terminal with fzf; otherwise (piped, no fzf) `qm list`.
@@ -54,7 +51,6 @@ else (see [capture](capture.md)), then requires `lib/quartermaster` through its 
 - `qm resume SLUG [--session ID] [--here]` / `qm start SLUG [--here]` — resume or start in a new Warp tab (or this terminal).
 - `qm pane-start SLUG` / `qm pane-resume SLUG [--session ID]` — the same in the running GUI's pane ([chats](chats.md)).
 - `qm start-issue N [--project P]` — item + issue worktree + kickoff chat ([issues](issues.md)).
-- `qm automation new TITLE --project P` / `qm automation edit SLUG` — an automation item and files, then its chat with qm's brief ([automations](automations.md)).
 - `qm loose [--project P] [--model M] [--starter NAME] ["prompt"]` — a chat with no work item in the GUI; `--starter` opens it with a config.yml `loose_starters:` kickoff ([loose-chats](loose-chats.md)).
 - `qm rotate SLUG [--close]` / `qm rotate --self [--close]` — context rotation ([rotation](rotation.md)).
 - `qm pr SLUG` / `qm pr-requires PR-OR-SHA …` — open the PR; PR prerequisites ([prs](prs.md)).
@@ -65,40 +61,36 @@ else (see [capture](capture.md)), then requires `lib/quartermaster` through its 
 
 **Hooks**: `qm hook-session-start`, `qm hook-session-end`, `qm install-hooks` (prints the
 settings snippet) — see [capture](capture.md).
-- `qm pin-ruby [VERSION|--clear]` — write `ruby-version` (default: the running `RUBY_VERSION`),
-  refusing a version below the floor or one asdf has not installed (checked against
-  `$ASDF_DATA_DIR/installs/ruby`, default `~/.asdf`); `--clear` removes it.
+
 - `qm doctor` — one `✓`/`!`/`✗` line per check, a fix hint on the others, exit 1 on any `✗`
   (`Doctor`): the SessionStart, SessionEnd and record-event.sh hooks registered (record-event.sh
   on every event `qm install-hooks` gives it) in `$QM_CLAUDE_SETTINGS` (default
-  `~/.claude/settings.json`) and pointing at existing files; the Ruby pin (`!` when absent, `✗`
-  when below the floor or not installed); the running Ruby against `RubyFloor::FLOOR`; the data
-  root present and writable (doctor never creates it); unseen `qm.log` errors (`!` with the
-  newest, counted by `ErrorLog`: header lines that are neither `transient` nor `recovered`,
-  newer than `errors-seen-at` or else the last day, from the log's last 256 KB;
-  [capture](capture.md) owns it); and capture (`!` when neither `sessions.jsonl` nor
-  `events.jsonl`'s tail has an event from the last day).
+  `~/.claude/settings.json`) and pointing at existing files; the built binary behind the
+  launcher the SessionStart hook runs (`QM_BIN`, else `target/release/qm` beside it; a hook or `qm statusline` with
+  no binary exits 0 and captures nothing); the data root present and writable (doctor never
+  creates it); unseen `qm.log` errors (`!` with the newest, counted by `ErrorLog`: header lines
+  that are neither `transient` nor `recovered`, newer than `errors-seen-at` or else the last
+  day, from the log's last 256 KB; [capture](capture.md) owns it); and capture (`!` when
+  neither `sessions.jsonl` nor `events.jsonl`'s tail has an event from the last day).
 
 **Settings**
 - `qm config get [PATH]` / `qm config set PATH VALUE` / `qm config unset PATH` / `qm config path` —
   config.yml by dotted path (VALUE is YAML); errors refuse the write with exit 1, warnings don't;
-  unsetting a project warns with its work-item count ([settings](settings.md)).
+  unsetting a project warns with its work-item count ([settings](settings.md) owns `config_command`).
 
 Internal, called by the viewer's fzf bindings: `viewer-rows`, `sessions-view`, `inbox-view`,
 `cycle-filter`, `session-rows`, `inbox-rows`, `choose-state`, `choose-project`,
 `choose-snooze`, `attach-session`, `item-from-session`. Internal, spawned by the GUI: `bench-run
 <run dir>`, a benchmark run's detached pipeline ([benchmarks](benchmarks.md)).
 
-**Command groups.** `CLI` keeps the work-item commands; the rest live in modules mixed into it,
-one file each: `CliViewer` (viewer rows and pickers, `show`, sessions), `CliAttention` (inbox,
-attention, overview, ack, snooze, distill), `CliChats` (commands acting on the running GUI),
-`CliPrs` (pr, pr-requires, draft), `CliCleanup` (cleanup, sweep), `CliWorkspace` (resume, start,
-pf, IDE, terminal), `CliSetup` (how qm itself runs: pin-ruby, doctor), `CliConfig` (`qm config`, owned by
-[settings](settings.md)), `CliAutomation` (`qm automation`, owned by [automations](automations.md)), and `CliFormat` (shared output helpers and the help text). Each group's frozen
-`COMMANDS` maps a word to the method `CLI#run` calls with argv; `CLI.commands` merges them and
-refuses a word claimed twice. A new command touches only its group's file (and `qm help`). Hooks
-and commands called otherwise (no argv, extra arguments, another class) stay explicit `when`
-branches in `CLI#run`.
+**Command groups.** `cli::dispatch` normalises the options (`opt_parse`), then routes the word to a
+group: `work_item_commands`, `session_commands`,
+`item_deletion`, then the viewer rows and pickers (`viewer_commands`, `show_command`), attention
+(`attention_command`, `overview`), commands acting on the running GUI (`chats_commands`), `pr`,
+`pr-requires` and `draft` (`pr_requires_command`, `draft_command`), `cleanup_command`, `workspace_commands`,
+with `cli_format` holding the shared output helpers and the help text. A new command touches its group's
+file and `qm help`. Hooks and commands called otherwise (no argv, extra arguments) stay explicit branches
+in `cli::dispatch`.
 
 **The viewer** (`Viewer`, bare `qm`). One fzf list of items: a state badge, ▶ when a session is
 live, attention reasons; items with attention entries first, then by activity. The preview pane
@@ -109,13 +101,12 @@ item from session, `^D` dismiss), `^S` state, `^P` project, `^O` PR, `^T` distil
 `^Z` snooze, `^R` reload. The viewer stays open while actions run.
 
 **Feature use** (`FeatureUse`). Every `qm` command (by its word; not hooks, not `qm doctor`
-(`FeatureUse::UNRECORDED`, also left out of the never-used list), not `QM_SKIP` runs), every
-GUI action (by `cmd`; other POST routes by route) and every GUI `/api/` read except the `/api/state` and `/api/pulse` polls and the CLI's `/api/root` probe (by route, cut to `/api/<word>`) appends one
+(it writes nothing, so a missing data root stays missing and fails its check), not `QM_SKIP`
+runs), every GUI action (by `cmd`; other POST routes by route) and every GUI `/api/` read
+except the `/api/state` and `/api/pulse` polls and the CLI's `/api/root` probe (by route, cut to `/api/<word>`) appends one
 `{v, at, kind, name}` line to `feature-use.jsonl`: the evidence for deleting unused features.
-`qm feature-use` reads it back. Its never-used lists come from the dispatchers themselves —
-`GuiActions#dispatch` and `Gui#respond`'s other POST routes, `Gui#respond`'s `/api/` GET routes,
-`CLI.commands` and `CLI#run`'s explicit words — read by `FeatureUse.known_names`, so a new action, route or
-command shows up without touching a list.
+`qm feature-use` reads it back. Its never-used lists are hand-kept in `feature_use` (`KNOWN_ACTIONS`, `KNOWN_GETS`,
+`KNOWN_CLI`): a new action, route or command is added there too.
 
 **Live sessions.** SessionStart records the claude pid; SessionEnd clears it. `qm sessions`
 marks `● live` sessions; the viewer and GUI show a live badge. Resuming a live session is
@@ -124,8 +115,7 @@ refused ("switch to its Warp tab"): it would fork the conversation.
 ## Rules
 
 - Never rename or move `./quartermaster`: the `~/bin` symlinks and the hook registrations point at it.
-- The launcher's `sh` half stays before `=end` and its Ruby half after `#!ruby`; `ruby_floor.rb`, which runs before `lib/` loads, must parse on Ruby 2.x and require nothing.
-- Commands that act on the GUI (`caffeinate`, `pane-start`, `pane-resume`, `rotate`, `start-issue`, `loose`, `automation new|edit`) POST `/api/action` to `127.0.0.1:$QM_GUI_PORT` (default 49737) without an Origin, after `GET /api/root` shows that GUI serves their own data root (`Quartermaster.root_id`); a GUI on another root (a CLI under a test `QM_ROOT` beside the live GUI) or a server that names no root counts as no GUI. With no GUI they say so, do nothing and exit 1 — except `start-issue`, which then makes the item and worktree itself and prints how to start the chat, and `loose` and `automation new|edit`, which print how to start it. Each needs its action in `LoopbackGuard::LOCAL_ACTIONS`.
+- Commands that act on the GUI (`caffeinate`, `pane-start`, `pane-resume`, `rotate`, `start-issue`, `loose`, `automation new|edit`) POST `/api/action` to `127.0.0.1:$QM_GUI_PORT` (default 49737) without an Origin, after `GET /api/root` shows that GUI serves their own data root (`data_root::root_id`); a GUI on another root (a CLI under a test `QM_ROOT` beside the live GUI) or a server that names no root counts as no GUI. With no GUI they say so, do nothing and exit 1 — except `start-issue`, which then makes the item and worktree itself and prints how to start the chat, and `loose` and `automation new|edit`, which print how to start it. Each needs its action in `LoopbackGuard::LOCAL_ACTIONS`.
 - `qm install-hooks` prints the snippet and never writes `~/.claude/settings.json`; that file is the user's.
 - Hook commands never print except SessionStart's context, honour `QM_SKIP`, rescue everything and exit 0.
 - `qm board SLUG` with no URL prints only the URL and exits non-zero when unset, so a shell can test it in one call.
@@ -133,13 +123,11 @@ refused ("switch to its Warp tab"): it would fork the conversation.
 - Liveness is checked at read time (`kill(0, pid)`), never trusted from the log: SessionEnd doesn't fire on crashes.
 - The viewer's actions are plain `qm` subcommands, so the viewer, the GUI and Claude share one implementation; mouse support is double-click resume only — fzf's `click-header` + `execute` handoff didn't reliably hand the terminal to picker actions, so clickable actions live in the GUI.
 - The feature-use log holds a kind and a name only — never a slug, argument, path or session id — is only appended to, and recording is best-effort: a failed write goes to `qm.log` and never fails the command or request.
-- `FeatureUse.known_names` reads `CLI.commands`, plus `when "…" then` branches and `method == … && route …` conditions; a dispatcher reshaped away from that loses its names from the never-used lists (the known-names test pins a few).
-- `qm doctor` writes nothing, not even a feature-use line, so a missing data root stays missing and fails its check: `events.jsonl` is read from its tail through `EventLog#last_ts`, never folded, so not even `events-fold.json` changes.
-- `ArgumentError` or `OptionParser::ParseError` (a bad flag) from any command becomes `qm: <message>` and exit 1, never a backtrace.
-- Free text may start with a dash: for `new`, `note` and `loose` (`FreeTextArgs.parse`) an argument that starts with `-` and holds whitespace (`qm note SLUG "- a bullet"`) is text, never an option or an abbreviation of one (`"-d does stuff"` is not `--description`), unless it is an inline `--flag=value`; right after a flag that takes a value it is that value; `--` ends options there and is dropped before the text of `retitle`, `describe`, `board-answer`, `ask` and `grep` (`FreeTextArgs.words`). A one-word dash text needs the `--`: `qm new -- -x`.
+- `qm doctor` writes nothing, not even a feature-use line, so a missing data root stays missing and fails its check: `events.jsonl` is read from its tail through `event_log::last_ts`, never folded, so not even `events-fold.json` changes.
+- A bad option from any command becomes `qm: <message>` (`qm: invalid option: --bogus`) and exit 1, never a backtrace (an option of multi-byte text, `-é`, included: it is split by characters).
+- Free text may start with a dash: for `new`, `note` and `loose` (`opt_parse`) an argument that starts with `-` and holds whitespace (`qm note SLUG "- a bullet"`) is text, never an option or an abbreviation of one (`"-d does stuff"` is not `--description`), unless it is an inline `--flag=value`; right after a flag that takes a value it is that value; `--` ends options there and is dropped before the text of `retitle`, `describe`, `board-answer`, `ask` and `grep` (`opt_parse::words`). A one-word dash text needs the `--`: `qm new -- -x`.
 
 ## Data
 
 - `viewer-filter` — the viewer's current state filter.
 - `feature-use.jsonl` — one line per feature use, append-only, never pruned.
-- `ruby-version` — one Ruby version and a newline, written by `qm pin-ruby`, read by the launcher's `sh` half.

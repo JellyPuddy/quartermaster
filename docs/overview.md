@@ -35,8 +35,8 @@ worktrees — derives from these two layers plus a few more append-only hook log
 | `work-items/<slug>.md` | one work item each; `work-items/.lock` serialises writes | [work items](areas/work-items.md) |
 | `automations/<slug>.yml`, `<slug>.prompt.md` (+ `.bak`); `<slug>.runs.jsonl`; `tick.json`, `tick.lock` | an automation's settings (`v: 1`) and its prompt, the source of truth push sends; a local one's run log, append-only; the last local tick (`v: 1`) and its flock ([local automations](areas/local-automations.md)) | [automations](areas/automations.md) |
 | `automations/tick.log` | the launchd tick's output; its LaunchAgent plist lives outside the root, in `~/Library/LaunchAgents/` | [local automations](areas/local-automations.md) |
-| `config.yml` (+ `.bak`) | projects and their settings (below), `prices:` overrides; `.bak` is the file before qm's last write | [settings](areas/settings.md) |
-| `qm.log` | hook and background errors with lib/ backtraces; network blips once per outage | [capture](areas/capture.md) |
+| `config.yml` (+ `.bak`, `.config.yml.lock`) | projects and their settings (below), `prices:` overrides; `.bak` is the file before qm's last write | [settings](areas/settings.md) |
+| `qm.log` | hook and background errors; network blips once per outage | [capture](areas/capture.md) |
 | `errors-seen-at` | iso8601 time the user last marked qm.log errors seen (absent: count the last 24 h) | [capture](areas/capture.md) |
 | `events.jsonl` + `events-fold.json` | per-prompt/tool/turn hook events and their fold cache | [attention](areas/attention.md) |
 | `board-writes.jsonl` | every `ArtifactData` call, mirrored status boards | [side panel](areas/side-panel.md) |
@@ -51,30 +51,30 @@ worktrees — derives from these two layers plus a few more append-only hook log
 | `branch-stats.json` | branch stats per (repo, branch), keyed on head and merge-base sha; safe to delete | [diff](areas/diff.md) |
 | `benchmarks/<run id>/` | one benchmark run each: `meta.json` (`v: 1`), events, script, table, verdict, logs; never pruned | [benchmarks](areas/benchmarks.md) |
 | `issues/<slug>/*.md` (+ `.prev/`) | Claude's issue drafts and qm's revision snapshots | [drafts](areas/drafts.md) |
-| `pr-cache.json`, `pr-inbox.json`, `pr-prerequisites.json`, `pr-deployment.json` | PR state per linked branch; the PRs view's list; PR prerequisites and their deploy-check cache | [prs](areas/prs.md) |
+| `pr-cache.json`, `pr-inbox.json` | PR state per linked branch; the PRs view's list | [prs](areas/prs.md) |
+| `pr-prerequisites.json`, `pr-deployment.json` | PR prerequisites and their deploy-check cache | [prs](areas/prs.md) |
 | `viewer-filter` | the fzf viewer's state filter | [cli](areas/cli.md) |
 | `feature-use.jsonl` | one line per CLI command, GUI action and GUI read, append-only | [cli](areas/cli.md) |
-| `ruby-version` | the Ruby qm runs on whatever a session's cwd pins (`qm pin-ruby`); absent, the cwd's | [cli](areas/cli.md) |
 | `plans/<slug>/<batch id>.md` (+ `-exploration.md`) | each delegate-build run's plan, written by that skill; qm never reads it | none |
 
 Hooks and the global fallback instruction live at **user level** (`~/.claude/settings.json`,
 `~/.claude/CLAUDE.md`), because capture must cover every project and no-project cwd.
 `qm install-hooks` prints the settings snippet; the user merges it themselves.
 
-The code is a git repo at `~/code/quartermaster`: the realpath-resolving launcher
-`./quartermaster` (symlinked from `~/bin/quartermaster` and `~/bin/qm` — never rename or move
-it), one intent-named file per class under `lib/quartermaster/`, the GUI page as real assets
-under `lib/quartermaster/gui/`, POSIX hooks under `hooks/`, and a minitest suite run with
-`ruby test/quartermaster_test.rb` (shared setup in `test/test_helper.rb`; one file per area).
+The code is a git repo at `~/code/quartermaster`: the launcher `./quartermaster`, a POSIX `sh`
+script that runs the release binary beside it through any symlink chain (symlinked from
+`~/bin/quartermaster` and `~/bin/qm`, which the hook registrations also name — never rename or
+move it), the Rust crate under `src/` (one intent-named module per concern), the GUI page as real
+assets under `gui/`, POSIX hooks under `hooks/`, and the tests under `tests/` ([testing](areas/testing.md)).
 
 ## config.yml
 
-The key reference: `ConfigSchema` lists exactly these keys ([settings](areas/settings.md)), and
+The key reference: `config_schema` lists exactly these keys ([settings](areas/settings.md)), and
 a test checks this section names each one. qm writes the file (Settings view, `qm config`) in its
 own layout, dropping comments and keeping keys it doesn't govern; the seed is its header line and
-`projects: {}`. Code reads it only through `ProjectConfig` (re-parsed when its text changes; schema
-keys only, via `ConfigReader`); a broken file reads as no projects, a bad key leaves its feature off
-(buttons hidden, actions name the `qm config set` to run). A project is a root path or a mapping:
+`projects: {}`. Code reads it only through `ProjectConfig` (schema keys only, via `ConfigReader`); a
+broken file reads as no projects, a bad key leaves its feature off (buttons hidden, actions name the
+`qm config set` to run). A project is a root path or a mapping:
 
 - `projects.<name>.root` — the main repo root.
 - `projects.<name>.dev_server` — a command name, or `projects.<name>.dev_server.{command, modes,
@@ -95,47 +95,47 @@ checkout path, `PATH` inside a longer one, e.g. a `zsh -ic` script, the shell-es
 (default `IDE`) enable Open in <label>, Work on this's IDE half, the PRs view's IDE button and `qm ide`; unset
 or `PATH`-less, they are hidden and `qm ide` refuses naming `ide_command`. `default_project` (where a bare
 issue number starts; default the first), `loose_starters.<key>.{label, prompt}` (loose-chat presets, none by
-default; a prompt ends mid-sentence and `LooseChat.kickoff` appends " answer my question about them: …"
+default; a prompt ends mid-sentence and `gui_actions::loose_kickoff` appends " answer my question about them: …"
 or " ask me what I want to know about them."), `prices.<model>.{input, cache_write_5m, cache_write_1h,
 cache_read, output}` ([side panel](areas/side-panel.md)), `overview_artifact` ([phone page](areas/phone-page.md)),
 `automations.token_source` (`claude_code` turns on claude.ai routines; unset is off, [automations](areas/automations.md)), `automations.local_{paused, max_running, hold_five_hour, hold_seven_day}` ([local automations](areas/local-automations.md)).
 
 ## Tech decisions
 
-- **Ruby, through an `sh` launcher**: `ruby` resolves via asdf shims to `ruby-version` if pinned
-  (`qm pin-ruby`), else the cwd's pin, so outside pinned repos it needs `~/.tool-versions`
-  ([cli](areas/cli.md)). `lib/quartermaster.rb` defaults to UTF-8, as the launchd tick has no `LANG`.
-- **Stdlib only** (yaml, json, open3, optparse, socket, …), no gems: gems install per Ruby
-  version, so a hook firing in a repo pinned to another Ruby would not find them.
-- **Ruby 3.3 is the syntax floor** for the same reason — no 4.x-only features. The launcher
-  checks it before loading `lib/` and logs a `[ruby-floor]` line instead ([capture](areas/capture.md)).
-- **`statusline/statusline.rb` is the exception:** standalone, macOS system Ruby 2.6, never loads `lib/`.
+- **Rust, one static binary** (`cargo build --release`, toolchain pinned in `.tool-versions`),
+  so a hook fires the same in any repo whatever its asdf pins, and starts fast. The only
+  dependencies are `serde_json`, `serde_yaml`, `regex`, `chrono` and `libc`; a new crate needs a
+  reason. HTTPS (the claude.ai routines API) is `curl` through `command_runner`, as `pf` and the GUI
+  probes already are: a TLS crate would cost more than the one place that speaks it.
+- **The status line is `qm statusline`**, which Claude Code's `statusLine` setting runs: it needs no
+  system Ruby.
 - **The skills qm drives ship in `skills/`** (rotate, work-items, branch-stats, adopt-worktree,
   draft-issues, and the optional delegate-build that feeds the Board), symlinked into
   `~/.claude/skills/`; qm's code reads these skills' files from its own checkout (`branch-stats.sh`, `page.html`), never through `~/.claude/skills/`.
 - `fzf` for the terminal viewer, `gh` for GitHub (always offline-tolerant), tmux for chats.
 - **Data formats are versioned**: a `v:` field in JSONL events and work-item frontmatter;
   bump on a breaking schema change, readers tolerate unknown fields. A per-line JSONL reader
-  takes each line through `Quartermaster.json_object`, so a line that doesn't parse or isn't an
-  object (`5`, `[]`, `null`) is skipped, never raised.
-- One intent-named file per class (`SessionLog`, `WorkItem`, …); rationale goes in commit messages only.
+  skips a line that doesn't parse or isn't an object (`5`, `[]`, `null`), never fails on it.
+- One module per concern, named by intent (`session_log`, `work_item`, `hook`, `cli`, …).
+- Rationale lives in commit messages, not code comments or these pages.
 
 ## Cross-area invariants
 
 - **Hooks never block or break a session**: rescue everything, log to `qm.log`, exit 0.
   SessionEnd and error paths print nothing — SessionStart stdout is context.
-- **Per-tool-call hooks are plain POSIX `sh`**, never Ruby: they never print, always exit 0,
+- **Per-tool-call hooks are plain POSIX `sh`**, never `qm`: they never print, always exit 0,
   honor `QM_SKIP`, and only append. All derivation happens in qm at read time.
-- **Append-only logs are read incrementally** from a persisted byte offset (`EventLog`,
-  `BoardMirror`, `TranscriptUsage`); rewriting earlier lines is invisible, only a shrink refolds.
-- **Work-item writes go through one global flock** (`WorkItem.with_lock`) spanning the whole
+- **Append-only logs are read incrementally** from a persisted byte offset (`event_log`,
+  `board_mirror`, `transcript_usage`); rewriting earlier lines is invisible, only a shrink refolds.
+- **Work-item writes go through one global flock** (`work_item::with_lock`) spanning the whole
   read-modify-write, re-reading the file first; reentrant per thread.
-- **External tools that change state go through `CommandRunner`** (the dev server, the IDE, `git worktree
-  add`, the test-DB command, `osascript`). Tests pass a stub runner and never start real servers,
+- **External tools that change state go through `command_runner`** (the dev server, the IDE, `git worktree
+  add`, the test-DB command, `osascript`). Tests put stand-ins on `PATH` and never start real servers,
   IDEs, worktrees or notifications.
 - **Scripts first**: every integration is deterministic code; a model runs only where real
   summarising happens (the chat itself, distill, ask, build progress, a benchmark's plan and
-  verdict). Any new agent use needs the user's OK first.
+  verdict). Any new agent use needs
+  the user's OK first.
 - **Nothing types into the user's chat or ends it without their click**: rotation, restack and
   sending drafts are user-triggered only, never from a state build, poll or notifier.
 - **qm never checks out a branch in an existing worktree** and never deletes what it cannot
@@ -146,5 +146,5 @@ cache_read, output}` ([side panel](areas/side-panel.md)), `overview_artifact` ([
 - **The GUI is loopback-only and runs until Ctrl-C**: no liveness timer, foreign `Origin`s refused.
 - **Tests never touch the user's live state**: `QM_ROOT`, `QM_TMUX_SOCKET=qm-test-…`, stub runners;
   throwaway test repos commit with `-c commit.gpgsign=false`, this repo's commits are signed.
-- **Big files only shrink** (`test/size_ratchet_test.rb`): code over 400 lines, tests over 800 and
-  `CLAUDE.md` (bytes) are pinned in `test/size_limits.json`; run it with `--lower` after a shrink.
+- **Big files only shrink** (`tests/size_ratchet.rs`): code over 400 lines, tests over 800 and
+  `CLAUDE.md` (bytes) are pinned in `tests/size_limits.json`; `QM_LOWER_LIMITS=1` locks in a shrink.

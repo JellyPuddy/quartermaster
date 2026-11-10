@@ -1,0 +1,21 @@
+usage: qm draft add SLUG --path P --line N [options] (--body TEXT | --body-file F)
+
+Records a review comment as a draft on the item's pull request, marked 🤖 as Claude's,
+for the user to curate in the qm gui's diff pane and post as a pending review. Nothing goes
+to GitHub. Line numbers are the PR diff's: the new side's in the file at the PR head (or
+--commit), the old side's in the PR's base. GitHub only takes a comment on a line its PR
+diff shows (a change or 3 lines around one); anything else is refused — use --file for a
+comment on the whole file. The PR: --pr, else a Review item's own, else the open PR of the
+item's branch checked out here (or its only branch with one).
+
+        --path PATH                  file, relative to the repo root
+        --line N                     the (last) line commented on
+        --start-line M               first line of a range of lines (same side, one hunk)
+        --side SIDE                  new (default: added or unchanged lines) or old (removed lines)
+        --commit SHA                 anchor to this PR commit instead of the head (lines numbered as base..SHA)
+        --file                       a comment on the whole file, shown at --line and quoting it
+        --reply-to THREAD_ID         a reply to an existing review thread (its node id) instead
+        --pr URL                     the pull request, when the item's isn't the one
+        --branch BRANCH              the item's branch whose PR it is
+        --body TEXT                  the comment (markdown; a ```suggestion block suggests a change)
+        --body-file FILE             read the comment from FILE ('-': stdin)

@@ -1,7 +1,7 @@
 # Benchmarks
 
-**Code:** `lib/quartermaster/benchmark_run.rb`, `lib/quartermaster/benchmark_pipeline.rb`, `lib/quartermaster/benchmark_report.rb`, `lib/quartermaster/gui_benchmark_actions.rb`, `lib/quartermaster/gui/js/benchmark.js`, `lib/quartermaster/gui/js/benchmark-table.js`, `lib/quartermaster/gui/css/benchmark.css`
-**Tests:** `test/benchmark_run_test.rb`, `test/benchmark_report_test.rb`, `test/gui_benchmark_test.rb`
+**Code:** `src/benchmark_run.rs`, `src/benchmark_pipeline.rs`, `src/benchmark_report.rs`, `gui/js/benchmark.js`, `gui/js/benchmark-table.js`, `gui/css/benchmark.css`
+**Tests:** `tests/gui.rs`
 **Depends on:** [diff](diff.md), [stacks](stacks.md), [attention](attention.md), [work-items](work-items.md), [gui-shell](gui-shell.md)
 
 ## What it does
@@ -15,11 +15,11 @@ modal reads. It assumes a Rails app on Postgres (`bin/rails runner`, `createdb`)
 Postgres database a run reads (a word: letters, digits, `_`), or clones as its template;
 `skill` is the folder whose `SKILL.md` and `bin/example_bench.rb` the agent follows; `notes`
 (optional) are lines the prompt adds to the script instructions. Without both `database` and
-`skill` the project has no benchmarks. Project names match exactly (`BenchmarkRun.enabled?`).
+`skill` the project has no benchmarks. Project names match exactly (`benchmark_run::enabled`).
 
-**Starting** (`BenchmarkRun#start(item, branch:, request:, model:)`, model `opus` or `sonnet`),
-refused naming the setting when the item's project has none (`BenchmarkRun.settings!`).
-The branch resolves as the diff pane's does (`BranchDiff#tip`). The **stages** are `main` (the
+**Starting** (`benchmark_run::start(item, branch:, request:, model:)`, model `opus` or `sonnet`),
+refused naming the setting when the item's project has none (`benchmark_run::settings`).
+The branch resolves as the diff pane's does (`branch_diff::tip`). The **stages** are `main` (the
 first existing `GitRepo::TRUNK_REFS`), then, for a branch in a gh-stack, one stage per layer from
 the bottom up to and including the branch (named `#<pr>`, else the branch; ref local first, else
 `origin/<branch>`), else the branch alone; each `{name, ref, sha}` at start. The **run id** is the
@@ -33,7 +33,7 @@ rerunOf), `events.jsonl` (the skill's progress events), `agent.jsonl` (the agent
 `bench.rb`, `run.json` (`{cwd, clone}`), `bench.out` (the markdown table), `bench.log` (the
 script's stderr), `plans/` (saved EXPLAIN plans), `verdict.md`, `pipeline.log`. meta.json is
 always written whole (temp file renamed over it) under the folder's `.lock` flock. The pipeline,
-cancel and re-run use meta's `database` (`BenchmarkRun.database`), so a config change never
+cancel and re-run use meta's `database` (`benchmark_run::database`), so a config change never
 retargets a started run; a meta without one (written before it was recorded) uses its project's.
 
 **The pipeline** (`BenchmarkPipeline`), one step after another, each state written before its step:
@@ -73,17 +73,17 @@ still on disk; drop it with: dropdb <that name> — see pipeline.log`, so a done
 with its results.
 
 Then `done` (or `failed` with `error`, at any step): a macOS notification "Benchmark done ·
-<branch>" (or failed) through `TurnNotifier#announce` ([attention](attention.md)), whose click
+<branch>" (or failed) through `turn_notifier::announce` ([attention](attention.md)), whose click
 runs `qm open-chat <slug> --benchmark <branch>` (the page gets `#chat=<slug>&benchmark=<branch>`),
 and a `history` note on the item: the verdict on one line (or the error) and the run id.
 
-**Liveness.** One rule, `BenchmarkRun.live?`, used by both `BenchmarkRun` and the payload's fold
+**Liveness.** One rule, `benchmark_run::live`, used by both `benchmark_run` and the payload's fold
 (`BenchmarkReport`): a run is live while its state is not final (`done`, `failed`, `cancelled`)
 and either its pid is a process whose command line (`ps -o command=`) names the run folder (a word
 whose last path part is exactly the run id, so `<id>_2` is another run), or it has no pid yet and
 started less than 30 s ago (`STARTING_GRACE`: the pid lands in meta.json just after the spawn, and a
 second start must not slip into that window). A non-final run that isn't live shows as `failed`
-("pipeline died") in `BenchmarkRun#effective` and in the payload; `#busy` names the live run
+("pipeline died") in `benchmark_run::effective` and in the payload; `#busy` names the live run
 (`{id, slug, branch, state}`).
 
 **Payload.** `GET /api/benchmark/<slug>?branch=B[&run=ID]` (`BenchmarkReport`, read-only, off the
@@ -92,7 +92,7 @@ project has benchmark settings; `busy` the live run machine-wide or null; `runs`
 branch's runs, newest first; `run` the asked one or the newest, folded from its folder: stages from meta, subjects from `subject`
 events, one row per subject × case of the last `plan` event (plus any measured case it didn't
 name) with cells keyed by stage from `case` events and their `ids` check; a cell not measured yet
-is absent. `activity` is the agent's latest tool call (`TranscriptHistory.tool_line`) while
+is absent. `activity` is the agent's latest tool call (`chat_history::tool_line`) while
 planning, from the stream's last 64 KB. `currentHead` is the branch's head now, `moved` when it
 differs from the recorded head. `canRerun`: a final run that still has `bench.rb` and `run.json`,
 whose every stage ref still resolves to its recorded sha. `logs` names the run's log files that
@@ -114,17 +114,17 @@ the plan event and starts at `measuring` (no agent), then the verdict.
 **GUI actions** (`GuiBenchmarkActions`, POSTed to `/api/action` under the usual Origin rules, none
 of them a `LoopbackGuard::LOCAL_ACTIONS`): `benchmark-start {branch, request, model}` (model
 `opus` when empty) refuses an item whose project has no benchmark settings, naming the setting
-(`BenchmarkRun.settings!`); `benchmark-start` and `benchmark-rerun {run}` answer `{ok, run: <new
+(`benchmark_run::settings`); `benchmark-start` and `benchmark-rerun {run}` answer `{ok, run: <new
 id>}`, or, while a run is live, `{ok: false, error, busy: {id, slug, branch, state}}`.
-`benchmark-cancel {run}` refuses a final run at once, then cancels on a `GuiJobs` job keyed
+`benchmark-cancel {run}` refuses a final run at once, then cancels on a `gui_jobs` job keyed
 `benchmark-<id>` (the dropdb can take a while). All three are `GuiActions::UNLOCKED`: they never
-hold the action mutex, since `BenchmarkRun` has its own start lock and meta.json flock. A state
-build reads `BenchmarkRun.all` once and derives everything below from that list, never a meta.json
-per item. The state payload's `benchmark` is the live run machine-wide (`BenchmarkRun#busy(metas)`)
+hold the action mutex, since `benchmark_run` has its own start lock and meta.json flock. A state
+build reads `benchmark_run::all` once and derives everything below from that list, never a meta.json
+per item. The state payload's `benchmark` is the live run machine-wide (`benchmark_run::busy(metas)`)
 or `null`; each item's `benchmarkable` says whether its project has benchmarks
-(`BenchmarkRun.enabled?`), and its `benchmarked` maps each branch to that item's newest run whose
-state is `done`, as `{id, finishedAt}` (`BenchmarkRun.finished_by_branch`) — `{}` for an item that isn't benchmarkable or has
-none. `Gui.new(benchmarks:)` (through `GuiState#benchmarks`) is the seam tests use to pass a stub spawner.
+(`benchmark_run::enabled`), and its `benchmarked` maps each branch to that item's newest run whose
+state is `done`, as `{id, finishedAt}` (`benchmark_run::finished_by_branch`) — `{}` for an item that isn't benchmarkable or has
+none. `gui_server::new(benchmarks:)` is the seam tests use to pass a stub spawner.
 
 **The page** (`gui/js/benchmark.js`, the results table in `gui/js/benchmark-table.js`, `gui/css/benchmark.css`). 🏁 (`benchmarkButton(item, branch)`) sits next to 📊
 in the diff bar when the diff has a branch, and on the Workspace rail's selected node next to
@@ -181,5 +181,5 @@ A finished run's notification click lands as `#chat=<slug>&benchmark=<branch>`, 
   refuses a final state, so a cancel wins over a pipeline still finishing.
 - **Runs are never pruned.**
 - Every external command (claude, rails, createdb, dropdb, the notification) goes through
-  `CommandRunner`, whose `out:`/`err:` stream a long run to files; tests stub the runner, the
-  spawner, the process lookup and the killer, so nothing real starts, measures or dies.
+  `command_runner`, which streams a long run to files; tests put stand-ins on `PATH`, so nothing
+  real starts, measures or dies.

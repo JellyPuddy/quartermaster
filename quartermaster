@@ -1,33 +1,23 @@
 #!/bin/sh
-=begin 2>/dev/null
-# Launcher only; the code lives in lib/quartermaster/. This file is both sh and
-# Ruby. Run directly (hooks, ~/bin/{qm,quartermaster} symlinks), sh pins the
-# Ruby named in $QM_ROOT/ruby-version and execs ruby on this same file, which
-# skips to the #!ruby line below. Loaded by Ruby, the sh half is a =begin comment.
-pin="${QM_ROOT:-$HOME/.claude/quartermaster}/ruby-version"
-version=
-[ -f "$pin" ] && read -r version < "$pin"
-installs="${ASDF_DATA_DIR:-$HOME/.asdf}/installs/ruby"
-if [ -n "$version" ] && { [ ! -d "$installs" ] || [ -d "$installs/$version" ]; }; then
-  QM_OUTER_ASDF_RUBY_VERSION=${ASDF_RUBY_VERSION-}
-  QM_OUTER_MISE_RUBY_VERSION=${MISE_RUBY_VERSION-}
-  ASDF_RUBY_VERSION=$version
-  MISE_RUBY_VERSION=$version
-  export QM_OUTER_ASDF_RUBY_VERSION QM_OUTER_MISE_RUBY_VERSION ASDF_RUBY_VERSION MISE_RUBY_VERSION
+# The launcher the ~/bin/qm symlink and the hook registrations point at: it runs the binary cargo built
+# in this checkout (target/release/qm, or the one QM_BIN names). Resolved through the symlinks, so the
+# checkout can be anywhere.
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case $link in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+dir=$(cd "$(dirname "$self")" && pwd -P)
+bin=${QM_BIN:-$dir/target/release/qm}
+if [ ! -x "$bin" ]; then
+  case $1 in
+    hook-*) exit 0 ;; # a hook never breaks a session
+    statusline) exit 0 ;; # nor does the status line: an empty one is better than an error
+  esac
+  echo "qm: no built binary at $bin: run \`cargo build --release\` in $dir" >&2
+  exit 127
 fi
-exec ruby "$0" "$@"
-=end
-#!ruby
-# frozen_string_literal: true
-
-# Resolved through realpath so the ~/bin symlinks keep working. The floor guard
-# runs before lib/ loads, since an older Ruby cannot even parse lib/.
-qm_lib = File.join(File.dirname(File.realpath(__FILE__)), "lib")
-require File.join(qm_lib, "quartermaster", "ruby_floor")
-Quartermaster::RubyFloor.enforce(ARGV.first) if $PROGRAM_NAME == __FILE__
-require File.join(qm_lib, "quartermaster")
-
-if $PROGRAM_NAME == __FILE__
-  Quartermaster::RubyPin.hand_back_outer_env(ENV)
-  Quartermaster::CLI.new.run(ARGV)
-end
+exec "$bin" "$@"

@@ -51,22 +51,24 @@ goes in the commit message.
   build progress.
 - [phone-page](areas/phone-page.md) — read when you touch the phone work-items page or its
   publishing.
-- [settings](areas/settings.md) — read when you touch config.yml's key list (`ConfigSchema`), its
+- [settings](areas/settings.md) — read when you touch config.yml's key list (`config_schema`), its
   validation, or how qm edits and writes the file.
-- [automations](areas/automations.md) — read when you touch claude.ai routines managed by qm:
-  `RoutinesClient` and its token (`automations.token_source`), the local files, mapping to and
-  from the routines API, API errors, their schedule (UTC cron ↔ local weekdays and time), the
-  brief their chats start with, or the GUI's Automations tab.
-- [local-automations](areas/local-automations.md) — read when you touch `runner: local`
-  automations: their yml fields and validation, local-time cron (`LocalCron`), the run log
-  (`<slug>.runs.jsonl`, `RunLog`), the tick, its launchd installer, and their CLI.
+- [automations](areas/automations.md) — read when you touch an automation's local files
+  (`automations/<slug>.yml` and `.prompt.md`), its schedule (UTC cron ↔ local weekdays and time), the
+  claude.ai routines client, the `Automations` service, `qm automation`'s cloud subcommands or the GUI's
+  Automations tab (list, detail, Apply, drift, adopt).
+- [local-automations](areas/local-automations.md) — read when you touch `runner: local` automations:
+  their yml fields and validation, local-time cron, the run log (`<slug>.runs.jsonl`), the tick and
+  its launchd installer.
 - [cli](areas/cli.md) — read when you touch a `qm` command, the bare-`qm` fzf viewer or live
   sessions listing.
+- [testing](areas/testing.md) — read when you add a test or golden, use the Ruby oracle, or
+  touch the docs-shape and size-ratchet checks.
 
 ## Also here
 
+- `../README.md` is for users: a user-visible change updates it too, and anything new qm reads or sends
+  goes in its "What qm does on your machine".
 - `automations-house-rules.md` — the rules every automation's prompt follows; the automation chat brief includes it verbatim.
 - `gui-mockup.html` — the GUI's design-reference prototype (fake data).
-- `showcase/` — a fake demo world for running the real `qm gui` on made-up data, scripted
-  screenshots of it and the narrated overview video; how to run them is in `showcase/README.md`.
-- `test/docs_shape_test.rb` checks these pages' shape: headers, code ownership, links, sizes.
+- `tests/docs_shape.rs` checks these pages' shape: headers, code ownership, links, sizes.

@@ -1,7 +1,7 @@
 # Chats
 
-**Code:** `lib/quartermaster/tmux.rb`, `lib/quartermaster/terminal_bridge.rb`, `lib/quartermaster/web_socket.rb`, `lib/quartermaster/drops.rb`, `lib/quartermaster/chat_history.rb`, `lib/quartermaster/transcript_history.rb`, `lib/quartermaster/pane_follows_session.rb`, `lib/quartermaster/gui/js/chat.js`, `lib/quartermaster/gui/js/chat-main.js`, `lib/quartermaster/gui/js/terminal.js`, `lib/quartermaster/gui/js/history.js`, `lib/quartermaster/gui/css/chat.css`
-**Tests:** `test/chat_pane_test.rb`, `test/history_rotation_test.rb`
+**Code:** `src/tmux.rs`, `src/terminal_bridge.rs`, `src/drops.rs`, `src/chat_history.rs`, `src/transcripts.rs`, `src/pane_follows_session.rs`, `gui/js/chat.js`, `gui/js/chat-main.js`, `gui/js/terminal.js`, `gui/js/history.js`, `gui/css/chat.css`
+**Tests:** `tests/chats.rs`, `tests/gui.rs`, `tests/pane_follow.rs`
 **Depends on:** [gui-shell](gui-shell.md), [attention](attention.md), [linking](linking.md)
 
 ## What it does
@@ -19,20 +19,20 @@ blocked + unsnoozed your_turn chats.
 - **Centre**: the item's chat pane — a live terminal on its tmux chat — with the read-only history of
   earlier sessions above it and its sessions collapsed underneath (open when there is no live pane).
 - **Right**: the digest (description, branches, the notes a new session is told about — `injected`
-  positions from `WorkItem#injectable_notes`), `i` for the full detail sheet; see [side-panel](side-panel.md).
-- **Chat pane**: `Tmux` runs each chat on the `qm` socket; `TerminalBridge` bridges `/ws/terminal` to a
+  positions from `work_item::injectable_notes`), `i` for the full detail sheet; see [side-panel](side-panel.md).
+- **Chat pane**: `tmux` runs each chat on the `qm` socket; `terminal_bridge` bridges `/ws/terminal` to a
   PTY running a fresh `tmux attach` per connection (`GET /ws/terminal?session=&token=&cols=&rows=`;
   xterm.js + fit, unicode11 and web-links addons).
-  `Launcher#chat_plan`: **Start** = `QM_ITEM=<slug> claude` at `start_cwd`; **Resume** = `resume_plan`
+  `launcher::chat_plan`: **Start** = `QM_ITEM=<slug> claude` at `start_cwd`; **Resume** = `resume_plan`
   (`claude --resume <id>` in its cwd, else the same fresh start). A first prompt rides as claude's
-  last argument (issue kickoff, an automation's brief via `automation-chat`), never typed; a live
-  pane is only shown again ([automations](automations.md)).
+  last argument (issue kickoff, an automation's brief via `automation_chat`), never typed; a live pane
+  is only shown again ([automations](automations.md)).
 - Actions `pane-start`, `pane-resume` (optional `session`), `pane-warp` (a Warp tab running
   `tmux -L qm attach -t =slug`); `/api/state` carries `panes` (live tmux session names), each item's
   `pane` flag and `terminalToken`. The chat view's Resume/Start, `r`/`n` and session rows' Resume go to
   the pane; the kanban card and detail sheet keep their Warp actions. `QM_CHAT_COMMAND` swaps the program
   (`claude --model haiku` for an end-to-end check).
-- **History above the chat**: every item session that isn't live, oldest first (`ChatHistory#timeline`),
+- **History above the chat**: every item session that isn't live, oldest first (`chat_history::timeline`),
   dark like the terminal under an **EARLIER** bar (Hide/Show, `qm-history-collapsed` in localStorage).
   Per session (`TranscriptHistory`): the user's prompts and Claude's text in full (one message's text
   blocks joined by message id), each `tool_use` as one line ("Bash  bin/rspec …", the input named by
@@ -49,7 +49,7 @@ blocked + unsnoozed your_turn chats.
   `paste`s the path (as Warp does), so claude attaches it.
 - **Driving the pane from the CLI** (the phone, via a Remote Control chat): `qm pane-start SLUG`,
   `qm pane-resume SLUG [--session ID]` and `qm rotate SLUG [--close]` POST the GUI's existing actions
-  to `QM_GUI_PORT` without an Origin (`CLI#gui_action`, shared with `qm caffeinate`). Same refusals;
+  to `QM_GUI_PORT` without an Origin (`gui_action`, shared with `qm caffeinate`). Same refusals;
   no GUI → says so, exits 1; a refusal exits 1 with the action's error; a live pane answers "already running".
 
 ## Rules
@@ -86,13 +86,17 @@ blocked + unsnoozed your_turn chats.
 - Each WebSocket spawns its own `tmux attach` PTY: a reload or second tab is another client and tmux
   redraws; closing the socket kills only that client. Binary frames are keystrokes, text frames
   `{cols, rows}` resizes (the PTY winsize, clamped to 1–500 × 1–200, plus a SIGWINCH to that client).
+- The 60 s read timeout (`QM_GUI_REQUEST_TIMEOUT_MS` shortens it, for tests) covers reading a request only: a
+  WebSocket clears it before `serve`, since an idle terminal sends nothing (no ping) and would be dropped.
+  Both PTY fds are close-on-exec (`open_pty`): the server spawns git, gh and tmux from other threads, and
+  a child holding the PTY would keep it open past its connection.
 - `window-size latest` sizes the window to the client that attached, resized or typed last, so a
   second tab or Warp attach on the same chat takes it and a pane shows only its top rows. An unchanged
   winsize sends no SIGWINCH, so the bridge signals one itself, and a page re-sends its terminals' sizes
   (`claimSize`) on window focus, becoming visible and focus inside a terminal: that pane wins the window back.
 - An upgrade needs our Host, an `Origin` equal to our own (required, unlike POSTs — browsers always send
   one here), the per-start token, and a live tmux session by that name; otherwise 403
-  (`TerminalBridge#refusal`). Any site can open a WebSocket to 127.0.0.1, and this one types into a chat.
+  (`terminal_bridge::refusal`). Any site can open a WebSocket to 127.0.0.1, and this one types into a chat.
 - The token is embedded in the page and also in `/api/state` (same-origin only), so a tab from before a
   GUI restart reattaches without a reload. It is compared in constant time.
 - The WebSocket server is a hand-rolled RFC 6455 (`WebSocket`) — stdlib only.

@@ -1,34 +1,34 @@
 # Work items
 
-**Code:** `lib/quartermaster/work_item.rb`, `lib/quartermaster/atomic_file.rb`, `lib/quartermaster/note.rb`, `lib/quartermaster/attention.rb`, `lib/quartermaster/item_deletion.rb`
-**Tests:** `test/work_item_test.rb`, `test/automation_items_test.rb`, `test/item_deletion_test.rb`, `test/attention_test.rb`, `test/distill_test.rb`, `test/history_rotation_test.rb`
+**Code:** `src/work_item.rs`, `src/automation_item.rs`, `src/slug.rs`, `src/atomic_file.rs`, `src/item_deletion.rs`, `src/note.rs`, `src/attention.rs`, `src/front_edit.rs`, `src/psych.rs`, `src/yaml_scalar.rs`, `src/sections.rs`, `src/distill.rs`
+**Tests:** `tests/work_items.rs`, `tests/work_item_storage.rs`, `tests/item_deletion.rs`, `tests/psych_scalars.rs`, `tests/interop.rs`, `tests/show.rs`
 **Depends on:** [capture](capture.md)
 
 ## What it does
 
 A work item is the curated layer over the session log: one markdown file per piece of work,
-`work-items/<slug>.md`, with a state (`in_progress` / `active` / `fridge` / `resolved`), a
-Description, running Notes and distilled Snapshots. Human-editable by design — fixing a
-project is editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
+`work-items/<slug>.md`, with a state (`in_progress` / `active` / `fridge` / `resolved`), a Description,
+running Notes and distilled Snapshots. Human-editable by design — fixing a project is
+editing one frontmatter line. Sessions attach to items ([linking](linking.md)).
 
 - **Automations are work items of `kind: automation`**, carrying `routine:` (the cloud
-  routine's id, once pushed) and `runner:` (`cloud`). `active` is valid for any item and is
-  what a running automation sits in. `WorkItem#automation?` is the one test, and every list
-  of the user's work leaves them out: the GUI board (`board.js render`, while `/api/state`
+  routine's id, once pushed) and `runner:` (`cloud` or `local`). `active` is valid for any item
+  and is what a running automation sits in. `WorkItem::automation` is the one test, and every
+  list of the user's work leaves them out: the GUI board (`board.js render`, while `/api/state`
   keeps them for their chat view), the chats list and its rotate offers (`ChatAttention`),
-  `Attention`, the phone page (`Overview`: neither rows nor counts), plain `qm list`, the
+  `Attention`, the phone page (`overview`: neither rows nor counts), plain `qm list`, the
   viewer rows, the attach-session picker and the unlinked-session listing. `qm list --kind
   automation` lists only them; `qm show` names kind, routine and runner on its meta line.
 
 - **Created** by `qm new "Title" [--project P] [--session ID] [--description …]` (slug from
-  the title by `WorkItem.slugify`: accents transliterated, `Café` → `cafe`, then only `a-z0-9`
+  the title by `slug::slug_words`: accents transliterated, `Café` → `cafe`, then only `a-z0-9`
   runs joined by `-`; state `in_progress`, `created` today, empty sections), or from a captured
-  session (`WorkItem.from_session`: project and branch from its start event, a mainline
+  session (`gui_actions::from_session`: project and branch from its start event, a mainline
   branch `main|master|develop` left off, the session claimed). `qm retitle` never changes
   the slug; `qm describe SLUG TEXT` (or stdin) replaces the Description; `qm move` changes
   the project.
 - **Deleted** by `qm delete SLUG [--force]` or the detail sheet's **Delete item…**
-  (`ItemDeletion`, action `delete`), meant for an item made by accident: without force it is
+  (`item_deletion`, action `delete`), meant for an item made by accident: without force it is
   refused unless the item holds nothing beyond what `qm new` gives it — no notes, no linked
   branches, at most one session, no board, a Description empty or `_TODO_`. The refusal names
   what it holds ("3 notes, 2 branches, board set"); the GUI replies `needs_force` with `held`
@@ -49,12 +49,12 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
   - `open` — unresolved and user-facing: a decision the user owes, a blocked dependency, a gap.
   - `decision` — a choice made or a finding about how the system is. The default.
   - `history` — how it got done: commits, rebases, push status, specs green.
-  `qm retag SLUG POSITION KIND` (and the GUI's chip select) changes a kind afterwards;
+  `qm retag SLUG POSITION KIND` (and the GUI's chip select) changes a kind afterwards; POSITION is read like Ruby's `Integer(..)`: all of it must be an integer (`3x`, `3.5` name no note);
   POSITION is the note's 1-based place in the file, shown as `#n` by `qm show` and the
   injected digest.
-- **The injected digest** (`HookHandler#item_digest`, every session start on a linked item or
+- **The injected digest** (`hook::item_digest`, every session start on a linked item or
   aside): the frontmatter minus the session-id list (just a count), the full Description,
-  `WorkItem#injectable_notes` oldest-first with their `#n`, a "(N of M …)" pointer to
+  `work_item::injectable_notes` oldest-first with their `#n`, a "(N of M …)" pointer to
   `qm show` when notes were left out, and Snapshots by count only.
 - **`injectable_notes`**: drop `history`, then the newest `INJECTED_OPEN_NOTES` (3) `open`
   notes regardless of age, plus the newest `INJECTED_NOTES` (5) non-history notes.
@@ -64,13 +64,13 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
 - **Snapshots** are distilled transcript summaries, one per session, under `## Snapshots` as
   `### <date> — session <id>` blocks — the rehydration source once a transcript is gone.
 - **Distill** (`qm distill SLUG [--session ID] [--force]`, the viewer's ^T, the GUI action;
-  `Quartermaster.distill_*` in `lib/quartermaster.rb`): headless `claude -p --model haiku`
+  `src/distill.rs`): headless `claude -p --model haiku`
   with `QM_SKIP=1` over the transcript, prompt asking for goal, what was done and decided,
   state left in, next steps in under 300 words. Bare distill covers every session carrying
   a degradation warning — one action clears an item's expiry warnings — else the newest
   resumable session. Not run automatically at session end (cost). In the GUI it
   runs on a server thread ([gui-shell](gui-shell.md)).
-- **Resumability tiers** per session (`Session#tier`, [capture](capture.md)): live,
+- **Resumability tiers** per session (`session_log::tier`, [capture](capture.md)): live,
   resumable (`claude --resume` works from the recorded cwd), expired (only notes and any
   snapshot remain; resume = rehydrate, [linking](linking.md)).
 - **Attention nudges** (`Attention`, shown by `qm attention` after the chats, in `qm show`,
@@ -89,15 +89,18 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
 ## Rules
 
 - **Every mutation runs under one global exclusive flock** (`work-items/.lock`,
-  `WorkItem.with_lock` / `#locked`) spanning the whole read-modify-write, re-reading the file
+  `work_item::with_lock` / `#locked`) spanning the whole read-modify-write, re-reading the file
   before applying; reentrant per thread so compound moves (`claim_session`) nest. Without it
   a bulk distill's stale copy clobbered a concurrent note. A caller's own `find` before the
   mutation is only a handle: the mutator never writes from that copy, and an item deleted
   meanwhile raises "no work item" instead of being written back.
-- **`save` replaces the file whole** (`AtomicFile.write`: temp file beside it, renamed over
+- **A save replaces the file whole** (`atomic_file::write`: temp file beside it, renamed over
   it, keeping the file's mode), so readers that take no lock — the GUI, the viewer, `qm list`,
   every mutator's first `find` — see the old or the new item, never a truncated one. A plain
-  `File.write` let concurrent `qm note`s fail with "malformed work item file".
+  write let concurrent `qm note`s fail with "malformed work item file".
+- **A frontmatter change touches only the changed key's lines** (`front_edit`); every other line
+  of the user's file stays byte for byte. `config.yml` is the one file qm rewrites whole
+  ([settings](settings.md)).
 - **The stored note format is parsed and written only by `Note`** (`NOTE_LINE`). The kind
   marker is omitted for the default, so pre-kind notes and ordinary notes read identically —
   no migration was needed.
@@ -126,10 +129,12 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
   every line that names the slug, and the guard check and the file removal run under the
   work-item lock, so a note landing meanwhile is seen.
 - **A slug is never empty**: a title with no letter or digit left after transliterating
-  (`日本語`) is an `ArgumentError` from `slugify`, so every creation path (CLI, GUI new item,
-  loose chat → item, issue start) refuses it before writing a file. A slug is made once:
-  changing `slugify` never renames existing items, and nothing re-slugifies a stored title.
-- **A new list of items filters with `automation?`**: an automation surfacing on the board,
+  (`日本語`) is an `ArgumentError` from `work_item::create`, so every creation path (CLI, GUI new
+  item, loose chat → item, issue start) refuses it before writing a file; the issue-start branch
+  name uses the non-raising `slugify`, so such a title still gets the plain `issue/<n>`. A slug is
+  made once: changing the slug rules never renames existing items, and nothing re-slugifies a
+  stored title.
+- **A new list of items filters with `automation()`**: an automation surfacing on the board,
   in attention or as a link target would read as unfinished work. Adding `kind` needed no
   `v:` bump, since readers already keep unknown front keys.
 - **`pf_mode` needs a dev server**: only an item whose project has `dev_server:` in config.yml
@@ -150,7 +155,7 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
 | `pf_mode` | dev-server projects only; absent = the server's `default_mode` |
 | `rotations` | `[{at, from, via, carried, decisions, open}]`, oldest first ([rotation](rotation.md)) |
 | `snooze_until`, `turn_snoozed_at` | staleness mute date; your-turn quiet time |
-| `kind`, `routine`, `runner` | absent on ordinary items; `automation`, its routine id, `cloud` on an automation |
+| `kind`, `routine`, `runner` | absent on ordinary items; `automation`, its routine id, `cloud` or `local` on an automation |
 
 ## Known limits
 
