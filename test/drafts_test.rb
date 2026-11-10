@@ -467,7 +467,10 @@ class DraftTrayPageTest < Minitest::Test
     assert_equal [2, nil], [again["rev"], other["verdict"]]
     assert_equal again, drafts.review_summary("Acme/Widgets", 7)
     assert_nil drafts.review_summary("acme/widgets", 9)
-    assert_raises(ArgumentError) { drafts.put_review_summary(summary.merge("verdict" => "lgtm")) }
+    refused = assert_raises(ArgumentError) { drafts.put_review_summary(summary.merge("verdict" => "lgtm")) }
+    assert_equal "'lgtm' is not a verdict: approve, comment or request-changes", refused.message,
+                 "the same refusal as a submitted review's verdict"
+    assert_raises(ArgumentError) { drafts.put_review_summary(summary.merge("verdict" => "APPROVE")) }
     assert_raises(ArgumentError) { drafts.put_review_summary(summary.merge("repo" => "widgets")) }
     assert_raises(ArgumentError) { drafts.put_review_summary(summary.merge("number" => 0)) }
     assert_equal "user", drafts.put_review_summary(summary.merge("number" => 9, "author" => "bob"))["author"]

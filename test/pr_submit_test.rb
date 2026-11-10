@@ -97,7 +97,9 @@ class PrSubmitTest < Minitest::Test
       assert_match(/needs a summary/, assert_raises(ArgumentError) { submit(repo, gh, "REQUEST_CHANGES", "  ") }.message)
       assert_match(/needs a summary when it carries no comments/,
                    assert_raises(ArgumentError) { submit(repo, gh, "COMMENT") }.message)
-      assert_match(/not a verdict/, assert_raises(ArgumentError) { submit(repo, gh, "MERGE", "x") }.message)
+      assert_equal "'MERGE' is not a verdict: approve, comment or request-changes",
+                   assert_raises(ArgumentError) { submit(repo, gh, "MERGE", "x") }.message
+      assert_equal %w[APPROVE COMMENT REQUEST_CHANGES], Quartermaster::PendingReview::EVENTS
       draft(base, c1)
       push_head(LINES.sub("line 5\n", "line FIVE\n"))
       assert_raises(ArgumentError, "an outdated draft is no comment") { submit(repo, gh, "COMMENT") }

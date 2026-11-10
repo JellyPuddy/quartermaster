@@ -222,7 +222,7 @@ class ChatReviewDraftsTest < Minitest::Test
     with_pr do |_repo, _c1, _head, _base|
       _, err, exited = qm("draft", "add", "feat", "--summary", "--verdict", "lgtm", "--body", "x")
       assert_equal 1, exited
-      assert_includes err, "verdict must be approve, comment or request-changes"
+      assert_includes err, "'lgtm' is not a verdict: approve, comment or request-changes"
       _, err, = qm("draft", "add", "feat", "--verdict", "approve", "--path", "a.txt", "--line", "5", "--body", "x")
       assert_includes err, "--verdict goes with --summary"
       [%w[--path a.txt], %w[--line 5], %w[--start-line 4], %w[--side old], %w[--commit abc1234], %w[--file],

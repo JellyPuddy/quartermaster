@@ -7,7 +7,7 @@ module Quartermaster
   # comment, so posting the pending review leaves it in the tray, and a
   # submitted review takes it along (forget_review_summary).
   module ReviewSummaryDrafts
-    VERDICTS = %w[approve comment request-changes].freeze
+    VERDICTS = PendingReview::VERDICTS
 
     # Fields: repo ("owner/name"), number, verdict (one of VERDICTS, or
     # none), author ("user" unless "claude"). A put on the PR's summary
@@ -22,9 +22,7 @@ module Quartermaster
       raise ArgumentError, "a review summary needs its pull request's number" unless number&.positive?
 
       verdict = raw["verdict"]
-      unless verdict.nil? || VERDICTS.include?(verdict)
-        raise ArgumentError, "'#{verdict}' is no verdict: a verdict must be approve, comment or request-changes"
-      end
+      raise PendingReview.not_a_verdict(verdict) unless verdict.nil? || VERDICTS.include?(verdict)
 
       fields = { "repo" => raw["repo"], "number" => number, "verdict" => verdict,
                  "author" => Drafts::AUTHORS.include?(raw["author"]) ? raw["author"] : "user" }.compact

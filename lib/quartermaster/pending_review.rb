@@ -65,6 +65,8 @@ module Quartermaster
     GRAPHQL
 
     EVENTS = %w[APPROVE COMMENT REQUEST_CHANGES].freeze
+    # Each event as a verdict is spelled where qm stores one (a review summary).
+    VERDICTS = EVENTS.map { |event| event.downcase.tr("_", "-") }.freeze
 
     attr_reader :repo, :number
 
@@ -163,7 +165,12 @@ module Quartermaster
       event = verdict.to_s.strip.upcase.tr("-", "_")
       return event if EVENTS.include?(event)
 
-      raise ArgumentError, "'#{verdict}' is not a verdict: approve, comment or request-changes"
+      raise not_a_verdict(verdict)
+    end
+
+    # The one refusal for a verdict qm doesn't know, wherever it came in.
+    def self.not_a_verdict(verdict)
+      ArgumentError.new("'#{verdict}' is not a verdict: #{VERDICTS[0..-2].join(", ")} or #{VERDICTS.last}")
     end
 
     # The rule the server can check without GitHub: a change request says why.
