@@ -52,7 +52,7 @@ module Quartermaster
     end
 
     def post_result(review, result)
-      parts = ["#{result["posted"]} added to your pending review on #{review.label} — submit it on GitHub"]
+      parts = ["#{result["posted"]} added to your pending review on #{review.label} — submit it here or on GitHub"]
       parts << "#{result["outdated"]} outdated, not posted" if result["outdated"].positive?
       out = { "ok" => result["failed"].empty?, "message" => parts.join(" · "), "review" => true }
       out["error"] = "#{parts.join(" · ")} · #{result["failed"].size} failed and stay in the tray: " \

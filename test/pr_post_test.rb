@@ -309,7 +309,7 @@ class PrPostTest < Minitest::Test
       50.times { break if (finished = gui.jobs.take_finished.first); sleep 0.1 }
 
       assert_equal [true, "feat"], finished.values_at("ok", "key")
-      assert_match(/1 added to your pending review on widgets#7 — submit it on GitHub/, finished["message"])
+      assert_match(/1 added to your pending review on widgets#7 — submit it here or on GitHub/, finished["message"])
       assert_empty Quartermaster::Drafts.new("feat").entries
       assert_match(/no review drafts/, act(gui, "review-post", pr)["error"])
     end
