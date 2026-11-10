@@ -1,6 +1,6 @@
 # Todos
 
-**Code:** `lib/quartermaster/todo_list.rb`, `lib/quartermaster/cli_todo.rb`, `lib/quartermaster/gui_todo_actions.rb`
+**Code:** `lib/quartermaster/todo_list.rb`, `lib/quartermaster/cli_todo.rb`, `lib/quartermaster/gui_todo_actions.rb`, `lib/quartermaster/gui/js/todos.js`, `lib/quartermaster/gui/css/todos.css`
 **Tests:** `test/todo_list_test.rb`, `test/gui_todos_test.rb`
 **Depends on:** [work-items](work-items.md), [linking](linking.md), [cli](cli.md), [gui-shell](gui-shell.md)
 
@@ -51,6 +51,24 @@ takes seconds). The state's `todos` is `GuiTodoActions.payload`: the open todos 
 the item's when the todo has one (the todo's own otherwise) and `itemTitle` names that item (nil
 for a deleted one). `TodoList#signature` (todos.json's size+mtime) is part of the pulse and
 `/api/pulse`'s own `todos` field, so a CLI add reaches an open page within a second.
+
+**The Todos tab** (`todos.js`, `todos.css`): a header mode after Issues, key `t`, its badge
+the open count (never part of the tab title's count). One centred column: an always-present add
+row (text + project picker; the picker defaults to the last project added under while no filter
+is on, remembered per browser in `localStorage` `qm-todo-project`, and to the filtered project
+while a project filter is), a filter row (All / no project / one chip per project with open
+todos), the open todos in order, then a collapsed Done section (the 20 newest; unticking
+reopens one). A row: checkbox, text, project tag, an item chip (the item's title; a click opens
+its chat), a drag handle and a ⋯ menu (Edit, → Work item, Delete). A todo whose item has gone shows the slug. Keys
+in the tab: `j`/`k` select, `⇧J`/`⇧K` move the todo past its neighbour *in the filtered list*
+(`todo-move` before/after that neighbour), `x` tick/untick, `e` edit inline (text, and the project
+unless the todo is on an item; Enter saves, Esc cancels), `w` → Work item, `⌫` delete (no
+confirm), `n` or `/` focus the add input, `c` new item. Neither key clashes: the board takes
+`/` only in its own mode. → Work item opens a dialog like the loose chat's: title and first
+prompt prefilled with the todo text, the project the todo's (own or its item's), else the
+last one used there (`qm-todo-item-project`), else the default; it posts `todo-to-item` and lands
+in the new item's chat. The page refetches state when `/api/pulse`'s `todos` moves, in every
+mode, so a CLI add shows within a second. An inline edit keeps its draft across a re-render.
 
 **Sessions learn it** through one line of the linked work-item protocol ([linking](linking.md)):
 when the user asks, or something needs their own hands outside the session, `qm todo add "…"

@@ -1,0 +1,75 @@
+/* ------- Todos view: the user's own to-do list, one centred column ------- */
+body:not([data-mode="todos"]) .td-wrap, body:not([data-mode="todos"]) .legend .todos-only { display: none; }
+body[data-mode="todos"] .legend .item-key { display: none; }
+.td-wrap { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+.td-main { max-width: 760px; margin: 0 auto; padding: 4px 24px 48px; }
+.td-headbar { display: flex; align-items: center; gap: 8px; padding: 16px 0 8px; }
+.td-headbar .col-title { color: var(--ink); }
+.td-hint { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+.td-hint kbd { font-size: 9.5px; padding: 1px 4px; }
+
+.td-add { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.td-add input, .td-add select, .td-edit input, .td-edit select {
+  font-family: var(--sans); font-size: 13px; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 10px; outline: none; min-width: 0;
+}
+.td-add input { flex: 1 1 auto; font-size: 13.5px; padding: 9px 12px; }
+.td-add select, .td-edit select { flex: 0 1 180px; color: var(--muted); }
+.td-add input:focus, .td-add select:focus, .td-edit input:focus, .td-edit select:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.td-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.td-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-family: var(--sans); font-size: 12px; font-weight: 500;
+  color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+  padding: 3px 10px; cursor: pointer;
+}
+.td-chip:hover { border-color: var(--accent-line); }
+.td-chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
+.td-chip-n { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
+
+.td-body { display: flex; flex-direction: column; gap: 4px; }
+.td-row {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 6px 8px 6px 12px; outline: none;
+}
+.td-row:hover { border-color: var(--border-strong); }
+.td-row.focused, .td-row:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.td-row.dragging { opacity: .45; }
+.td-row.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.td-row.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+.td-check { flex: none; margin: 0; width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+.td-text { flex: 1 1 auto; min-width: 0; font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.td-proj {
+  flex: none; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--mono); font-size: 10.5px; color: var(--muted);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px; padding: 1px 8px;
+}
+.td-item {
+  flex: 0 1 auto; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--sans); font-size: 11.5px; color: var(--accent); background: var(--accent-soft);
+  border: 1px solid var(--accent-line); border-radius: 20px; padding: 1px 9px; cursor: pointer;
+}
+.td-item:hover { text-decoration: underline; }
+.td-handle { flex: none; color: var(--faint); cursor: grab; font-size: 13px; padding: 0 2px; user-select: none; }
+.td-handle:active { cursor: grabbing; }
+.td-more {
+  flex: none; border: 1px solid transparent; background: none; color: var(--muted); font-size: 14px; line-height: 1;
+  border-radius: 5px; padding: 2px 6px; cursor: pointer;
+}
+.td-more:hover { border-color: var(--border-strong); color: var(--ink); }
+.td-row.done .td-text { color: var(--faint); text-decoration: line-through; }
+.td-row.done .td-proj, .td-row.done .td-item { opacity: .6; }
+
+.td-edit { flex: 1 1 auto; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.td-edit input { flex: 1 1 auto; }
+
+.td-done-head {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; margin-top: 14px;
+  font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--muted);
+  background: none; border: none; padding: 4px 2px; cursor: pointer;
+}
+.td-done-head:hover { color: var(--ink); }
+@media (max-width: 860px) { .td-main { padding: 4px 16px 40px; } .td-hint { display: none; } .td-add select { flex-basis: 120px; } }

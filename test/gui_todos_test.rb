@@ -192,4 +192,36 @@ class GuiTodosTest < Minitest::Test
     refute_equal before["pulse"], after["pulse"]
     refute_equal before["todos"], after["todos"]
   end
+
+  def page = served_page(server, ok_host)
+
+  def test_the_todos_tab_is_a_header_mode_after_issues_on_t
+    html = page
+
+    ['<button data-mode="todos" aria-pressed="false" title="Your own to-do list (t)">Todos <span id="todos-badge"></span></button>',
+     '<link rel="stylesheet" href="/assets/css/todos.css">', '<input id="todo-add-input"', '<select id="todo-add-project"',
+     '<div class="td-filters" id="todo-filters"', '<div class="td-body" id="todo-body"></div>',
+     '<span class="grp"><kbd>t</kbd><span>todos</span></span>', '<span class="grp todos-only"><kbd>x</kbd><span>done</span></span>',
+     'if (e.key === "t") { e.preventDefault(); setMode(mode === "todos" ? "board" : "todos"); return; }',
+     'if (mode === "todos") return todoKey(e);', '["chat", "prs", "issues", "todos", "settings"].includes(savedMode)',
+     'else if (m === "todos") renderTodos();', "renderTodosBadge();", 'if (mode === "todos") renderTodos();',
+     "todos = st.todos || [];", 'body:not([data-mode="todos"]) .td-wrap'].each { |seam| assert_includes html, seam }
+    assert_operator html.index('data-mode="issues"'), :<, html.index('data-mode="todos"')
+    assert_operator html.index("/assets/js/todos.js"), :<, html.index("/assets/js/events.js")
+  end
+
+  def test_the_todos_tab_posts_the_todo_actions_and_moves_against_the_visible_neighbour
+    html = page
+
+    ['act("todo-add", { args: { text, project } })', 'act("todo-done", { args: { id: t.id, done: !t.done_at } })',
+     'act("todo-delete", { args: { id: t.id } })', 'act("todo-edit", { args })',
+     'act("todo-move", { args: { id: t.id, [d > 0 ? "after" : "before"]: neighbour.id } })',
+     "const open = todoVisibleOpen();",
+     'act("todo-to-item", { args: { id: t.id, title, project, prompt: ta.value.trim() } })',
+     "if (it) openChat(it);", 'localStorage.setItem("qm-todo-project", project)'].each { |seam| assert_includes html, seam }
+  end
+
+  def test_the_todos_badge_is_not_in_the_tab_title
+    refute_match(/document\.title[^\n]*todo/i, page)
+  end
 end

@@ -8,7 +8,7 @@ three places:
 
 - **`qm`**, the CLI: bare `qm` is an fzf viewer; `qm help` lists every command.
 - **`qm gui`**, a loopback web app: a kanban board, the item's Claude chats running in tmux
-  panes, diffs with review comments, PRs, issues, stacked branches, and worktree cleanup.
+  panes, diffs with review comments, PRs, issues, your todos, stacked branches, and worktree cleanup.
 - **A phone page** published as a claude.ai artifact (the `/work-items` skill).
 
 A SessionStart hook tells each session which work item it belongs to and how to keep it
@@ -17,7 +17,8 @@ current, so Claude itself writes the notes.
 qm also keeps **your own to-do list**: things you must do yourself, often outside any Claude
 session. `qm todo add "renew the passport" [--item SLUG | --project NAME]` puts one on top,
 `qm todo list` numbers the open ones in priority order, and `qm todo done N` ticks one off;
-the GUI's Todos tab shows them too. Done todos stay in the list until you delete them.
+the GUI's Todos tab (`t`) lists, filters by project, reorders and ticks them, and turns one into a
+work item with its chat started (`w`). Done todos stay in the list until you delete them.
 
 > [!WARNING]
 > **This project is 100% vibe-coded.** Claude Code wrote essentially all of it, steered by

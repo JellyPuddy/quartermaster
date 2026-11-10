@@ -32,6 +32,7 @@
 <link rel="stylesheet" href="/assets/css/prs.css">
 <link rel="stylesheet" href="/assets/css/issues-list.css">
 <link rel="stylesheet" href="/assets/css/issue-start.css">
+<link rel="stylesheet" href="/assets/css/todos.css">
 <link rel="stylesheet" href="/assets/css/settings.css">
 <link rel="stylesheet" href="/assets/css/automations.css">
 <link rel="stylesheet" href="/assets/css/responsive.css">
@@ -46,6 +47,7 @@
       <button data-mode="chat" aria-pressed="false">Chats <span id="chat-count"></span></button>
       <button data-mode="prs" aria-pressed="false" title="Open PRs: yours, and those asking your review (p)">PRs <span id="prs-badge"></span></button>
       <button data-mode="issues" aria-pressed="false" title="Issue drafts across all items (⇧I)">Issues <span id="issues-badge"></span></button>
+      <button data-mode="todos" aria-pressed="false" title="Your own to-do list (t)">Todos <span id="todos-badge"></span></button>
     </div>
 
     <label class="search">
@@ -168,6 +170,23 @@
     </main>
   </div>
 
+  <div class="td-wrap">
+    <main class="td-main">
+      <div class="td-headbar">
+        <span class="col-title">Todos</span>
+        <span class="col-count" id="todo-count">0</span>
+        <span class="td-hint">yours to do · <kbd>n</kbd> to add</span>
+      </div>
+      <div class="td-add">
+        <input id="todo-add-input" type="text" placeholder="add a todo…" autocomplete="off">
+        <select id="todo-add-project" title="Project for the new todo"></select>
+        <button class="act" id="todo-add-btn" type="button">Add</button>
+      </div>
+      <div class="td-filters" id="todo-filters" role="group" aria-label="Project filter"></div>
+      <div class="td-body" id="todo-body"></div>
+    </main>
+  </div>
+
   <div class="st-wrap">
     <nav class="st-tabs" id="st-tabs" role="tablist" aria-label="Settings area">
       <button role="tab" data-st-tab="settings" aria-selected="true">Settings</button>
@@ -187,6 +206,13 @@
     <span class="grp"><kbd>⇧I</kbd><span>issues</span></span>
     <span class="grp issues-only"><kbd>⏎</kbd><span>open in its chat</span></span>
     <span class="grp issues-only"><kbd>s</kbd><span>start work (created)</span></span>
+    <span class="grp"><kbd>t</kbd><span>todos</span></span>
+    <span class="grp todos-only"><kbd>x</kbd><span>done</span></span>
+    <span class="grp todos-only"><kbd>⇧J</kbd><kbd>⇧K</kbd><span>reorder</span></span>
+    <span class="grp todos-only"><kbd>e</kbd><span>edit</span></span>
+    <span class="grp todos-only"><kbd>w</kbd><span>→ work item</span></span>
+    <span class="grp todos-only"><kbd>⌫</kbd><span>delete</span></span>
+    <span class="grp todos-only"><kbd>n</kbd><kbd>/</kbd><span>add</span></span>
     <span class="grp"><kbd>,</kbd><span>settings</span></span>
     <span class="grp settings-only"><kbd>⌘S</kbd><span>save</span></span>
     <span class="grp"><kbd>j</kbd><kbd>k</kbd><span>move</span></span>
@@ -266,6 +292,7 @@ let terminalToken = /*__TERMINAL_TOKEN__*/ null;
 <script src="/assets/js/issues.js"></script>
 <script src="/assets/js/issues-list.js"></script>
 <script src="/assets/js/issue-start.js"></script>
+<script src="/assets/js/todos.js"></script>
 <script src="/assets/js/transcript-search.js"></script>
 <script src="/assets/js/settings-widgets.js"></script>
 <script src="/assets/js/settings-render.js"></script>

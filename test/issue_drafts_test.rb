@@ -327,7 +327,7 @@ class IssueDraftsTest < Minitest::Test
      '<span class="grp"><kbd>⇧I</kbd><span>issues</span></span>',
      '<span class="grp issues-only"><kbd>⏎</kbd><span>open in its chat</span></span>',
      'if (e.key === "I") { e.preventDefault(); setMode(mode === "issues" ? "board" : "issues"); return; }',
-     'if (mode === "issues") return issueListKey(e);', 'if (["chat", "prs", "issues", "settings"].includes(savedMode)) setMode(savedMode);',
+     'if (mode === "issues") return issueListKey(e);', 'if (["chat", "prs", "issues", "todos", "settings"].includes(savedMode)) setMode(savedMode);',
      'else if (m === "issues") { renderIssueList(); loadIssueIndex(); }',
      'body:not([data-mode="issues"]) .il-wrap { display: none; }',
      'body:not([data-mode="issues"]) .legend .issues-only { display: none; }',
@@ -350,7 +350,7 @@ class IssueDraftsTest < Minitest::Test
     html = page
 
     ['res = await (await fetch("/api/issues")).json();',
-     "const { pulse, events, issues } = await r.json();",
+     "const { pulse, events, issues, todos: todosSig } = await r.json();",
      "const issuesMoved = lastIssues !== null && issues !== lastIssues;",
      'if (issuesMoved && !onChat) await refresh();', 'if (issuesMoved && mode === "issues") loadIssueIndex();'].each { |seam| assert_includes html, seam }
   end
