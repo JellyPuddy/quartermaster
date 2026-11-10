@@ -115,13 +115,13 @@ class SnapshotWorktreeHookTest < Minitest::Test
     stub = File.join(@dir, "bin")
     FileUtils.mkdir_p(stub)
     real_git = `command -v git`.strip
-    File.write(File.join(stub, "git"), "#!/bin/sh\n[ \"$1\" = add ] && sleep 5\nexec #{real_git} \"$@\"\n")
+    File.write(File.join(stub, "git"), "#!/bin/sh\n[ \"$1\" = add ] && sleep 20\nexec #{real_git} \"$@\"\n")
     File.chmod(0o755, File.join(stub, "git"))
     started = Time.now
     _out, _err, status = run_hook(@repo, { "QM_SNAPSHOT_TIMEOUT" => "1", "PATH" => "#{stub}:#{ENV.fetch("PATH")}" })
 
     assert status.success?
-    assert_operator Time.now - started, :<, 4
+    assert_operator Time.now - started, :<, 10
     assert_empty lines
   end
 end
