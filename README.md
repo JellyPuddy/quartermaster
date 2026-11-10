@@ -179,7 +179,8 @@ Control.
 bar (or ⋮ → Cast, save and share → Install page as app) and install **Quartermaster**. The
 app's Dock icon shows the same count as the tab title, the chats whose move is yours (blocked,
 or your turn and not snoozed). While `qm gui` isn't running the window shows a "qm gui isn't
-running" page that comes back by itself once you start it. `qm gui` still opens its URL with
+running" page that comes back by itself once you start it. Links to other sites (PRs, issues,
+claude.ai) open in your default browser, not in Chrome. `qm gui` still opens its URL with
 `open`, so Chrome may launch it in a tab unless you turn on "Open supported links" in the app's
 settings in Chrome.
 
@@ -329,6 +330,8 @@ Know this before you install it:
   stores one offline page in the browser's cache and answers only page loads that fail because
   `qm gui` isn't running; it caches nothing else and sends nothing anywhere. Chrome's site data
   settings for that address remove it.
+- **In the installed `qm gui` app, a link to another site runs macOS `open <url>`** (http and
+  https links only), so it opens in your default browser instead of a Chrome window.
 - **Some features start `claude -p` in the background** (summaries, asides, benchmarks), which
   counts against your Claude usage or API bill. Benchmark runs keep their folders (script,
   results, logs) in `~/.local/share/quartermaster/benchmarks/`, outside `~/.claude`, where

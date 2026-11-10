@@ -1,7 +1,7 @@
 # GUI shell
 
-**Code:** `lib/quartermaster/gui.rb`, `lib/quartermaster/gui_actions.rb`, `lib/quartermaster/gui_jobs.rb`, `lib/quartermaster/gui_state.rb`, `lib/quartermaster/loopback_guard.rb`, `lib/quartermaster/command_runner.rb`, `lib/quartermaster/pf.rb`, `lib/quartermaster/pf_fence.rb`, `lib/quartermaster/transcript_search.rb`, `lib/quartermaster/ask_search.rb`, `lib/quartermaster/gui/page.html`, `lib/quartermaster/gui/js/core.js`, `lib/quartermaster/gui/js/server.js`, `lib/quartermaster/gui/js/events.js`, `lib/quartermaster/gui/js/board.js`, `lib/quartermaster/gui/js/detail.js`, `lib/quartermaster/gui/js/session-sheet.js`, `lib/quartermaster/gui/js/search.js`, `lib/quartermaster/gui/js/transcript-search.js`, `lib/quartermaster/gui/js/popovers.js`, `lib/quartermaster/gui/js/modals.js`, `lib/quartermaster/gui/js/focus.js`, `lib/quartermaster/gui/js/long-actions.js`, `lib/quartermaster/gui/js/errors.js`, `lib/quartermaster/gui/js/app.js`, `lib/quartermaster/gui/sw.js`, `lib/quartermaster/gui/manifest.webmanifest`, `lib/quartermaster/gui/icons/icon-192.png`, `lib/quartermaster/gui/icons/icon-512.png`, `lib/quartermaster/gui/css/base.css`, `lib/quartermaster/gui/css/board.css`, `lib/quartermaster/gui/css/header.css`, `lib/quartermaster/gui/css/overlays.css`, `lib/quartermaster/gui/css/responsive.css`
-**Tests:** `test/gui_test.rb`, `test/pf_test.rb`, `test/distill_test.rb`, `test/transcript_search_test.rb`, `test/error_log_test.rb`
+**Code:** `lib/quartermaster/gui.rb`, `lib/quartermaster/gui_actions.rb`, `lib/quartermaster/gui_jobs.rb`, `lib/quartermaster/gui_state.rb`, `lib/quartermaster/loopback_guard.rb`, `lib/quartermaster/command_runner.rb`, `lib/quartermaster/link_opener.rb`, `lib/quartermaster/pf.rb`, `lib/quartermaster/pf_fence.rb`, `lib/quartermaster/transcript_search.rb`, `lib/quartermaster/ask_search.rb`, `lib/quartermaster/gui/page.html`, `lib/quartermaster/gui/js/core.js`, `lib/quartermaster/gui/js/server.js`, `lib/quartermaster/gui/js/events.js`, `lib/quartermaster/gui/js/board.js`, `lib/quartermaster/gui/js/detail.js`, `lib/quartermaster/gui/js/session-sheet.js`, `lib/quartermaster/gui/js/search.js`, `lib/quartermaster/gui/js/transcript-search.js`, `lib/quartermaster/gui/js/popovers.js`, `lib/quartermaster/gui/js/modals.js`, `lib/quartermaster/gui/js/focus.js`, `lib/quartermaster/gui/js/long-actions.js`, `lib/quartermaster/gui/js/errors.js`, `lib/quartermaster/gui/js/app.js`, `lib/quartermaster/gui/sw.js`, `lib/quartermaster/gui/manifest.webmanifest`, `lib/quartermaster/gui/icons/icon-192.png`, `lib/quartermaster/gui/icons/icon-512.png`, `lib/quartermaster/gui/css/base.css`, `lib/quartermaster/gui/css/board.css`, `lib/quartermaster/gui/css/header.css`, `lib/quartermaster/gui/css/overlays.css`, `lib/quartermaster/gui/css/responsive.css`
+**Tests:** `test/gui_test.rb`, `test/link_opener_test.rb`, `test/pf_test.rb`, `test/distill_test.rb`, `test/transcript_search_test.rb`, `test/error_log_test.rb`
 **Depends on:** [work-items](work-items.md), [attention](attention.md), [chats](chats.md), [worktrees](worktrees.md), [side-panel](side-panel.md)
 
 ## What it does
@@ -88,8 +88,12 @@ are also the favicon) and `js/app.js` registers `gui/sw.js`, a service worker wh
 is a self-contained "qm gui isn't running" page for a navigation the server doesn't answer;
 that page polls `/api/root` every 3 s and reloads once it answers. `app.js` also sets the Dock
 badge (`navigator.setAppBadge`, cleared at 0) to the tab title's count from `notify.js`
-(blocked + unsnoozed your turn, [attention](attention.md)), only when it changes; in a plain
-tab it is a no-op. The icons were generated once with a throwaway stdlib Zlib PNG writer and
+(blocked + unsnoozed your turn, [attention](attention.md)), only when it changes. An installed
+app window opens outside links in Chrome itself, so in it (`display-mode: standalone`) `app.js`
+reroutes an http(s) link to another origin, from a plain `target=_blank` click (one capture-phase
+handler) or `window.open`, to the `open-url` action: `LinkOpener` accepts only absolute http(s)
+URLs and runs macOS `open <url>` through `CommandRunner`, so it lands in the default browser; if
+the POST fails the link opens as before. In a plain tab both are no-ops. The icons were generated once with a throwaway stdlib Zlib PNG writer and
 are committed as binaries; app files sit at the root, not under `/assets/`. xterm.js,
 highlight.js and marked load from jsDelivr with SRI hashes. `docs/gui-mockup.html` is the
 design reference: SF for chrome, SF Mono for data (slugs, ids, states, stamps, kbd chips),

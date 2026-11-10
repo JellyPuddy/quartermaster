@@ -6,9 +6,8 @@ module Quartermaster
   # two surfaces can't drift. Gui runs it under the action mutex; anything
   # that takes seconds hands off to GuiJobs.
   class GuiActions
-    # Network-bound and touching no qm state (a thread's resolve changes
-    # only GitHub, a review preview only reads), or the benchmark ones with
-    # their own locks (BenchmarkRun, TodoList), so Gui runs them off the action mutex.
+    # Network-bound and touching no qm state (a thread's resolve changes only GitHub, a review preview
+    # only reads), or with their own locks (BenchmarkRun, TodoList), so Gui runs them off the action mutex.
     UNLOCKED = (%w[issue-preview pr-thread-resolve review-preview] + GuiBenchmarkActions::COMMANDS +
                 GuiTodoActions::COMMANDS).freeze
 
@@ -95,6 +94,7 @@ module Quartermaster
       when "pr-unrequire" then gui_pr_unrequire(args["url"], args["ref"])
       when "cleanup" then gui_cleanup(args)
       when "caffeinate" then gui_caffeinate(args["mode"])
+      when "open-url" then LinkOpener.new(runner: @runner).open(args["url"])
       when "errors-seen" then ok.merge("errors" => ErrorLog.new.tap(&:mark_seen).summary)
       when *GuiBenchmarkActions::COMMANDS then GuiBenchmarkActions.new(benchmarks: @state.benchmarks, jobs: @jobs).dispatch(cmd, slug, args)
       when *GuiTodoActions::COMMANDS then GuiTodoActions.new.dispatch(cmd, args)
