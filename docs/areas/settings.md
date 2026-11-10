@@ -98,6 +98,9 @@ lands on Settings; ⌘S saves). A tab strip on top, **Settings | Automations** (
 remembered per browser), switches between this form and the Automations tab
 ([automations](automations.md)), which has its own per-automation Apply and is in none of the
 form's Save, Revert, Check list or table of contents; ⌘S saves only on the Settings tab.
+Its heading row carries the theme, **System | Light | Dark**: a per-browser choice (`qm-theme` in localStorage, not
+config.yml) that applies at once, is in none of Save, Revert or the Check, and that core.js
+applies at page load; the header has no theme toggle.
 The form is full width, three parts. On top a projects × features grid: per
 project its name and root, a chip per feature from the server's `features` (on in green with its short value, off,
 inherit as a hollow accent outline with the real value in its tooltip, warning, error) and its
