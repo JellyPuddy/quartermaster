@@ -231,6 +231,21 @@ class HookLinkingTest < Minitest::Test
     assert_includes stdout, "re-link it then and there"
   end
 
+  def test_only_a_linked_session_is_told_about_qm_todo
+    Quartermaster::WorkItem.create("Ongoing", project: "No project", session_id: "sess-t1")
+    input = ->(id) { JSON.generate("session_id" => id, "cwd" => "/", "source" => "startup") }
+
+    linked, = run_hook("hook-session-start", input.call("sess-t1"))
+    aside, = run_hook("hook-session-start", input.call("sess-t2"), { "QM_ASIDE" => "ongoing" })
+    loose, = run_hook("hook-session-start", input.call("sess-t3"), { "QM_LOOSE" => "ab12cd34" })
+
+    assert_includes linked, "something needs their own hands outside this session: qm todo add \"…\" [--item ongoing]"
+    assert_includes aside, "work item 'ongoing'"
+    refute_includes aside, "qm todo"
+    assert_includes loose, "loose chat"
+    refute_includes loose, "qm todo"
+  end
+
   def test_a_session_moved_off_its_launch_item_stays_moved_on_compact
     Quartermaster::WorkItem.create("Launched", project: "No project")
     input = { "session_id" => "sess-mv", "cwd" => "/", "source" => "startup" }

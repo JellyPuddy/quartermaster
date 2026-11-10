@@ -41,5 +41,8 @@ no qm replacement.
 - **Auto-title fallback** from the first user prompt for items Claude never titled.
 - **Phone push when a chat is blocked**, ideally through something the Claude app already
   does — researched, not built.
+- **Todos: due dates and reminders; todos on the phone page** (adding from the phone needs a
+  write path the static page doesn't have); **todos on board cards or the side panel** — a todo
+  on an item shows only as that item's chip in the Todos tab.
 - **Clipboard annotations: ⌘V paste import**, and a global key that finds the item by
   checkout as the pf relay does.

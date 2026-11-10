@@ -69,6 +69,11 @@ module Quartermaster
         ["qm feature-use [--days N]", "which commands, GUI actions and GUI reads were used in the last N days (default 30), and which known ones weren't"],
         ["qm grep PHRASE", "find sessions whose prompts or replies contain PHRASE (rg over transcripts, asides left out), by work item"]
       ],
+      "Todos (your own to-do list; the qm gui's Todos tab)" => [
+        ['qm todo add [--item SLUG | --project NAME] "text"', "add a todo on top; --item ties it to a work item (shown with the item's project), --project to a project; neither is ever guessed"],
+        ["qm todo list", "open todos, numbered in priority order, with project and item"],
+        ["qm todo done N", "tick off todo N as qm todo list numbers it"]
+      ],
       "Attention" => [
         ["qm attention", "chats by whose move it is (blocked, your turn, working) with context size; expiring transcripts, stale items, merged PRs"],
         ["qm overview --json [PATH]", "snapshot of in-progress and fridge items (chat state, pane, open notes) for the phone work-items page; PATH is written atomically"],

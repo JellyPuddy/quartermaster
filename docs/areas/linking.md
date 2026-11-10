@@ -21,7 +21,8 @@ A matched session is attached and gets the **linked injection**: the item's dige
 ([work-items](work-items.md)) plus the work-item protocol — note at milestones with a kind
 (the kind taxonomy, one kind per note, omit `--kind` for `decision`, don't repeat the date);
 retag a handled `open` note by its `#n`; fold governing decisions into the Description;
-update the state; reuse a status board already shown; refine a stale title; and re-link the
+update the state; reuse a status board already shown; refine a stale title; put what needs the
+user's own hands on their list with `qm todo add` ([todos](todos.md)); and re-link the
 moment the work moves to another item. A project with a `dev_server:` adds the dev-server
 commands (`qm work-on`, `qm pf-mode`); one with `pr_prerequisites: true` adds `qm pr-requires` ([prs](prs.md)).
 

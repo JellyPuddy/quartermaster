@@ -42,6 +42,7 @@ else (see [capture](capture.md)), then requires `lib/quartermaster` through its 
 - `qm cleanup SLUG [--yes] [--force P]` / `qm sweep [--yes] [--force P]` — plan or run worktree cleanup ([worktrees](worktrees.md)).
 - `qm delete SLUG [--force]` — remove an item made by accident and kill its chat; refused for one holding work unless `--force` ([work-items](work-items.md)).
 - `qm feature-use [--days N]` — per kind, each name used in the last N days (default 30) with its count and last use, then the known names nobody used; dates the log's first line.
+- `qm todo add|list|done` — the user's own to-do list ([todos](todos.md)).
 - `qm ask QUERY` — find items by meaning (headless claude); `qm grep PHRASE` — sessions whose prompts or replies contain it ([gui-shell](gui-shell.md)).
 
 **Attention**
@@ -94,7 +95,7 @@ one file each: `CliViewer` (viewer rows and pickers, `show`, sessions), `CliAtte
 attention, overview, ack, snooze, distill), `CliChats` (commands acting on the running GUI),
 `CliPrs` (pr, pr-requires, draft), `CliCleanup` (cleanup, sweep), `CliWorkspace` (resume, start,
 pf, IDE, terminal), `CliSetup` (how qm itself runs: pin-ruby, doctor), `CliConfig` (`qm config`, owned by
-[settings](settings.md)), `CliAutomation` (`qm automation`, owned by [automations](automations.md)), and `CliFormat` (shared output helpers and the help text). Each group's frozen
+[settings](settings.md)), `CliAutomation` (`qm automation`, owned by [automations](automations.md)), `CliTodo` (`qm todo`, owned by [todos](todos.md)), and `CliFormat` (shared output helpers and the help text). Each group's frozen
 `COMMANDS` maps a word to the method `CLI#run` calls with argv; `CLI.commands` merges them and
 refuses a word claimed twice. A new command touches only its group's file (and `qm help`). Hooks
 and commands called otherwise (no argv, extra arguments, another class) stay explicit `when`

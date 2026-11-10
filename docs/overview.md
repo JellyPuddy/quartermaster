@@ -52,9 +52,9 @@ worktrees — derives from these two layers plus a few more append-only hook log
 | `benchmarks/<run id>/` | one benchmark run each: `meta.json` (`v: 1`), events, script, table, verdict, logs; never pruned. On the live root it lives outside it, in `~/.local/share/quartermaster/benchmarks/`: Claude Code refuses a headless agent's writes under `~/.claude` | [benchmarks](areas/benchmarks.md) |
 | `issues/<slug>/*.md` (+ `.prev/`) | Claude's issue drafts and qm's revision snapshots | [drafts](areas/drafts.md) |
 | `pr-cache.json`, `pr-inbox.json`, `pr-prerequisites.json`, `pr-deployment.json` | PR state per linked branch; the PRs view's list; PR prerequisites and their deploy-check cache | [prs](areas/prs.md) |
-| `viewer-filter` | the fzf viewer's state filter | [cli](areas/cli.md) |
+| `viewer-filter`, `ruby-version` | the fzf viewer's state filter; the Ruby qm runs on whatever a session's cwd pins (`qm pin-ruby`; absent, the cwd's) | [cli](areas/cli.md) |
 | `feature-use.jsonl` | one line per CLI command, GUI action and GUI read, append-only | [cli](areas/cli.md) |
-| `ruby-version` | the Ruby qm runs on whatever a session's cwd pins (`qm pin-ruby`); absent, the cwd's | [cli](areas/cli.md) |
+| `todos.json`, `todos.lock` | the user's own to-do list (`v: 1`), in priority order; the flock every change holds | [todos](areas/todos.md) |
 | `plans/<slug>/<batch id>.md` (+ `-exploration.md`) | each delegate-build run's plan, written by that skill; qm never reads it | none |
 
 Hooks and the global fallback instruction live at **user level** (`~/.claude/settings.json`,

@@ -14,6 +14,11 @@ three places:
 A SessionStart hook tells each session which work item it belongs to and how to keep it
 current, so Claude itself writes the notes.
 
+qm also keeps **your own to-do list**: things you must do yourself, often outside any Claude
+session. `qm todo add "renew the passport" [--item SLUG | --project NAME]` puts one on top,
+`qm todo list` numbers the open ones in priority order, and `qm todo done N` ticks one off;
+the GUI's Todos tab shows them too. Done todos stay in the list until you delete them.
+
 > [!WARNING]
 > **This project is 100% vibe-coded.** Claude Code wrote essentially all of it, steered by
 > one person for their own daily use. There are no guarantees whatsoever about its quality,
@@ -293,6 +298,9 @@ Know this before you install it:
   stats at session end, a git snapshot of the worktree on each prompt, and the full payload of
   every `ArtifactData` call. qm also reads your Claude Code transcripts under
   `~/.claude/projects/`.
+- **Your to-do list lives in `~/.claude/quartermaster/todos.json`** (with `todos.lock` beside
+  it), written by `qm todo` and the GUI. Sessions linked to a work item are told they may add a
+  todo there with `qm todo add` when you ask or when something needs your own hands.
 - **`qm gui` listens on `127.0.0.1` only** and refuses requests from other origins, but
   anything on your machine that can reach that port can drive it, and it can run commands:
   tmux chats running `claude`, `git worktree` add and remove, `gh`, and whatever dev-server,

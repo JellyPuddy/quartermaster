@@ -6,7 +6,7 @@ module Quartermaster
   # to the method #run calls with argv, so a new command touches only its
   # group. The hooks and the irregular commands stay explicit in #run.
   class CLI
-    COMMAND_GROUPS = [CliViewer, CliWorkspace, CliPrs, CliCleanup, CliChats, CliAttention, CliSetup, CliConfig, CliAutomation].freeze
+    COMMAND_GROUPS = [CliViewer, CliWorkspace, CliPrs, CliCleanup, CliChats, CliAttention, CliSetup, CliConfig, CliAutomation, CliTodo].freeze
     include CliFormat
     include(*COMMAND_GROUPS)
 

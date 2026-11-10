@@ -187,6 +187,7 @@ module Quartermaster
         - Update the state when it changes: qm state #{item.slug} (#{STATES.join(" | ")})
         - A 'status board' above means the item already has one: reuse that URL instead of publishing a new board (record one with qm board #{item.slug} URL).
         - Refine a stale title when asked (or when it's clearly outdated): qm retitle #{item.slug} "..."
+        - A todo for the user's own list, when the user asks, or something needs their own hands outside this session: qm todo add "…" [--item #{item.slug}]
         - The session sits on the item it is working on right now. The moment its work moves to another item (a different issue, a follow-up, refinement prep), re-link it then and there; likewise when this link is a wrong branch-based guess, telling the user:
           continues another item → qm attach <other-slug> --session #{session_id}; substantial new work → qm new "Title" --project "..." --session #{session_id} (both move the session off this item); trivial or throwaway → qm detach #{item.slug} --session #{session_id} and don't mention tracking again.#{pf_protocol_line(item)}#{pr_requires_protocol_line(item)}
       CONTEXT

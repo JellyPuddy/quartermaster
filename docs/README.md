@@ -49,6 +49,8 @@ goes in the commit message.
 - [side-panel](areas/side-panel.md) — read when you touch the chat side panel or header:
   workspace, status board mirror, usage and cost, rate limits and the status line, caffeinate,
   build progress.
+- [todos](areas/todos.md) — read when you touch the user's own to-do list: `todos.json`,
+  `TodoList`, `qm todo` or the Todos tab.
 - [phone-page](areas/phone-page.md) — read when you touch the phone work-items page or its
   publishing.
 - [settings](areas/settings.md) — read when you touch config.yml's key list (`ConfigSchema`), its
