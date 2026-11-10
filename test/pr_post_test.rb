@@ -305,6 +305,21 @@ class PrPostTest < Minitest::Test
     end
   end
 
+  def test_a_review_summary_is_never_posted_as_a_comment
+    with_pr do |repo, c1, base, gh|
+      gui = Quartermaster::Gui.new(port: 4567, runner: gh, tmux: FakeTmux.new)
+      pr = { "repo" => "acme/widgets", "number" => 7 }
+      drafts.put_review_summary(pr.merge("verdict" => "approve", "author" => "claude", "comment" => "LGTM"))
+
+      assert_match(/no review drafts for widgets#7/, act(gui, "review-preview", pr)["error"])
+      draft(base, c1)
+      assert_equal [1, 1], act(gui, "review-preview", pr)["preview"].values_at("count", "head")
+
+      assert_equal 1, post(repo, gh)["posted"]
+      assert_equal %w[review-summary], drafts.entries.map { |entry| entry["kind"] }
+    end
+  end
+
   def test_the_outdated_card_places_a_draft_on_a_line_the_file_or_its_old_commit
     with_pr do |_repo, c1, base, _gh|
       gui = Quartermaster::Gui.new(port: 4567, runner: quiet_runner, tmux: FakeTmux.new)

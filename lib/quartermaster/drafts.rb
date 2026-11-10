@@ -10,10 +10,8 @@ module Quartermaster
   # same drafts and they survive restarts. Sent together as one message
   # (GuiActions' drafts-send); only the entries actually sent are removed.
   #
-  # Each entry: { "id", "kind" ("diff-comment" | "github-comment" |
-  # "annotation" | "issue-comment" | "thread-reply"), "comment", "rev"
-  # (bumped on every edit), "createdAt", "updatedAt" } plus its kind's
-  # fields — a diff comment its line address (DIFF_FIELDS: a range's first
+  # Each entry: { "id", "kind" (KINDS), "comment", "rev" (bumped on every
+  # edit), "createdAt", "updatedAt" } plus its kind's fields — a diff comment its line address (DIFF_FIELDS: a range's first
   # line in start_line/start_side, every line's text in code) and, made in
   # the PR scope, its PR (PR_FIELDS); a GitHub comment the same, always with
   # its PR, waits for the pending review instead of the chat. An annotation
@@ -21,12 +19,14 @@ module Quartermaster
   # an issue comment its issue's file, the block's source text ("" for the
   # whole issue) and the issue's title (ISSUE_FIELDS), a thread reply its
   # thread and PR (REPLY_FIELDS), which like a GitHub comment waits for the
-  # pending review. `qm draft add` (ChatReviewDrafts) writes here too, from
-  # another process — the flock in #update is what makes that safe.
+  # pending review; a review summary, one per PR (ReviewSummaryDrafts).
+  # `qm draft add` (ChatReviewDrafts) writes here too, from another process.
   class Drafts
+    include ReviewSummaryDrafts
+
     DIR = File.join(ROOT, "drafts")
     VERSION = 1
-    KINDS = %w[diff-comment github-comment annotation issue-comment thread-reply].freeze
+    KINDS = %w[diff-comment github-comment annotation issue-comment thread-reply review-summary].freeze
     LINE_KINDS = %w[diff-comment github-comment].freeze
     # branch: the one the pane showed when the comment was written;
     # committed: that branch had no checkout, so its numbers are the ref's.

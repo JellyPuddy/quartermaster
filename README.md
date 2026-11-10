@@ -135,7 +135,9 @@ to benchmark your app and a `bin/example_bench.rb`); `notes` adds prompt lines. 
 ### Review skill
 
 The PRs view's **Review** types a review skill into the item's chat: `/code-review` by default,
-or the per-project `review_skill:`.
+or the per-project `review_skill:`. Claude is asked to record its findings as qm drafts on the PR
+and, when done, its suggested verdict and summary (`qm draft add --summary`); you curate them in
+the diff pane's tray, and nothing goes to GitHub until you post it.
 
 ### Loose-chat starters
 

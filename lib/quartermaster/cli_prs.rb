@@ -72,7 +72,8 @@ module Quartermaster
       abort("qm: #{e.message}\n#{PR_REQUIRES_USAGE}")
     end
 
-    DRAFT_USAGE = "usage: qm draft add SLUG --path P --line N [options] (--body TEXT | --body-file F) | qm draft list SLUG [--json]"
+    DRAFT_USAGE = "usage: qm draft add SLUG (--path P --line N [options] | --summary [--verdict V]) (--body TEXT | --body-file F) " \
+                  "| qm draft list SLUG [--json]"
 
     def cmd_draft(argv)
       case argv.shift
@@ -85,17 +86,19 @@ module Quartermaster
     # A chat's review finding as a GitHub draft on the item's PR (D14),
     # written straight into the item's drafts file (ChatReviewDrafts).
     def cmd_draft_add(argv)
-      options = { side: "new" }
+      options = {}
       body_file = nil
       parser = OptionParser.new do |o|
-        o.banner = "usage: qm draft add SLUG --path P --line N [options] (--body TEXT | --body-file F)\n\n" \
+        o.banner = "usage: qm draft add SLUG --path P --line N [options] (--body TEXT | --body-file F)\n" \
+                   "       qm draft add SLUG --summary [--verdict V] [--pr URL | --branch B] (--body TEXT | --body-file F)\n\n" \
                    "Records a review comment as a draft on the item's pull request, marked 🤖 as Claude's,\n" \
                    "for the user to curate in the qm gui's diff pane and post as a pending review. Nothing goes\n" \
                    "to GitHub. Line numbers are the PR diff's: the new side's in the file at the PR head (or\n" \
                    "--commit), the old side's in the PR's base. GitHub only takes a comment on a line its PR\n" \
                    "diff shows (a change or 3 lines around one); anything else is refused — use --file for a\n" \
                    "comment on the whole file. The PR: --pr, else a Review item's own, else the open PR of the\n" \
-                   "item's branch checked out here (or its only branch with one).\n\n"
+                   "item's branch checked out here (or its only branch with one). --summary records instead\n" \
+                   "your overall verdict and review summary, one per PR (a second replaces yours).\n\n"
         o.on("--path PATH", "file, relative to the repo root") { |v| options[:path] = v }
         o.on("--line N", Integer, "the (last) line commented on") { |v| options[:line] = v }
         o.on("--start-line M", Integer, "first line of a range of lines (same side, one hunk)") { |v| options[:start_line] = v }
@@ -103,6 +106,8 @@ module Quartermaster
         o.on("--commit SHA", "anchor to this PR commit instead of the head (lines numbered as base..SHA)") { |v| options[:commit] = v }
         o.on("--file", "a comment on the whole file, shown at --line and quoting it") { options[:file] = true }
         o.on("--reply-to THREAD_ID", "a reply to an existing review thread (its node id) instead") { |v| options[:reply_to] = v }
+        o.on("--summary", "the review's summary and suggested verdict instead (no line flags)") { options[:summary] = true }
+        o.on("--verdict VERDICT", "with --summary: approve, comment or request-changes") { |v| options[:verdict] = v }
         o.on("--pr URL", "the pull request, when the item's isn't the one") { |v| options[:pr] = v }
         o.on("--branch BRANCH", "the item's branch whose PR it is") { |v| options[:branch] = v }
         o.on("--body TEXT", "the comment (markdown; a ```suggestion block suggests a change)") { |v| options[:body] = v }
@@ -149,6 +154,7 @@ module Quartermaster
       when "github-comment"
         "#{entry["subject"] == "file" ? "file comment" : "review comment"} on #{pr} #{at}#{" (removed)" if entry["side"] == "old"} " \
           "@#{entry["commit"].to_s[0, 7]}"
+      when "review-summary" then "review summary on #{pr}#{" (#{entry["verdict"].tr("-", " ")})" if entry["verdict"]}"
       when "thread-reply" then "reply on #{pr} to thread #{entry["thread"]}#{" (#{at})" if at && entry["line"]}"
       when "diff-comment" then "chat comment on #{at}#{" of #{pr}" if entry["number"]}"
       when "annotation" then "page annotation on #{entry["page"] || entry["url"]}"

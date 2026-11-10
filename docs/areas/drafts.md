@@ -1,6 +1,6 @@
 # Drafts
 
-**Code:** `lib/quartermaster/drafts.rb`, `lib/quartermaster/page_annotations.rb`, `lib/quartermaster/clipboard_annotations.rb`, `lib/quartermaster/issue_drafts.rb`, `skills/draft-issues/SKILL.md`, `skills/draft-issues/helpers/issue-drafts.html`, `lib/quartermaster/gui/js/drafts.js`, `lib/quartermaster/gui/js/anchors.js`, `lib/quartermaster/gui/js/diff-annotations.js`
+**Code:** `lib/quartermaster/drafts.rb`, `lib/quartermaster/review_summary_drafts.rb`, `lib/quartermaster/page_annotations.rb`, `lib/quartermaster/clipboard_annotations.rb`, `lib/quartermaster/issue_drafts.rb`, `skills/draft-issues/SKILL.md`, `skills/draft-issues/helpers/issue-drafts.html`, `lib/quartermaster/gui/js/drafts.js`, `lib/quartermaster/gui/js/anchors.js`, `lib/quartermaster/gui/js/diff-annotations.js`
 **Tests:** `test/drafts_test.rb`, `test/page_annotations_test.rb`, `test/clipboard_annotations_test.rb`, `test/issue_drafts_test.rb`
 **Depends on:** [diff](diff.md), [review](review.md), [issues](issues.md), [chats](chats.md)
 
@@ -8,7 +8,7 @@
 
 Every unsent message for an item waits in one store, `Drafts` (`drafts/<slug>.json`), until the user sends it from the GUI: diff comments and GitHub review drafts ([review](review.md)), page annotations from a dev server's page overlay, and comments on issue drafts. Only **Send to chat** turns chat drafts into one pasted message; review drafts go to GitHub instead.
 
-**Kinds.** `diff-comment` and `github-comment` (`LINE_KINDS`: `path`, `side`, `line`, `code`, `range`, `start_line`, `start_side`, `branch`, `committed`, plus `PR_FIELDS` for GitHub ones); `thread-reply` (`REPLY_FIELDS`); `issue-comment` (`file`, `block`, `title`); `annotation` (`page`, `selector`, `text`, `html`, `component`, `components`, `owners`, `context`, `regions`, plus the batch's `url`/`title`; owners keep only `name`, `as`, `file`, `line`, `via`, `code`; other keys dropped). Every entry has a stable `id`, `comment`, `rev` (bumped on each edit of the comment), `createdAt`/`updatedAt`. `CHAT_KINDS` = `diff-comment`, `annotation`, `issue-comment`.
+**Kinds.** `diff-comment` and `github-comment` (`LINE_KINDS`: `path`, `side`, `line`, `code`, `range`, `start_line`, `start_side`, `branch`, `committed`, plus `PR_FIELDS` for GitHub ones); `thread-reply` (`REPLY_FIELDS`); `review-summary` (`ReviewSummaryDrafts`: `repo`, `number`, optional `verdict` — `approve`|`comment`|`request-changes` — and `author`; the comment is the summary body; one per PR, a put replaces it whole and a blank one removes it; `review_summary(repo, number)` finds it and `forget_review_summary(repo, number, rev:)` removes it, only at that rev when given — what a submitted review does; `qm draft add --summary` writes it, [review](review.md)); `issue-comment` (`file`, `block`, `title`); `annotation` (`page`, `selector`, `text`, `html`, `component`, `components`, `owners`, `context`, `regions`, plus the batch's `url`/`title`; owners keep only `name`, `as`, `file`, `line`, `via`, `code`; other keys dropped). Every entry has a stable `id`, `comment`, `rev` (bumped on each edit of the comment), `createdAt`/`updatedAt`. `CHAT_KINDS` = `diff-comment`, `annotation`, `issue-comment`.
 
 **Actions.** `draft-put` (a line draft → `{draft}`), `issue-comment-put` (`{file, block, title, comment}`), `draft-edit` (`{id, comment}`, text only, never blank), `draft-delete` (`{id}`), `drafts-discard` (all, or `{ids}`), `drafts-send` (`{branch, base, ids?}`). Send pastes one message: `DiffComments.message` for the diff comments in path:line order, then one `PageAnnotations.message` section for all annotations (a blank `page` filled from its batch's `url`; the newest annotation's `url`/`title` stand for the page sent from), then `IssueComments.message` ([issues](issues.md)) — via `paste_into_chat` — then removes exactly the entries it snapshotted (`Drafts#remove` by id and rev).
 
@@ -32,7 +32,8 @@ Every unsent message for an item waits in one store, `Drafts` (`drafts/<slug>.js
 
 - One store per item holds every kind; writes are read-modify-write under a mutex and a per-item `flock`, then temp file + rename, so a CLI write can't interleave with a GUI action.
 - The slug must look like one (`SLUG`): no path tricks.
-- One line draft per address `(range, side, line, path, number)` and one issue comment per `(file, block)`: a put on the same address replaces the text, a blank one removes it.
+- One line draft per address `(range, side, line, path, number)`, one issue comment per `(file, block)` and one review summary per PR `(repo, number)`: a put on the same address replaces the text, a blank one removes it.
+- A review summary is neither pasted (`CHAT_KINDS`) nor posted into the pending review (`PendingReview::POSTED_KINDS`).
 - `drafts-send` is refused unless the item's chat is open in the GUI, and mid-turn (`refuse_mid_turn`); it sends only `CHAT_KINDS`, never a GitHub draft or thread reply.
 - Send removes by id and rev, so a draft added or edited during the paste stays. No undo.
 - The store keeps arrival order; diff comments are sent and listed in path:line order.

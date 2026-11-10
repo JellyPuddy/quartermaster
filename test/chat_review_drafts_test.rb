@@ -194,6 +194,71 @@ class ChatReviewDraftsTest < Minitest::Test
     end
   end
 
+  def test_a_summary_is_claudes_suggested_verdict_one_per_pr_never_overwriting_the_users
+    with_pr do |_repo, _c1, _head, _base|
+      out, err, exited = qm("draft", "add", "feat", "--summary", "--verdict", "request-changes", "--body", "Needs a test.")
+
+      assert_nil exited, err
+      entry = drafts.first
+      assert_equal({ "kind" => "review-summary", "repo" => "acme/widgets", "number" => 7, "verdict" => "request-changes",
+                     "author" => "claude", "comment" => "Needs a test." }, entry.except("id", "rev", "createdAt", "updatedAt"))
+      assert_equal "🤖 review summary on widgets#7 (request changes) drafted (#{entry["id"]})\n", out
+
+      out, err, exited = qm("draft", "add", "feat", "--summary", "--body-file", "-", stdin: "Fine after all.\n")
+      assert_nil exited, err
+      assert_includes out, "🤖 review summary on widgets#7 drafted"
+      assert_includes out, "replaced your earlier draft there"
+      assert_equal [[entry["id"], nil, "Fine after all.\n"]], drafts.map { |d| d.values_at("id", "verdict", "comment") }
+
+      Quartermaster::Drafts.new("feat").edit(entry["id"], "My own words.")
+      _, err, exited = qm("draft", "add", "feat", "--summary", "--verdict", "approve", "--body", "LGTM")
+      assert_equal 1, exited
+      assert_includes err, "widgets#7's review summary already holds the user's draft #{entry["id"]}"
+      assert_equal [["My own words.", "user"]], drafts.map { |d| d.values_at("comment", "author") }
+    end
+  end
+
+  def test_a_summary_takes_a_known_verdict_and_no_line_flags
+    with_pr do |_repo, _c1, _head, _base|
+      _, err, exited = qm("draft", "add", "feat", "--summary", "--verdict", "lgtm", "--body", "x")
+      assert_equal 1, exited
+      assert_includes err, "verdict must be approve, comment or request-changes"
+      _, err, = qm("draft", "add", "feat", "--verdict", "approve", "--path", "a.txt", "--line", "5", "--body", "x")
+      assert_includes err, "--verdict goes with --summary"
+      [%w[--path a.txt], %w[--line 5], %w[--start-line 4], %w[--side old], %w[--commit abc1234], %w[--file],
+       %w[--reply-to PRRT_kwDOabc]].each do |flag|
+        _, err, = qm("draft", "add", "feat", "--summary", *flag, "--body", "x")
+        assert_includes err, "a summary is on the whole PR — #{flag.first} doesn't apply"
+      end
+      _, err, = qm("draft", "add", "feat", "--summary", "--body", " ")
+      assert_includes err, "the comment is empty"
+      assert_empty drafts
+    end
+  end
+
+  def test_a_summary_finds_its_pr_as_other_drafts_do_and_list_shows_it
+    with_pr do |_repo, _c1, _head, _base|
+      Quartermaster::WorkItem.create("Bare", project: "Qm")
+      review = Quartermaster::WorkItem.create("Review widgets#7: Add widgets", project: "Qm",
+                                              description: "Review of pull request #{URL} by @x: `feature` → `main`.")
+
+      _, err, = qm("draft", "add", "bare", "--summary", "--body", "x")
+      assert_includes err, "none of bare's branches has an open pull request — name it with --pr URL"
+      _, err, exited = qm("draft", "add", "bare", "--pr", URL, "--summary", "--verdict", "comment", "--body", "x")
+      assert_nil exited, err
+      _, err, exited = qm("draft", "add", review.slug, "--summary", "--verdict", "approve", "--body", "Ship it\nreally")
+      assert_nil exited, err
+
+      out, = qm("draft", "list", review.slug)
+      assert_match(/\A\h{12}  review summary on widgets#7 \(approve\)  🤖 claude: Ship it\n\z/, out)
+    end
+  end
+
+  def test_kickoff_asks_for_the_verdict_as_a_summary_draft
+    kickoff = Quartermaster::PrItems.new.review_kickoff("/code-review", { "url" => URL }, "review-widgets-7")
+    assert_includes kickoff, "qm draft add review-widgets-7 --summary --verdict approve|comment|request-changes --body"
+  end
+
   def test_help_lists_draft_add_and_explains_it
     out, = capture_io { Quartermaster::CLI.new.run(["help"]) }
     assert_includes out, "qm draft add SLUG"

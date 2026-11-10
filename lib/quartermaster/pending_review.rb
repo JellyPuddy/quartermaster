@@ -18,8 +18,10 @@ module Quartermaster
   #
   # All GitHub access is `gh api graphql` through the runner (stubbed in
   # tests); the PR's head is fetched with PrRevisions so local git routes
-  # against what GitHub has.
+  # against what GitHub has. Other kinds (a review summary) are no GitHub
+  # comment: preview and post leave them out.
   class PendingReview
+    POSTED_KINDS = %w[github-comment thread-reply].freeze
     POSITION_FEATURE = "GraphQL-Features: pull_request_review_comment_position"
 
     PR_QUERY = <<~GRAPHQL
@@ -78,6 +80,7 @@ module Quartermaster
     # refuses that route), are outdated, how many replies go to their
     # threads, and whether a pending review of the user's is already there.
     def preview(entries)
+      entries = postable(entries)
       replies, comments = entries.partition { |entry| reply?(entry) }
       routes = comments.empty? ? {} : plan.routes(comments)
       counts = routes.values.map { |r| r["route"] }.tally
@@ -93,7 +96,7 @@ module Quartermaster
     # on the PR) and updates the store. Returns what happened, for the
     # job's toast.
     def post(entries, drafts)
-      replies, comments = entries.partition { |entry| reply?(entry) }
+      replies, comments = postable(entries).partition { |entry| reply?(entry) }
       routes = comments.empty? ? {} : plan.routes(comments)
       postable = comments.reject { |entry| routes[entry["id"]]["route"] == "outdated" }
       result = { "posted" => 0, "failed" => [], "fallbacks" => 0, "outdated" => comments.size - postable.size }
@@ -144,6 +147,8 @@ module Quartermaster
     private
 
     def reply?(entry) = entry["kind"] == "thread-reply"
+
+    def postable(entries) = entries.select { |entry| POSTED_KINDS.include?(entry["kind"]) }
 
     def plan
       @plan ||= begin

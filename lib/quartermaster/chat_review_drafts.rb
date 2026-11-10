@@ -29,23 +29,34 @@ module Quartermaster
     end
 
     # A line or file comment (path:, line:, start_line:, side:, commit:,
-    # file:) or, with reply_to:, a reply to that review thread. Returns
+    # file:), with reply_to: a reply to that review thread, or with
+    # summary: the PR's review summary and its optional verdict:. Returns
     # [entry, replaced] — replaced when it took the place of Claude's own
-    # draft on the same line or thread; a draft of the user's there is refused.
-    def add(item, body:, path: nil, line: nil, start_line: nil, side: "new", commit: nil, file: false, reply_to: nil,
-            pr: nil, branch: nil)
+    # draft on the same line, thread or PR; a draft of the user's there is refused.
+    def add(item, body:, path: nil, line: nil, start_line: nil, side: nil, commit: nil, file: false, reply_to: nil,
+            pr: nil, branch: nil, summary: false, verdict: nil)
       raise ArgumentError, "the comment is empty" if body.to_s.strip.empty?
+
+      if summary
+        flag = { "--path" => path, "--line" => line, "--start-line" => start_line, "--side" => side, "--commit" => commit,
+                 "--file" => file || nil, "--reply-to" => reply_to }.compact.keys.first
+        raise ArgumentError, "a summary is on the whole PR — #{flag} doesn't apply" if flag
+      elsif verdict
+        raise ArgumentError, "--verdict goes with --summary"
+      end
 
       root = repo_root(item)
       pr = which_pr(item, root, pr, branch)
       drafts = Drafts.new(item.slug)
+      return add_summary(drafts, pr, verdict, body) if summary
+
       if reply_to
         raise ArgumentError, "a reply goes to its thread — --commit, --file and --start-line don't apply" if commit || file || start_line
 
         return add_reply(drafts, pr, reply_to, body, path, line)
       end
 
-      entry = line_entry(root, pr, path, line, start_line, side, commit, file).merge("comment" => body.to_s)
+      entry = line_entry(root, pr, path, line, start_line, side || "new", commit, file).merge("comment" => body.to_s)
       refusal = ReviewAnchors.refusal(root, entry)
       raise ArgumentError, file ? refusal : "#{refusal}. Record it as a file comment with --file instead" if refusal
 
@@ -65,12 +76,20 @@ module Quartermaster
       [entry, !replaced.nil?]
     end
 
+    def add_summary(drafts, pr, verdict, body)
+      replaced = nil
+      where = "#{@revisions.label(pr)}'s review summary"
+      summary = { "repo" => pr["repo"], "number" => pr["number"], "verdict" => verdict, "author" => "claude", "comment" => body.to_s }
+      entry = drafts.put_review_summary(summary) { |existing| replaced = keep_users(existing, where, "leave it") }
+      [entry, !replaced.nil?]
+    end
+
     # Claude may replace its own draft, never one the user wrote or edited —
     # checked under the drafts file's lock, so a GUI edit can't slip between.
-    def keep_users(existing, where)
+    def keep_users(existing, where, advice = "leave it, or put yours on another line")
       return existing if existing.nil? || existing["author"] == "claude"
 
-      raise ArgumentError, "#{where} already holds the user's draft #{existing["id"]} — leave it, or put yours on another line"
+      raise ArgumentError, "#{where} already holds the user's draft #{existing["id"]} — #{advice}"
     end
 
     def repo_root(item)

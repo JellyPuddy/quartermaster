@@ -37,7 +37,7 @@ else (see [capture](capture.md)), then requires `lib/quartermaster` through its 
 - `qm move SLUG PROJECT` / `qm retitle SLUG TITLE` / `qm describe SLUG [TEXT|-]` — project, title (slug never changes), description (stdin-capable).
 - `qm show SLUG` — the item with sessions, warnings, stack lines and usage (and kind, routine, runner for an automation).
 - `qm list [--kind automation]` — table of all items but automations; `--kind automation` lists only those.
-- `qm draft add SLUG …` / `qm draft list SLUG [--json]` — Claude's review drafts ([review](review.md)).
+- `qm draft add SLUG …` (`--summary [--verdict V]` for the PR's suggested verdict) / `qm draft list SLUG [--json]` — Claude's review drafts ([review](review.md)).
 - `qm issues-dir SLUG` — the item's issue-drafts directory ([drafts](drafts.md)).
 - `qm cleanup SLUG [--yes] [--force P]` / `qm sweep [--yes] [--force P]` — plan or run worktree cleanup ([worktrees](worktrees.md)).
 - `qm delete SLUG [--force]` — remove an item made by accident and kill its chat; refused for one holding work unless `--force` ([work-items](work-items.md)).

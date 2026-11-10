@@ -456,6 +456,29 @@ class DraftTrayPageTest < Minitest::Test
      'const repoRelative = path => String(path || "").trim().replace(/^(?:\.?\/)+/, "");'].each { |seam| assert_includes html, seam }
   end
 
+  def test_a_review_summary_is_one_per_pr_found_and_removed_by_its_pr
+    drafts = Quartermaster::Drafts.new("item")
+    summary = { "repo" => "acme/widgets", "number" => 7, "verdict" => "approve", "author" => "claude", "comment" => "LGTM" }
+    first = drafts.put_review_summary(summary)
+    other = drafts.put_review_summary(summary.merge("number" => 8, "verdict" => nil))
+    again = drafts.put_review_summary(summary.merge("verdict" => "request-changes", "comment" => "Needs a test"))
+
+    assert_equal first["id"], again["id"], "the PR keeps its summary"
+    assert_equal [2, nil], [again["rev"], other["verdict"]]
+    assert_equal again, drafts.review_summary("Acme/Widgets", 7)
+    assert_nil drafts.review_summary("acme/widgets", 9)
+    assert_raises(ArgumentError) { drafts.put_review_summary(summary.merge("verdict" => "lgtm")) }
+    assert_raises(ArgumentError) { drafts.put_review_summary(summary.merge("repo" => "widgets")) }
+    assert_raises(ArgumentError) { drafts.put_review_summary(summary.merge("number" => 0)) }
+    assert_equal "user", drafts.put_review_summary(summary.merge("number" => 9, "author" => "bob"))["author"]
+
+    refute drafts.forget_review_summary("acme/widgets", 7, rev: 1), "edited since: it stays"
+    assert drafts.forget_review_summary("acme/widgets", 7)
+    assert_nil drafts.review_summary("acme/widgets", 7)
+    assert_nil drafts.put_review_summary(summary.merge("number" => 8, "comment" => " "))
+    assert_equal [9], drafts.entries.map { |entry| entry["number"] }
+  end
+
   def test_anchored_annotations_are_rows_and_badges_in_the_diff_and_links_in_the_tray
     html = page
 

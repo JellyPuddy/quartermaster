@@ -491,7 +491,7 @@ module Quartermaster
 
       review = PendingReview.new(root, repo: args["repo"].to_s, number: args["number"], runner: @runner)
       entries = Drafts.new(item.slug).entries.select do |entry|
-        %w[github-comment thread-reply].include?(entry["kind"]) && entry["repo"].to_s.casecmp?(review.repo) &&
+        PendingReview::POSTED_KINDS.include?(entry["kind"]) && entry["repo"].to_s.casecmp?(review.repo) &&
           entry["number"] == review.number
       end
       entries = entries.select { |entry| args["ids"].include?(entry["id"]) } if args["ids"].is_a?(Array)

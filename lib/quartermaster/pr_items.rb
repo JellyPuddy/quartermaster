@@ -45,7 +45,9 @@ module Quartermaster
     # its findings go — qm drafts the user curates and posts, not GitHub (D15).
     def review_kickoff(skill, pr, slug)
       "#{skill} #{pr["url"]}\n\nRecord each finding as a qm draft with `qm draft add #{slug} …` " \
-        "(see `qm draft add --help`) instead of posting to GitHub; the user curates and posts them."
+        "(see `qm draft add --help`) instead of posting to GitHub; the user curates and posts them. When done, record " \
+        "your overall verdict and a short summary with `qm draft add #{slug} --summary --verdict approve|comment|request-changes " \
+        "--body …`."
     end
 
     def pr_label(pr) = "#{pr["repo"].to_s.split("/").last}##{pr["number"]}"
