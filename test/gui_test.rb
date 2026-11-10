@@ -109,7 +109,7 @@ class GuiTest < Minitest::Test
     assert_equal "200 OK", status
     assert_includes content_type, "application/json"
     state = JSON.parse(body)
-    assert_equal %w[items inbox projects defaultProject looseStarters attention loose pulse refreshing distilling distilled pf jobs buildActive buildProgress finished panes terminalToken asideModels caffeinate notifications rateLimits errors benchmark].sort, state.keys.sort
+    assert_equal %w[items inbox projects defaultProject looseStarters attention loose pulse refreshing distilling distilled pf jobs buildActive buildProgress finished panes terminalToken asideModels caffeinate notifications rateLimits errors benchmark todos].sort, state.keys.sort
     alpha = state["items"].find { |i| i["slug"] == "alpha" }
     assert_equal "desc a", alpha["description"]
     assert_includes state["projects"], "No project"

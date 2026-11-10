@@ -1,8 +1,8 @@
 # Todos
 
-**Code:** `lib/quartermaster/todo_list.rb`, `lib/quartermaster/cli_todo.rb`
-**Tests:** `test/todo_list_test.rb`
-**Depends on:** [work-items](work-items.md), [linking](linking.md), [cli](cli.md)
+**Code:** `lib/quartermaster/todo_list.rb`, `lib/quartermaster/cli_todo.rb`, `lib/quartermaster/gui_todo_actions.rb`
+**Tests:** `test/todo_list_test.rb`, `test/gui_todos_test.rb`
+**Depends on:** [work-items](work-items.md), [linking](linking.md), [cli](cli.md), [gui-shell](gui-shell.md)
 
 ## What it does
 
@@ -31,6 +31,17 @@ Delete removes a todo outright. Nothing prunes the file.
 start with `- `, or follow `--`); `qm todo list` prints the open todos numbered 1..n in order,
 each with `[project · item]`; `qm todo done N` ticks the Nth of that list. There is no CLI
 edit, move or delete.
+
+**GUI** (`GuiTodoActions`, through the normal action router and its Origin checks, not
+`LOCAL_ACTIONS`). `todo-add {text, project?, item?}` replies with the new todo;
+`todo-edit {id, text?, project?}` (an absent field stays, `project: ""` clears it);
+`todo-move {id, before|after}` (a neighbour's id); `todo-done {id, done}` (`done: false`
+unticks); `todo-delete {id}`. They are in `GuiActions::UNLOCKED`: TodoList's flock already
+serialises them. The state's `todos` is `GuiTodoActions.payload`: the open todos in order, then
+`done_recent`, each `{id, text, created, done_at, item, project, itemTitle}` where `project` is
+the item's when the todo has one (the todo's own otherwise) and `itemTitle` names that item (nil
+for a deleted one). `TodoList#signature` (todos.json's size+mtime) is part of the pulse and
+`/api/pulse`'s own `todos` field, so a CLI add reaches an open page within a second.
 
 **Sessions learn it** through one line of the linked work-item protocol ([linking](linking.md)):
 when the user asks, or something needs their own hands outside the session, `qm todo add "…"

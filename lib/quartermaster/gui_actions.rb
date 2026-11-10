@@ -8,8 +8,9 @@ module Quartermaster
   class GuiActions
     # Network-bound and touching no qm state (a thread's resolve changes
     # only GitHub, a review preview only reads), or the benchmark ones with
-    # their own locks (BenchmarkRun), so Gui runs them off the action mutex.
-    UNLOCKED = (%w[issue-preview pr-thread-resolve review-preview] + GuiBenchmarkActions::COMMANDS).freeze
+    # their own locks (BenchmarkRun, TodoList), so Gui runs them off the action mutex.
+    UNLOCKED = (%w[issue-preview pr-thread-resolve review-preview] + GuiBenchmarkActions::COMMANDS +
+                GuiTodoActions::COMMANDS).freeze
 
     def initialize(runner:, tmux:, caffeinate:, jobs:, state:, pr_items:)
       @runner = runner
@@ -98,6 +99,7 @@ module Quartermaster
       when "caffeinate" then gui_caffeinate(args["mode"])
       when "errors-seen" then ok.merge("errors" => ErrorLog.new.tap(&:mark_seen).summary)
       when *GuiBenchmarkActions::COMMANDS then GuiBenchmarkActions.new(benchmarks: @state.benchmarks, jobs: @jobs).dispatch(cmd, slug, args)
+      when *GuiTodoActions::COMMANDS then GuiTodoActions.new.dispatch(cmd, args)
       else GuiLooseActions.new(tmux: @tmux, jobs: @jobs).dispatch(cmd, args) || { "ok" => false, "error" => "unknown action '#{cmd}'" }
       end
     rescue SystemExit

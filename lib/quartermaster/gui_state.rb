@@ -100,6 +100,8 @@ module Quartermaster
         "rateLimits" => RateLimits.new.payload,
         # The header's error badge: qm.log errors since the user last marked them seen.
         "errors" => ErrorLog.new.summary,
+        # The Todos tab: open todos in order, then the 20 newest done (GuiTodoActions.payload).
+        "todos" => GuiTodoActions.payload(items: work_items.to_h { |item| [item.slug, item] }),
         "finished" => @jobs.take_finished
       }
     end
@@ -111,14 +113,16 @@ module Quartermaster
     # watched are the last state build's working/blocked chats. A page-side
     # poll, not a liveness timer — nothing on the server depends on it.
     # Auto caffeinate flips its child on a server thread, after the hook
-    # write that caused it; the held flag makes that a pulse of its own.
+    # write that caused it; the held flag makes that a pulse of its own, and
+    # todos.json's signature does the same for a `qm todo add`.
     def pulse
       sizes = ([EventLog.new.path, SessionLog.new.path] + (@mid_turn_transcripts || [])).map do |path|
         File.size(path)
       rescue SystemCallError
         0
       end
-      (sizes + [@caffeinate.status["on"] ? 1 : 0, Drafts.signature, IssueDrafts.signature, @notifier&.seq.to_i]).join(":")
+      (sizes + [@caffeinate.status["on"] ? 1 : 0, Drafts.signature, IssueDrafts.signature, @notifier&.seq.to_i,
+                TodoList.new.signature]).join(":")
     end
 
     # The part of the pulse a page off the chat view watches: turns changed

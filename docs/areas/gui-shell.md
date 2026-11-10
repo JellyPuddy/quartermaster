@@ -58,7 +58,8 @@ from the plan its reply carries ("Resolved. Clean up N worktrees?"). The header'
 **State** (`GuiState#build`, `/api/state`): `items`, `inbox`, `projects`, `attention` (the
 chat view's list, already in attention order), `pulse`, `refreshing`, `distilling`,
 `distilled`, `pf`, `jobs`, `finished`, `buildActive`, `buildProgress`, `panes`,
-`terminalToken`, `asideModels`, `caffeinate`, `notifications`, `rateLimits`, `benchmark`, `errors` (the header's ⚠ badge: the unseen qm.log errors' count and newest 20 entries, from `ErrorLog` in [capture](capture.md); clicking it lists them, and **Mark seen** posts the `errors-seen` action). Per item: slug,
+`terminalToken`, `asideModels`, `caffeinate`, `notifications`, `rateLimits`, `benchmark`, `todos`
+(the Todos tab's list, built by `GuiTodoActions.payload`, [todos](todos.md)), `errors` (the header's ⚠ badge: the unseen qm.log errors' count and newest 20 entries, from `ErrorLog` in [capture](capture.md); clicking it lists them, and **Mark seen** posts the `errors-seen` action). Per item: slug,
 title, state, project, branches, issue, sessions (`sessionList` with id, tier, when, prompt),
 `updated`, `live`, `badges` (stale / degrading / merged, from `Attention`), headline `note`,
 `injected` positions, `worktrees`, `chains`, `prStates`, `served`/`servedBranch`, `pane`,
@@ -68,10 +69,12 @@ refetched on threads and `refreshing` tells the page to poll until they land.
 
 **Pulse** (`/api/pulse`, ~1 s poll on the chat view): a string of the sizes of
 `events.jsonl`, `sessions.jsonl` and the last build's mid-turn transcripts, plus the
-caffeinate held flag, the drafts and issue-drafts signatures and the notifier's sequence.
+caffeinate held flag, the drafts and issue-drafts signatures, the notifier's sequence and
+`todos.json`'s size+mtime (`TodoList#signature`, so a `qm todo add` moves it).
 The page fetches full state only when it changes. Off the chat view the page watches the
 cheaper events pulse and `/api/attention` (attention, notifications, draft counts) for the
-tab title's count. The pulse also tells `TurnNotifier` whether the page is visible/focused.
+tab title's count; `/api/pulse` also answers the issue-drafts and todos signatures on their
+own (`issues`, `todos`), for views that refetch on just those. The pulse also tells `TurnNotifier` whether the page is visible/focused.
 
 **The page.** `gui/page.html` holds the markup plus two server-injected constants
 (`TAXONOMIES`, substituted from `Quartermaster.taxonomies` so JS and Ruby can't drift, and
@@ -151,7 +154,7 @@ The Workspace buttons that drive both are in [side-panel](side-panel.md).
 - No self-shutdown, ever: the server runs until Ctrl-C. A heartbeat/bye scheme closed the server under backgrounded tabs and let a stale tab kill a newer server; don't reintroduce a liveness timer.
 - The ~1 s pulse is the page asking for news; nothing on the server reacts to it stopping (a stale pulse only makes `TurnNotifier` notify via macOS). Server threads react only to files.
 - Mutating actions run under one action mutex; anything that takes seconds hands off to `GuiJobs` and never holds it — distill used to queue every other action behind it.
-- Read-only routes (ask, grep, diff, history, workspace, cleanup-plan, PRs, issues, threads) and `GuiActions::UNLOCKED` (issue-preview, pr-thread-resolve, review-preview, and the benchmark-* actions, which have BenchmarkRun's own locks) skip the mutex.
+- Read-only routes (ask, grep, diff, history, workspace, cleanup-plan, PRs, issues, threads) and `GuiActions::UNLOCKED` (issue-preview, pr-thread-resolve, review-preview, the benchmark-* actions, which have BenchmarkRun's own locks, and the plain todo-* actions, which have TodoList's flock) skip the mutex.
 - Only one pf job at a time: pf is one shared server. A second job on a busy key is refused with the running job's label.
 - Actions call the model layer, never CLI `cmd_*`; the CLI and GUI share operations so they can't drift. `SystemExit` must become a JSON error, never a dead server.
 - A state build never blocks on gh or on spawning git per item; PR states refresh on threads.

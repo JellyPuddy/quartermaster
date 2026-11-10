@@ -816,7 +816,7 @@ class GuiChatViewTest < Minitest::Test
   end
 
   def test_pulse_without_any_log_yet_is_still_an_answer
-    assert_equal "0:0:0:0:0:0", get("/api/pulse")["pulse"]
+    assert_equal "0:0:0:0:0:0:0", get("/api/pulse")["pulse"]
   end
 
   def test_items_say_which_notes_a_new_session_is_told_about

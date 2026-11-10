@@ -114,7 +114,7 @@ module Quartermaster
         json(@state.build)
       elsif method == "GET" && route == "/api/pulse"
         page_seen(path.split("?", 2)[1])
-        json("pulse" => @state.pulse, "events" => @state.events_pulse, "issues" => IssueDrafts.signature)
+        json("pulse" => @state.pulse, "events" => @state.events_pulse, "issues" => IssueDrafts.signature, "todos" => TodoList.new.signature)
       elsif method == "GET" && route == "/api/root"
         json("root" => Quartermaster.root_id)
       elsif method == "GET" && route == "/api/attention"

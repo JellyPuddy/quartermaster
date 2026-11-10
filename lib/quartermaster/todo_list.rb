@@ -27,6 +27,15 @@ module Quartermaster
 
     def open = todos.reject { |t| t["done_at"] }
 
+    # Size and mtime of todos.json, "0" without one: the GUI's pulse moves
+    # when the CLI writes the list.
+    def signature
+      stat = File.stat(@path)
+      "#{stat.size}-#{stat.mtime.to_f}"
+    rescue SystemCallError
+      "0"
+    end
+
     def done_recent(limit = DONE_SHOWN)
       todos.select { |t| t["done_at"] }.sort_by { |t| t["done_at"].to_s }.reverse.first(limit)
     end
