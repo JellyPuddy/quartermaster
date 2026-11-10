@@ -54,8 +54,9 @@ the IDE (`project_config::argv`) only with an `ide_command:` — `open_ide` refu
 
 **Board** — the item's status-board rows (`boardRows`: status, title, note, dependsOn),
 produced by the bundled `delegate-build` skill (a test keeps its seeding step and
-`status-board.html` naming every `BoardMirror::ROW_FIELDS` field), grouped like the artifact:
-one foldable group per batch, newest first, open and marked with an accent dot, earlier ones folded unless they hold a blocked row; plan order within a batch. A
+`status-board.html` naming every `board_mirror::ROW_FIELDS` field), grouped like the artifact:
+one foldable group per batch, newest first, open and marked with an accent dot, earlier ones
+folded unless they hold a blocked row; plan order within a batch. A
 batch header counts its rows by status in glyphs (`2✓ 1▶ 1○`), the words in its tooltip. A blocked row gets an answer
 box when the item has a `board_answers_dir`. **Check build progress** heads the section.
 
