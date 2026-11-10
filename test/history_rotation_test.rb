@@ -267,7 +267,7 @@ class RotationTest < Minitest::Test
 
   def setup
     super
-    @now = Time.now
+    @now = fixed_now
     @slept = 0
   end
 
@@ -279,7 +279,7 @@ class RotationTest < Minitest::Test
     item
   end
 
-  def rotation(tmux, clock: -> { Time.now }, distiller: ->(*) { flunk "a live chat is never distilled" })
+  def rotation(tmux, clock: -> { @now + @slept }, distiller: ->(*) { flunk "a live chat is never distilled" })
     Quartermaster::Rotation.new(tmux: tmux, distiller: distiller, sleeper: ->(s) { @slept += s }, clock: clock)
   end
 
