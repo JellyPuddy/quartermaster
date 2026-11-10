@@ -362,6 +362,9 @@ Know this before you install it:
 ruby test/quartermaster_test.rb
 ```
 
+This runs every test file as its own process, as many at once as you have CPUs; set
+`QM_TEST_JOBS` to change that (`QM_TEST_JOBS=1` runs them all in one process). A failing file's
+output comes with the command that replays it alone.
 Tests run against a temporary `QM_ROOT` and their own tmux socket, never your live data. Start
 with [`CLAUDE.md`](CLAUDE.md) (the hard constraints) and [`docs/README.md`](docs/README.md),
 which indexes one page per area. `showcase/` builds a fake demo world to run the real GUI on

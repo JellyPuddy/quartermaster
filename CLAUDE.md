@@ -75,8 +75,8 @@ Each is one line; the reasons and details are on the page it points to.
 - Name by intent, not implementation; rationale goes in commit messages, not code comments.
 - One file per class under `lib/quartermaster/`, intent-named (`SessionLog`, `WorkItem`, …);
   the GUI page is real assets under `lib/quartermaster/gui/`.
-- Tests: `ruby test/quartermaster_test.rb` (minitest). Test capture changes before starting
-  real sessions. Throwaway test repos need `-c commit.gpgsign=false` and one commit
-  (unborn branches have no branch name); commits to this repo are always signed.
+- Tests: `ruby test/quartermaster_test.rb` (parallel, `QM_TEST_JOBS`). Test capture
+  changes before real sessions. Throwaway test repos need `-c commit.gpgsign=false` and one
+  commit (an unborn branch has no name); commits to this repo are always signed.
 - Big files and this file may only shrink (`test/size_ratchet_test.rb`): split along a real
   seam, or raise `test/size_limits.json` deliberately, said in the commit message.

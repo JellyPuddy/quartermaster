@@ -61,11 +61,11 @@ Hooks and the global fallback instruction live at **user level** (`~/.claude/set
 `~/.claude/CLAUDE.md`), because capture must cover every project and no-project cwd.
 `qm install-hooks` prints the settings snippet; the user merges it themselves.
 
-The code is a git repo at `~/code/quartermaster`: the realpath-resolving launcher
-`./quartermaster` (symlinked from `~/bin/quartermaster` and `~/bin/qm` — never rename or move
-it), one intent-named file per class under `lib/quartermaster/`, the GUI page as real assets
-under `lib/quartermaster/gui/`, POSIX hooks under `hooks/`, and a minitest suite run with
-`ruby test/quartermaster_test.rb` (shared setup in `test/test_helper.rb`; one file per area).
+The code is a git repo at `~/code/quartermaster`: the realpath-resolving launcher `./quartermaster`
+(symlinked from `~/bin/quartermaster` and `~/bin/qm`; never rename or move it), one intent-named file
+per class under `lib/quartermaster/`, the GUI page's assets under `lib/quartermaster/gui/`, hooks in
+`hooks/`, and one minitest file per area (setup in `test/test_helper.rb`). `ruby test/quartermaster_test.rb`
+runs its listed files as fresh processes, `QM_TEST_JOBS` at once (default: CPUs; `1`: one process).
 
 ## config.yml
 
