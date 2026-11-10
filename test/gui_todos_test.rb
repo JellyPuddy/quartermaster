@@ -151,6 +151,16 @@ class GuiTodosTest < Minitest::Test
     assert_nil todos.first["done_at"]
   end
 
+  def test_to_item_ties_the_todo_even_when_the_chat_fails_to_start
+    id = act("todo-add", text: "call the bank")["todo"]["id"]
+    broken = Object.new
+    def broken.open(*, **) = raise(StandardError, "tmux is gone")
+
+    assert_raises(StandardError) { Quartermaster::GuiTodoActions.new.to_item({ "id" => id, "title" => "Call the bank" }, tmux: broken) }
+
+    assert_equal "call-the-bank", stored.first["item"]
+  end
+
   def test_to_item_is_refused_from_a_foreign_origin_and_not_local
     payload = { "cmd" => "todo-to-item", "args" => { "id" => "x", "title" => "t" } }
 

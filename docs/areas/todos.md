@@ -42,7 +42,8 @@ the → Work item: it makes the item the way the board's new item does (`WorkIte
 project → `ProjectMap::NO_PROJECT`), starts its chat the way the chat pane's Start does
 (`Launcher#chat_plan` fresh, so in the project's main checkout, with a non-blank `prompt` as
 claude's argument, then `Tmux#open`), and marks the todo done with `item` = the new slug, its
-project dropped; it replies `{slug, mode}` like `pane-start`, for the page to switch to that
+project dropped, before the chat starts (a failed start leaves the item's Start, not a second
+item); it replies `{slug, mode}` like `pane-start`, for the page to switch to that
 chat. An unknown todo or a blank title is refused before anything is made. It creates an item,
 so it runs under the action mutex, not in `UNLOCKED`; it takes no GuiJobs job (nothing in it
 takes seconds). The state's `todos` is `GuiTodoActions.payload`: the open todos in order, then

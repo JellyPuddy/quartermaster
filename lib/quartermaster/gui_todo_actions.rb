@@ -24,8 +24,8 @@ module Quartermaster
     end
 
     # → Work item: the board's new item (WorkItem.create) and the chat pane's
-    # Start (Launcher#chat_plan, fresh, in the project's main checkout), then
-    # the todo is done and tied to the new item. Checked before anything is
+    # Start (Launcher#chat_plan, fresh, in the project's main checkout); the
+    # todo is done and tied to the item before its chat starts. Checked before anything is
     # made, so an unknown todo or a blank title leaves no stray item. Under
     # the action mutex like `new` and `pane-start`: it creates an item.
     def to_item(args, tmux:)
@@ -35,9 +35,9 @@ module Quartermaster
       raise ArgumentError, "title is required" if title.empty?
 
       item = WorkItem.create(title, project: presence(args["project"]) || ProjectMap::NO_PROJECT)
+      @list.done(todo_id, item: item.slug)
       plan = Launcher.new.chat_plan(item, fresh: true, prompt: presence(args["prompt"].to_s.strip))
       tmux.open(item.slug, cwd: plan[:cwd], argv: plan[:argv], env: plan[:env])
-      @list.done(todo_id, item: item.slug)
       ok.merge("slug" => item.slug, "mode" => plan[:mode].to_s)
     end
 
