@@ -87,8 +87,9 @@ module Quartermaster
       parts << "#{comments} comment#{"s" unless comments == 1}" if comments.positive?
       parts << "#{result["outdated"]} outdated, not posted (still in the tray)" if result["outdated"].positive?
       noted = comments.positive? ? "#{verdict} (#{comments} comment#{"s" unless comments == 1})" : verdict
-      { "ok" => true, "message" => parts.join(" · "), "review" => true, "noted" => noted }
-        .merge(fallback_warning(result))
+      out = { "ok" => true, "message" => parts.join(" · "), "review" => true, "noted" => noted }
+      warnings = [fallback_warning(result)["warning"], result["reassignError"]&.then { |e| "couldn't reassign: #{e}" }].compact
+      warnings.empty? ? out : out.merge("warning" => warnings.join(" · "))
     end
 
     def abort_result(review, result)

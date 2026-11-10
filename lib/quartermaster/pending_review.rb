@@ -27,9 +27,11 @@ module Quartermaster
 
     PR_QUERY = <<~GRAPHQL
       query($owner: String!, $name: String!, $number: Int!) {
+        viewer { id login }
         repository(owner: $owner, name: $name) {
           pullRequest(number: $number) {
             id baseRefName headRefOid state viewerDidAuthor
+            author { login ... on User { id } } assignees(first: 50) { nodes { id login } }
             reviews(states: PENDING, first: 20) { nodes { id viewerDidAuthor comments { totalCount } } }
           }
         }
@@ -61,6 +63,18 @@ module Quartermaster
     SUBMIT_REVIEW = <<~GRAPHQL
       mutation($review: ID!, $event: PullRequestReviewEvent!, $body: String) {
         submitPullRequestReview(input: { pullRequestReviewId: $review, event: $event, body: $body }) { pullRequestReview { id } }
+      }
+    GRAPHQL
+
+    ADD_ASSIGNEE = <<~GRAPHQL
+      mutation($assignable: ID!, $who: ID!) {
+        addAssigneesToAssignable(input: { assignableId: $assignable, assigneeIds: [$who] }) { clientMutationId }
+      }
+    GRAPHQL
+
+    REMOVE_ASSIGNEE = <<~GRAPHQL
+      mutation($assignable: ID!, $who: ID!) {
+        removeAssigneesFromAssignable(input: { assignableId: $assignable, assigneeIds: [$who] }) { clientMutationId }
       }
     GRAPHQL
 
@@ -136,7 +150,9 @@ module Quartermaster
     # without a body, a comment with neither a body nor any line comment. A
     # draft that fails aborts before the submit: "submitted" stays nil.
     # With nothing to post and no pending review, one is made on the head and
-    # submitted, so every submit goes the same way.
+    # submitted, so every submit goes the same way. Once submitted, the PR
+    # goes back to its author (hand_back_to_author); "reassignError" says
+    # why it couldn't.
     def submit(entries, drafts, event:, body:)
       event = self.class.event(event)
       self.class.check_body(event, body)
@@ -156,7 +172,7 @@ module Quartermaster
       data = graphql(SUBMIT_REVIEW, strings: { "review" => pending_review_id, "event" => event, "body" => body.to_s })
       data.dig("submitPullRequestReview", "pullRequestReview", "id") or raise ArgumentError, "GitHub submitted no review on #{label}"
       ReviewThreads.forget(@repo, @number)
-      result.merge("submitted" => event, "comments" => result["posted"] + pending)
+      result.merge("submitted" => event, "comments" => result["posted"] + pending, "reassignError" => hand_back_to_author)
     end
 
     # GitHub's event for a verdict, either spelling; an ArgumentError for
@@ -220,6 +236,23 @@ module Quartermaster
 
     def existing_review = pr["reviews"]["nodes"].find { |r| r["viewerDidAuthor"] }
 
+    # The author is added to the assignees and the viewer, if assigned,
+    # removed; others stay. The viewer's own PR is left alone. nil, or
+    # GitHub's reason it couldn't (the viewer stays when the add fails).
+    def hand_back_to_author
+      return if pr["viewerDidAuthor"]
+
+      author = pr.dig("author", "id") or return "#{pr.dig("author", "login") || "the author"} can't be assigned"
+      graphql(ADD_ASSIGNEE, strings: { "assignable" => pr["id"], "who" => author })
+      viewer = pr.dig("viewer", "id")
+      if viewer && Array(pr.dig("assignees", "nodes")).any? { |a| a["id"] == viewer }
+        graphql(REMOVE_ASSIGNEE, strings: { "assignable" => pr["id"], "who" => viewer })
+      end
+      nil
+    rescue ArgumentError => e
+      e.message.delete_prefix("GitHub: ")
+    end
+
     def plan
       @plan ||= begin
         revs = @revisions.fetch(@path, { "repo" => @repo, "number" => @number, "base" => pr["baseRefName"] })
@@ -238,7 +271,7 @@ module Quartermaster
         node = data.dig("repository", "pullRequest") or raise ArgumentError, "#{label} wasn't found on GitHub"
         raise ArgumentError, "#{label} is #{node["state"].downcase} — there is no review to add to" unless node["state"] == "OPEN"
 
-        node
+        node.merge("viewer" => data["viewer"])
       end
     end
 

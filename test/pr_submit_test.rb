@@ -17,14 +17,17 @@ class PrSubmitTest < Minitest::Test
 
   def names(gh) = gh.graphql.map { |c| c[:name] }
 
+  def submitted(gh) = gh.graphql.find { |c| c[:name] == "submitPullRequestReview" }[:vars]
+
   def test_the_drafts_are_posted_then_the_new_pending_review_is_submitted
     with_pr do |repo, c1, base, gh|
       draft(base, c1)
 
       result = submit(repo, gh, "APPROVE")
 
-      assert_equal %w[query addPullRequestReview addPullRequestReviewThread submitPullRequestReview], names(gh)
-      assert_equal({ "review" => "PRR_new", "event" => "APPROVE", "body" => "" }, gh.graphql.last[:vars])
+      assert_equal %w[query addPullRequestReview addPullRequestReviewThread submitPullRequestReview
+                      addAssigneesToAssignable], names(gh)
+      assert_equal({ "review" => "PRR_new", "event" => "APPROVE", "body" => "" }, submitted(gh))
       assert_equal ["APPROVE", 1, 1, []], result.values_at("submitted", "comments", "posted", "failed")
       assert_empty drafts.entries
     end
@@ -36,8 +39,8 @@ class PrSubmitTest < Minitest::Test
 
       result = submit(repo, gh, "COMMENT")
 
-      assert_equal %w[query submitPullRequestReview], names(gh)
-      assert_equal({ "review" => "PRR_mine", "event" => "COMMENT", "body" => "" }, gh.graphql.last[:vars])
+      assert_equal %w[query submitPullRequestReview addAssigneesToAssignable], names(gh)
+      assert_equal({ "review" => "PRR_mine", "event" => "COMMENT", "body" => "" }, submitted(gh))
       assert_equal ["COMMENT", 2], result.values_at("submitted", "comments"), "its 2 pending comments go with it"
     end
   end
@@ -46,9 +49,9 @@ class PrSubmitTest < Minitest::Test
     with_pr do |repo, c1, _base, gh|
       result = submit(repo, gh, "approve", "Ship it")
 
-      assert_equal %w[query addPullRequestReview submitPullRequestReview], names(gh)
+      assert_equal %w[query addPullRequestReview submitPullRequestReview addAssigneesToAssignable], names(gh)
       assert_equal({ "pr" => "PR_1", "commit" => c1 }, gh.graphql[1][:vars])
-      assert_equal({ "review" => "PRR_new", "event" => "APPROVE", "body" => "Ship it" }, gh.graphql.last[:vars])
+      assert_equal({ "review" => "PRR_new", "event" => "APPROVE", "body" => "Ship it" }, submitted(gh))
       assert_equal ["APPROVE", 0], result.values_at("submitted", "comments")
     end
   end
@@ -60,7 +63,7 @@ class PrSubmitTest < Minitest::Test
 
       result = submit(repo, gh, "REQUEST_CHANGES", "Please fix")
 
-      refute_includes names(gh), "submitPullRequestReview"
+      assert_equal %w[query addPullRequestReview addPullRequestReviewThread], names(gh), "nothing submitted, nobody reassigned"
       assert_nil result["submitted"]
       assert_match(/no thread came back/, result["failed"].first)
       assert drafts.find(kept["id"])["failed"]
@@ -89,6 +92,54 @@ class PrSubmitTest < Minitest::Test
       end
       assert_equal ["query"], names(gh).uniq, "refused before anything was made or posted"
       assert_equal "COMMENT", submit(repo, gh, "COMMENT", "notes to self")["submitted"]
+      assert_equal "submitPullRequestReview", names(gh).last, "their own PR is not reassigned"
+    end
+  end
+
+  # Decisions 13-18: after the submit the PR goes back to its author.
+  def test_after_a_submit_the_author_is_assigned_and_the_viewer_unassigned_others_kept
+    with_pr do |repo, _c1, _base, gh|
+      gh.assignees = [{ "login" => "bob", "id" => "U_bob" }, { "login" => "me", "id" => "U_me" }]
+
+      result = submit(repo, gh, "REQUEST_CHANGES", "Needs tests")
+
+      assert_equal %w[submitPullRequestReview addAssigneesToAssignable removeAssigneesFromAssignable], names(gh).last(3)
+      assert_equal [{ "assignable" => "PR_1", "who" => "U_ann" }, { "assignable" => "PR_1", "who" => "U_me" }],
+                   gh.graphql.last(2).map { |c| c[:vars] }
+      assert_nil result["reassignError"]
+    end
+  end
+
+  def test_a_viewer_who_was_not_assigned_only_adds_the_author
+    with_pr do |repo, _c1, _base, gh|
+      gh.assignees = [{ "login" => "bob", "id" => "U_bob" }]
+
+      submit(repo, gh, "APPROVE")
+
+      assert_equal %w[submitPullRequestReview addAssigneesToAssignable], names(gh).last(2)
+      assert_equal({ "assignable" => "PR_1", "who" => "U_ann" }, gh.graphql.last[:vars])
+    end
+  end
+
+  def test_a_failed_reassign_leaves_the_review_submitted_and_says_why
+    with_pr do |repo, _c1, _base, gh|
+      gh.assignees = [{ "login" => "me", "id" => "U_me" }]
+      gh.assign_error = "Resource not accessible by integration"
+
+      result = submit(repo, gh, "APPROVE")
+
+      assert_equal "APPROVE", result["submitted"]
+      assert_equal "Resource not accessible by integration", result["reassignError"]
+      assert_equal "addAssigneesToAssignable", names(gh).last, "the viewer stays when the author couldn't be added"
+    end
+  end
+
+  def test_a_submit_github_refuses_reassigns_nobody
+    with_pr do |repo, _c1, _base, gh|
+      gh.submit_error = "Review cannot be submitted"
+
+      assert_raises(ArgumentError) { submit(repo, gh, "APPROVE") }
+      assert_equal "submitPullRequestReview", names(gh).last
     end
   end
 
@@ -147,8 +198,21 @@ class PrSubmitTest < Minitest::Test
       assert_equal [true, "feat", "Approved widgets#7 · 1 comment", true],
                    finished.values_at("ok", "key", "message", "review")
       assert_empty drafts.entries
-      assert_equal "submitPullRequestReview", gh.graphql.last[:name]
+      assert_equal %w[submitPullRequestReview addAssigneesToAssignable], names(gh).last(2)
       assert_equal "in_progress", Quartermaster::WorkItem.find("feat").state, "a normal item gets nothing"
+    end
+  end
+
+  def test_review_submit_whose_reassign_fails_is_still_a_success_with_a_warning
+    with_pr do |_repo, _c1, _base, gh|
+      gh.assign_error = "Resource not accessible by integration"
+      gui = Quartermaster::Gui.new(port: 4567, runner: gh, tmux: FakeTmux.new)
+
+      act(gui, "review-submit", PR.merge("event" => "APPROVE", "body" => "LGTM"))
+      finished = finished_job(gui)
+
+      assert_equal [true, "Approved widgets#7", "couldn't reassign: Resource not accessible by integration"],
+                   finished.values_at("ok", "message", "warning")
     end
   end
 

@@ -7,7 +7,7 @@ require_relative "test_helper"
 # mutations from what the test sets, records each call's operation,
 # variables and header, and passes git through to the real thing.
 class GraphqlStub < GitPassThroughRunner
-  attr_accessor :pending, :thread, :comment_error, :reply, :own, :submit_error
+  attr_accessor :pending, :thread, :comment_error, :reply, :own, :submit_error, :assignees, :assign_error
   attr_reader :graphql
 
   def initialize(origin)
@@ -15,6 +15,7 @@ class GraphqlStub < GitPassThroughRunner
     @origin = origin
     @graphql = []
     @pending = nil
+    @assignees = []
     @thread = ->(_vars) { { "id" => "T#{@graphql.size}" } }
     @reply = ->(_vars) { { "id" => "RC#{@graphql.size}" } }
   end
@@ -32,7 +33,7 @@ class GraphqlStub < GitPassThroughRunner
       vars[key] = flag == "-F" ? Integer(val) : val
     end
     query = vars.delete("query")
-    name = query[/\b((?:add|submit)PullRequest\w+)\(/, 1] || "query"
+    name = query[/\b((?:add|submit)PullRequest\w+|(?:add|remove)Assignees\w+)\(/, 1] || "query"
     @graphql << { name: name, vars: vars, header: header }
     out, ok = answer(name, vars)
     Quartermaster::CommandRunner::Result.new(out: JSON.generate(out), err: ok ? "" : "gh: GraphQL error", success: ok)
@@ -45,9 +46,16 @@ class GraphqlStub < GitPassThroughRunner
     when "query"
       reviews = @pending ? [{ "id" => @pending, "viewerDidAuthor" => true, "comments" => { "totalCount" => 2 } }] : []
       head = `git --git-dir #{@origin} rev-parse refs/pull/7/head`.strip
-      [{ "data" => { "repository" => { "pullRequest" => { "id" => "PR_1", "baseRefName" => "main", "headRefOid" => head,
+      author = @own ? { "login" => "me", "id" => "U_me" } : { "login" => "ann", "id" => "U_ann" }
+      [{ "data" => { "viewer" => { "login" => "me", "id" => "U_me" },
+                     "repository" => { "pullRequest" => { "id" => "PR_1", "baseRefName" => "main", "headRefOid" => head,
                                                           "state" => "OPEN", "viewerDidAuthor" => @own ? true : false,
+                                                          "author" => author, "assignees" => { "nodes" => @assignees },
                                                           "reviews" => { "nodes" => reviews } } } } }, true]
+    when "addAssigneesToAssignable", "removeAssigneesFromAssignable"
+      return [{ "errors" => [{ "message" => @assign_error }] }, false] if @assign_error
+
+      [{ "data" => { name => { "clientMutationId" => nil } } }, true]
     when "addPullRequestReview"
       [{ "data" => { name => { "pullRequestReview" => { "id" => "PRR_new" } } } }, true]
     when "addPullRequestReviewThread"

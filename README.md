@@ -139,8 +139,10 @@ or the per-project `review_skill:`. Claude is asked to record its findings as qm
 and, when done, its suggested verdict and summary (`qm draft add --summary`); you curate them in
 the diff pane's tray, and nothing goes to GitHub until you post it. **Post as pending review**
 adds the drafts to your pending review; **Submit review…** posts them and submits the review with
-the verdict you pick (Approve, Comment or Request changes) and a summary. Only that click in the
-GUI submits: no command, chat or automation can.
+the verdict you pick (Approve, Comment or Request changes) and a summary, then hands the PR back
+to its author: the author is added to the PR's assignees and you are removed if you were
+assigned (not on your own PR; a failure shows as a warning). Only that click in the GUI
+submits: no command, chat or automation can.
 
 ### Loose-chat starters
 
@@ -320,8 +322,9 @@ Know this before you install it:
 - **`qm gui` listens on `127.0.0.1` only** and refuses requests from other origins, but
   anything on your machine that can reach that port can drive it, and it can run commands:
   tmux chats running `claude`, `git worktree` add and remove, `gh` (which posts your review
-  drafts and, on your click in its verdict form, submits your review on GitHub), and whatever
-  dev-server, test-database and IDE commands you configure.
+  drafts and, on your click in its verdict form, submits your review on GitHub and then
+  assigns the PR to its author and unassigns you), and whatever dev-server, test-database and
+  IDE commands you configure.
 - **The `qm gui` page registers a service worker in your browser** for `127.0.0.1:<port>`. It
   stores one offline page in the browser's cache and answers only page loads that fail because
   `qm gui` isn't running; it caches nothing else and sends nothing anywhere. Chrome's site data
