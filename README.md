@@ -111,7 +111,7 @@ refuses with a message naming the setting. The keys are in [config.yml](#configy
 `skills/` holds Claude Code skills qm's buttons and sessions rely on. Link each one you want:
 
 ```sh
-for s in rotate work-items branch-stats adopt-worktree draft-issues; do
+for s in rotate work-items branch-stats adopt-worktree draft-issues delegate-build; do
   ln -s ~/code/quartermaster/skills/$s ~/.claude/skills/$s
 done
 ```
@@ -123,6 +123,7 @@ done
 | `branch-stats` | how big a branch is (the GUI runs its script from the repo, linked or not) |
 | `adopt-worktree` | the side panel's **Adopt worktree…**: move a worktree's branch into the main checkout |
 | `draft-issues` | the GUI's Issues pane: issue drafts revised in place before they are created |
+| `delegate-build` | the side panel's **Board** and **Check build progress**. Optional: it needs the Workflow tool and launches many sub-agents per build, so link it only if you want that |
 
 ### Dev server
 
@@ -168,10 +169,11 @@ want to know about them.".
 ### Status board and build progress
 
 The side panel's **Board** mirrors a status-board artifact and **Check build progress**
-estimates how far running sub-agents are. Both are fed by a `delegate-build`-style skill of your
-own, not bundled: it publishes a claude.ai artifact whose database holds one row per task in
-collection `tasks` (`status`, `title`, `note`, `order`, `dependsOn`, `batch`, `batchLabel`,
-`updatedAt`), writes it with `ArtifactData`, and links it to the item with
+estimates how far running sub-agents are. Both are fed by the bundled
+[`delegate-build`](#bundled-skills) skill. To feed the board your own way, keep its row
+contract: publish a claude.ai artifact whose database holds one row per task in collection
+`tasks` (`status`, `title`, `note`, `order`, `dependsOn`, `batch`, `batchLabel`, `updatedAt`),
+write it with `ArtifactData`, and link it to the item with
 `qm board SLUG URL [--answers-dir DIR]`. The PostToolUse hook from `qm install-hooks` records
 every `ArtifactData` call, so the GUI renders the board without reaching claude.ai. A
 `blocked` row gets an answer box that writes `<answers dir>/<doc_id>.md` for the agent to wait

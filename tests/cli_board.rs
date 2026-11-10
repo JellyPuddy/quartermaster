@@ -55,3 +55,17 @@ fn board_rows_answer_and_pf_mode() {
     }
     golden("cli_board.txt", &format!("{text}{files}"));
 }
+
+#[test]
+fn bundled_delegate_build_skill_writes_and_renders_every_row_field() {
+    let skill = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("skills/delegate-build");
+    let skill_md = std::fs::read_to_string(skill.join("SKILL.md")).unwrap();
+    let seeding = regex::Regex::new(r"(?m)^3\. \*\*Seed.*$").unwrap().find(&skill_md).map(|m| m.as_str().to_string());
+    let board = std::fs::read_to_string(skill.join("helpers/status-board.html")).unwrap();
+    let seeding = seeding.expect("SKILL.md has its seeding step");
+    for field in quartermaster::board_mirror::ROW_FIELDS {
+        let word = regex::Regex::new(&format!(r"\b{field}\b")).unwrap();
+        assert!(word.is_match(&seeding), "the seeding step writes {field}");
+        assert!(word.is_match(&board), "status-board.html reads {field}");
+    }
+}

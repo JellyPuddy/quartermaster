@@ -16,7 +16,7 @@ use crate::ruby_text::strip;
 use crate::work_item::WorkItem;
 
 const ROW_COLLECTION: &str = "tasks";
-const ROW_FIELDS: [&str; 8] = ["status", "title", "note", "order", "dependsOn", "batch", "batchLabel", "updatedAt"];
+pub const ROW_FIELDS: [&str; 8] = ["status", "title", "note", "order", "dependsOn", "batch", "batchLabel", "updatedAt"];
 const WRITE_ACTIONS: [&str; 5] = ["set", "update", "str_replace", "delete", "batch"];
 
 type Docs = Map<String, Value>;

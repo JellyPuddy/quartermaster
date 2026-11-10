@@ -110,8 +110,8 @@ cache_read, output}` ([side panel](areas/side-panel.md)), `overview_artifact` ([
 - **The status line is `qm statusline`**, which Claude Code's `statusLine` setting runs: it needs no
   system Ruby.
 - **The skills qm drives ship in `skills/`** (rotate, work-items, branch-stats, adopt-worktree,
-  draft-issues), symlinked into `~/.claude/skills/`; qm's code reads these skills' files from
-  its own checkout (`branch-stats.sh`, `page.html`), never through `~/.claude/skills/`.
+  draft-issues, and the optional delegate-build that feeds the Board), symlinked into
+  `~/.claude/skills/`; qm's code reads these skills' files from its own checkout (`branch-stats.sh`, `page.html`), never through `~/.claude/skills/`.
 - `fzf` for the terminal viewer, `gh` for GitHub (always offline-tolerant), tmux for chats.
 - **Data formats are versioned**: a `v:` field in JSONL events and work-item frontmatter;
   bump on a breaking schema change, readers tolerate unknown fields. A per-line JSONL reader

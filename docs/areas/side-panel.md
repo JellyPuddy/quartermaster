@@ -1,6 +1,6 @@
 # Side panel and header
 
-**Code:** `src/workspace.rs`, `src/board_mirror.rs`, `src/usage_ledger.rs`, `src/transcript_usage.rs`, `src/item_usage.rs`, `src/price_table.rs`, `src/caffeinate.rs`, `src/build_progress.rs`, `gui/js/chat-side.js`, `gui/js/limits.js`, `gui/css/side-panel.css`, `src/statusline.rs`, `skills/adopt-worktree/SKILL.md`, `src/price_defaults.rs`
+**Code:** `src/workspace.rs`, `src/board_mirror.rs`, `src/usage_ledger.rs`, `src/transcript_usage.rs`, `src/item_usage.rs`, `src/price_table.rs`, `src/caffeinate.rs`, `src/build_progress.rs`, `gui/js/chat-side.js`, `gui/js/limits.js`, `gui/css/side-panel.css`, `src/statusline.rs`, `skills/adopt-worktree/SKILL.md`, `skills/delegate-build/SKILL.md`, `skills/delegate-build/helpers/status-board.html`, `src/price_defaults.rs`
 **Tests:** `tests/usage.rs`, `tests/usage_ledger_keep.rs`, `tests/statusline.rs`, `tests/error_log.rs`, `tests/gui.rs`, `tests/cli_board.rs`
 **Depends on:** [gui-shell](gui-shell.md), [worktrees](worktrees.md), [stacks](stacks.md), [capture](capture.md)
 
@@ -53,8 +53,9 @@ the IDE (`project_config::argv`) only with an `ide_command:` — `open_ide` refu
 `work_on` skips the missing half and refuses only when both are missing.
 
 **Board** — the item's status-board rows (`boardRows`: status, title, note, dependsOn),
-grouped like the artifact: one foldable group per batch, newest first, open and marked with an
-accent dot, earlier ones folded unless they hold a blocked row; plan order within a batch. A
+produced by the bundled `delegate-build` skill (a test keeps its seeding step and
+`status-board.html` naming every `BoardMirror::ROW_FIELDS` field), grouped like the artifact:
+one foldable group per batch, newest first, open and marked with an accent dot, earlier ones folded unless they hold a blocked row; plan order within a batch. A
 batch header counts its rows by status in glyphs (`2✓ 1▶ 1○`), the words in its tooltip. A blocked row gets an answer
 box when the item has a `board_answers_dir`. **Check build progress** heads the section.
 
