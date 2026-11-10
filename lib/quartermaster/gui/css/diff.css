@@ -179,7 +179,7 @@ body[data-mode="chat"].diff-max .diff-pane { display: flex; flex: 1 1 auto; bord
 .diff-tray-btns button:disabled { opacity: .45; cursor: not-allowed; }
 
 /* GitHub review drafts (PR scope) wear --good, chat drafts the accent. */
-.d-comment-acts button.primary.gh, .dt-group-btns button.primary.gh { background: var(--good); border-color: var(--good); color: #fff; }
+.d-comment-acts button.primary.gh, .dt-group-btns button.primary.gh, .diff-bar button.primary.gh { background: var(--good); border-color: var(--good); color: #fff; }
 .diff-table tr.d-comment.gh .d-comment-text { border-left-color: var(--good); }
 .d-comment-tag { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; font-family: var(--mono); font-size: 10.5px; color: var(--accent); }
 .d-comment-tag.gh { color: var(--good); }

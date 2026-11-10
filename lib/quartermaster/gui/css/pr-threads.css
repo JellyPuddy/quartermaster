@@ -53,3 +53,12 @@
 }
 
 .dt-entry.reply { border-left: 3px solid var(--muted); }
+
+/* The verdict form (review-submit.js) and the review summary atop its tray group. */
+.rv-verdicts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin: 4px 0 12px; font-size: 13px; }
+.rv-verdict { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.rv-verdict.off { color: var(--faint); cursor: not-allowed; }
+.rv-hint { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--good); }
+.rv-own { margin: -6px 0 12px; font-size: 12px; color: var(--faint); }
+.rv-why { margin: 0; min-height: 1em; font-size: 12px; color: var(--warn); text-align: right; }
+.dt-entry.summary .dt-where { cursor: default; font-weight: 600; }

@@ -278,7 +278,7 @@ class PrDraftsPageTest < Minitest::Test
     html = page
 
     ['const isDiffComment = d => d.kind === "diff-comment" || d.kind === "github-comment";',
-     'el("button", "primary gh", "Post as pending review")', 'postPendingReview(d.repo, d.number, drafts.map(x => x.id))',
+     'el("button", "", "Post as pending review")', 'postPendingReview(d.repo, d.number, posted.map(x => x.id))',
      'draftAction("draft-move", slug, { id: d.id, to })', 'github ? "→ chat" : "→ review"',
      'if (String(d.id).startsWith("pending:")) d = itemDrafts(slug).find(',
      "const drafts = itemDrafts(slug).filter(isChatDraft);", 'el("div", "dt-group", "For the chat")',

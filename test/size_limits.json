@@ -5,7 +5,7 @@
   "lib/quartermaster/drafts.rb": 419,
   "lib/quartermaster/gui.rb": 511,
   "lib/quartermaster/gui/js/chat-side.js": 496,
-  "lib/quartermaster/gui/js/drafts.js": 553,
+  "lib/quartermaster/gui/js/drafts.js": 541,
   "lib/quartermaster/gui/js/issues.js": 593,
   "lib/quartermaster/gui_actions.rb": 844,
   "lib/quartermaster/work_item.rb": 609,

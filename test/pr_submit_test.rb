@@ -198,3 +198,27 @@ class PrSubmitTest < Minitest::Test
     end
   end
 end
+
+# The verdict form and the tray's summary entry (submit plan D2, D5, D6, D9): no JS
+# harness, so these pin the seams; the form's behavior is checked by hand.
+class PrSubmitPageTest < Minitest::Test
+  include QmTestHelpers
+
+  def test_the_page_offers_the_verdict_form_and_shows_the_summary_atop_its_pr
+    html = served_page(Quartermaster::Gui.new(port: 4567, runner: quiet_runner, tmux: FakeTmux.new),
+                       { "host" => "127.0.0.1:4567", "origin" => "http://127.0.0.1:4567" })
+
+    assert_operator html.index('<script src="/assets/js/review.js">'), :<, html.index('<script src="/assets/js/review-submit.js">')
+    assert_operator html.index('<script src="/assets/js/review-submit.js">'), :<, html.index('<script src="/assets/js/events.js">')
+    ['if (d && d.scope === "pr" && d.pr) how.appendChild(submitReviewButton(d.pr.repo, d.pr.number));',
+     'btns.appendChild(submitReviewButton(d.repo, d.number, posted.map(x => x.id)));',
+     'act("review-preview", { slug, args: { repo, number, ids, submit: true } })',
+     'act("review-submit", { slug, args: { repo, number, ids, event, body: body.value } })',
+     'const off = p.viewerIsAuthor && event !== "COMMENT";', 'if (event === "REQUEST_CHANGES") return "Say what to change in the summary";',
+     'if (event === "COMMENT" && !comments) return', 'body.value = summary ? summary.comment || "" : "";',
+     '`🤖 Claude suggests: ${esc(verdictLabel(summary.verdict))}`', ': isReviewSummary(d) ? summaryTrayEntry(d)',
+     'const reviewRank = d => (isReviewSummary(d) ? 0 : isThreadReply(d) ? 2 : 1);', 'Suggested verdict: ${verdictLabel(d.verdict)}'].each { |seam| assert_includes html, seam }
+    assert_includes html, '<input type="radio" name="rv-verdict" value="${event}"${off ? " disabled" : ""}>',
+                    "the radios carry no checked: a verdict is never pre-selected"
+  end
+end
