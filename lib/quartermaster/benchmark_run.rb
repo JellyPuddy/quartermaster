@@ -2,7 +2,7 @@
 
 module Quartermaster
   # One benchmark run of a branch against its project's benchmark database
-  # (docs/areas/benchmarks.md): its folder under benchmarks/<run id>, its
+  # (docs/areas/benchmarks.md): its folder under DIR/<run id>, its
   # meta.json, and starting, cancelling and re-running it. The steps
   # themselves run in a detached pipeline process (BenchmarkPipeline, `qm
   # bench-run <run dir>`) that outlives the GUI; this class only spawns it.
@@ -12,7 +12,14 @@ module Quartermaster
   # run's folder (or, pid not written yet, for STARTING_GRACE seconds after it
   # started). A non-final run that isn't live reads as failed.
   class BenchmarkRun
-    DIR = File.join(ROOT, "benchmarks")
+    # Where run folders live: outside ~/.claude on the live root, under any other root.
+    def self.runs_dir(root = ROOT)
+      return File.join(root, "benchmarks") unless Quartermaster.live_root?(root)
+
+      File.expand_path("~/.local/share/quartermaster/benchmarks")
+    end
+
+    DIR = runs_dir
     VERSION = 1
     FINAL = %w[done failed cancelled].freeze
     STARTING_GRACE = 30

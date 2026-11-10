@@ -33,6 +33,12 @@ class BenchmarkRunTest < Minitest::Test
 
   def sha_of(path, rev) = `git -C #{path} rev-parse #{rev}`.strip
 
+  def test_runs_live_outside_claude_on_the_live_root_and_under_any_other_root
+    assert_equal File.expand_path("~/.local/share/quartermaster/benchmarks"), RUN.runs_dir(Quartermaster::LIVE_ROOT)
+    assert_equal "/tmp/qm-root/benchmarks", RUN.runs_dir("/tmp/qm-root")
+    assert_equal File.join(Quartermaster::ROOT, "benchmarks"), RUN::DIR, "tests run on a temporary QM_ROOT"
+  end
+
   # A repo with a `feature` worktree one commit ahead of main and an item linked to it.
   def with_branch
     Dir.mktmpdir do |dir|

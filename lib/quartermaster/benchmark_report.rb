@@ -2,7 +2,7 @@
 
 module Quartermaster
   # The benchmark modal's payload, folded read-only from the run folders
-  # under benchmarks/: each run's meta.json (the pipeline's record of what
+  # under BenchmarkRun::DIR: each run's meta.json (the pipeline's record of what
   # it ran and where it is), events.jsonl (the bench script's progress
   # events, the benchmark skill's "Progress events"), agent.jsonl (the
   # planning agent's stream, for the activity line) and verdict.md. Unknown

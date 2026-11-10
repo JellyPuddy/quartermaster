@@ -24,10 +24,15 @@ first existing `GitRepo::TRUNK_REFS`), then, for a branch in a gh-stack, one sta
 the bottom up to and including the branch (named `#<pr>`, else the branch; ref local first, else
 `origin/<branch>`), else the branch alone; each `{name, ref, sha}` at start. The **run id** is the
 UTC second, `YYYYmmdd_HHMMSS`, with `_2`, `_3`… on a clash, so it is safe in a database name.
-qm writes `benchmarks/<run id>/meta.json` and spawns the pipeline `qm bench-run <run dir>`
+qm writes `<run id>/meta.json` in the runs folder (below) and spawns the pipeline `qm bench-run <run dir>`
 detached: its own process group, stdio appended to `pipeline.log`, so it outlives `qm gui`.
 
-**The run folder** `benchmarks/<run id>/`: `meta.json` (`v: 1`, id, slug, project, database, root,
+**The run folder** `<runs folder>/<run id>/`. The runs folder (`BenchmarkRun::DIR`, the one place
+that decides it, read by `BenchmarkReport` too) is `~/.local/share/quartermaster/benchmarks/` on the
+live root (`Quartermaster.live_root?`), because Claude Code treats every path under `~/.claude` as
+sensitive and refuses the headless planning agent's write of `bench.rb` there, `--add-dir` or not;
+under any other root (`QM_ROOT`, tests) it is `<root>/benchmarks/`, so tests never touch the home
+folder. Existing runs are not migrated. A run folder holds `meta.json` (`v: 1`, id, slug, project, database, root,
 checkout, branch, request, model, prompt, startedAt, finishedAt, state, error, warning, pid, stages, head,
 rerunOf), `events.jsonl` (the skill's progress events), `agent.jsonl` (the agent's stream-json),
 `bench.rb`, `run.json` (`{cwd, clone}`), `bench.out` (the markdown table), `bench.log` (the

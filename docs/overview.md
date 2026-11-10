@@ -49,7 +49,7 @@ worktrees — derives from these two layers plus a few more append-only hook log
 | `overview-page.sha256` | the phone page as last published | [phone page](areas/phone-page.md) |
 | `viewed/<slug>.json` | the diff pane's viewed marks per item | [diff](areas/diff.md) |
 | `branch-stats.json` | branch stats per (repo, branch), keyed on head and merge-base sha; safe to delete | [diff](areas/diff.md) |
-| `benchmarks/<run id>/` | one benchmark run each: `meta.json` (`v: 1`), events, script, table, verdict, logs; never pruned | [benchmarks](areas/benchmarks.md) |
+| `benchmarks/<run id>/` | one benchmark run each: `meta.json` (`v: 1`), events, script, table, verdict, logs; never pruned. On the live root it lives outside it, in `~/.local/share/quartermaster/benchmarks/`: Claude Code refuses a headless agent's writes under `~/.claude` | [benchmarks](areas/benchmarks.md) |
 | `issues/<slug>/*.md` (+ `.prev/`) | Claude's issue drafts and qm's revision snapshots | [drafts](areas/drafts.md) |
 | `pr-cache.json`, `pr-inbox.json`, `pr-prerequisites.json`, `pr-deployment.json` | PR state per linked branch; the PRs view's list; PR prerequisites and their deploy-check cache | [prs](areas/prs.md) |
 | `viewer-filter` | the fzf viewer's state filter | [cli](areas/cli.md) |

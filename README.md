@@ -298,7 +298,9 @@ Know this before you install it:
   tmux chats running `claude`, `git worktree` add and remove, `gh`, and whatever dev-server,
   test-database and IDE commands you configure.
 - **Some features start `claude -p` in the background** (summaries, asides, benchmarks), which
-  counts against your Claude usage or API bill.
+  counts against your Claude usage or API bill. Benchmark runs keep their folders (script,
+  results, logs) in `~/.local/share/quartermaster/benchmarks/`, outside `~/.claude`, where
+  Claude Code would refuse the background agent's writes.
 - **With [Automations](#automations) on, qm reads Claude Code's login token from the macOS
   keychain** (`security find-generic-password -s "Claude Code-credentials"`) and your
   organization id from `~/.claude.json`, on every call. The token is never stored, logged or
