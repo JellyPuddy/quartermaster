@@ -1,6 +1,6 @@
 # GUI shell
 
-**Code:** `lib/quartermaster/gui.rb`, `lib/quartermaster/gui_actions.rb`, `lib/quartermaster/gui_jobs.rb`, `lib/quartermaster/gui_state.rb`, `lib/quartermaster/loopback_guard.rb`, `lib/quartermaster/command_runner.rb`, `lib/quartermaster/pf.rb`, `lib/quartermaster/pf_fence.rb`, `lib/quartermaster/transcript_search.rb`, `lib/quartermaster/ask_search.rb`, `lib/quartermaster/gui/page.html`, `lib/quartermaster/gui/js/core.js`, `lib/quartermaster/gui/js/server.js`, `lib/quartermaster/gui/js/events.js`, `lib/quartermaster/gui/js/board.js`, `lib/quartermaster/gui/js/detail.js`, `lib/quartermaster/gui/js/session-sheet.js`, `lib/quartermaster/gui/js/search.js`, `lib/quartermaster/gui/js/transcript-search.js`, `lib/quartermaster/gui/js/popovers.js`, `lib/quartermaster/gui/js/modals.js`, `lib/quartermaster/gui/js/focus.js`, `lib/quartermaster/gui/js/long-actions.js`, `lib/quartermaster/gui/js/errors.js`, `lib/quartermaster/gui/css/base.css`, `lib/quartermaster/gui/css/board.css`, `lib/quartermaster/gui/css/header.css`, `lib/quartermaster/gui/css/overlays.css`, `lib/quartermaster/gui/css/responsive.css`
+**Code:** `lib/quartermaster/gui.rb`, `lib/quartermaster/gui_actions.rb`, `lib/quartermaster/gui_jobs.rb`, `lib/quartermaster/gui_state.rb`, `lib/quartermaster/loopback_guard.rb`, `lib/quartermaster/command_runner.rb`, `lib/quartermaster/pf.rb`, `lib/quartermaster/pf_fence.rb`, `lib/quartermaster/transcript_search.rb`, `lib/quartermaster/ask_search.rb`, `lib/quartermaster/gui/page.html`, `lib/quartermaster/gui/js/core.js`, `lib/quartermaster/gui/js/server.js`, `lib/quartermaster/gui/js/events.js`, `lib/quartermaster/gui/js/board.js`, `lib/quartermaster/gui/js/detail.js`, `lib/quartermaster/gui/js/session-sheet.js`, `lib/quartermaster/gui/js/search.js`, `lib/quartermaster/gui/js/transcript-search.js`, `lib/quartermaster/gui/js/popovers.js`, `lib/quartermaster/gui/js/modals.js`, `lib/quartermaster/gui/js/focus.js`, `lib/quartermaster/gui/js/long-actions.js`, `lib/quartermaster/gui/js/errors.js`, `lib/quartermaster/gui/js/app.js`, `lib/quartermaster/gui/sw.js`, `lib/quartermaster/gui/manifest.webmanifest`, `lib/quartermaster/gui/icons/icon-192.png`, `lib/quartermaster/gui/icons/icon-512.png`, `lib/quartermaster/gui/css/base.css`, `lib/quartermaster/gui/css/board.css`, `lib/quartermaster/gui/css/header.css`, `lib/quartermaster/gui/css/overlays.css`, `lib/quartermaster/gui/css/responsive.css`
 **Tests:** `test/gui_test.rb`, `test/pf_test.rb`, `test/distill_test.rb`, `test/transcript_search_test.rb`, `test/error_log_test.rb`
 **Depends on:** [work-items](work-items.md), [attention](attention.md), [chats](chats.md), [worktrees](worktrees.md), [side-panel](side-panel.md)
 
@@ -21,7 +21,7 @@ Two server threads start with it: the turn watcher (`TurnNotifier`, reacts to
 **Router** (`Gui#respond`, pure request → response, unit-tested; sockets in
 `#handle_client`). Host check → 403, foreign Origin → 403, Origin-less POST outside
 `LOCAL_ACTIONS` → 403, unknown route → 404. A `websocket` upgrade goes to `TerminalBridge`;
-a body over `Drops::MAX_BYTES` is refused unread with 413. Routes: `GET /`, `/assets/…`,
+a body over `Drops::MAX_BYTES` is refused unread with 413. Routes: `GET /`, `/assets/…`, the app files (`/manifest.webmanifest`, `/sw.js`, `/icons/icon-192.png`, `/icons/icon-512.png`),
 `/api/state`, `/api/pulse`, `/api/root`, `/api/attention`, `/api/session/<id>`, `/api/asides/<slug>`,
 `/api/history/<slug>`, `/api/workspace/<slug>`, `/api/diff/<slug>`, `/api/diff-file/<slug>`,
 `/api/prs`, `/api/pr-threads`, `/api/issues[/<slug>]`; `POST /api/action`, `/api/drop`,
@@ -81,7 +81,16 @@ own (`issues`, `todos`), for views that refetch on just those. The pulse also te
 `terminalToken`); styles and scripts are `gui/css/*.css` and `gui/js/*.js` by area, served
 from `/assets/` and read at serve time like the page (so edits need no restart); after a JS
 edit, `node --check lib/quartermaster/gui/js/<file>.js` checks its syntax (nodejs is pinned
-in `.tool-versions` for that alone; no test needs node). xterm.js,
+in `.tool-versions` for that alone; no test needs node). The page is also an installable
+desktop app (Chrome's Install page as app; desktop only, the bind stays loopback): it links
+`gui/manifest.webmanifest` (standalone, `start_url` `/`, the 192/512 `gui/icons/` PNGs, which
+are also the favicon) and `js/app.js` registers `gui/sw.js`, a service worker whose one job
+is a self-contained "qm gui isn't running" page for a navigation the server doesn't answer;
+that page polls `/api/root` every 3 s and reloads once it answers. `app.js` also sets the Dock
+badge (`navigator.setAppBadge`, cleared at 0) to the tab title's count from `notify.js`
+(blocked + unsnoozed your turn, [attention](attention.md)), only when it changes; in a plain
+tab it is a no-op. The icons were generated once with a throwaway stdlib Zlib PNG writer and
+are committed as binaries; app files sit at the root, not under `/assets/`. xterm.js,
 highlight.js and marked load from jsDelivr with SRI hashes. `docs/gui-mockup.html` is the
 design reference: SF for chrome, SF Mono for data (slugs, ids, states, stamps, kbd chips),
 an indigo accent reserved for focus/links/primary, semantic colours apart from it (amber
@@ -162,7 +171,8 @@ The Workspace buttons that drive both are in [side-panel](side-panel.md).
 - Every external tool that changes state goes through `CommandRunner`, which also finds tools in `~/bin` when PATH lacks it. `Gui` takes `runner:`, `tmux:`, `caffeinate:`, `pf_live:` (default `live_root?`, so a test GUI is pf-fenced unless it passes `pf_live: true`); every test GUI gets `quiet_runner` and tmux on `QM_TMUX_SOCKET`.
 - Scripts are classic `<script>` tags in load order, not ES modules: shared globals and inline `onclick=` need it. A file calls another at load time only if that one loads earlier; `events.js` (boot) loads last.
 - A pane's render keeps its scroll via `keepScroll` (core.js), so every caller (poll, job end, click) does; it resets only when the subject changes (another item, issue or detail sheet), and nothing outside the render saves or restores it.
-- A new asset needs its tag in page.html; `/assets/` serves only `css/NAME.css` and `js/NAME.js` (an allowlist pattern, so no traversal).
+- A new asset needs its tag in page.html; `/assets/` serves only `css/NAME.css` and `js/NAME.js` (an allowlist pattern, so no traversal), and the root serves only the exact paths in `Gui::APP_FILES`.
+- The service worker answers only navigations, network first, with its offline page on failure; it never caches state or assets (stale GUI code would be worse than none) and lets `/api/*`, assets, CDN scripts and the WebSocket pass. A change to the offline page bumps its `CACHE` name. `sw.js` stays at the root, so its scope is the whole page.
 - `.pop` needs `z-index: 150` (above the detail sheet's 90 scrim and the modal overlay's 100), and click-outside is a `mousedown` listener per popover installed on open — a global one dismissed the menu on the click that opened it.
 - The session sheet's scrim is `z-index: 95`, between the item sheet (90) and modals (100).
 - Keyboard-first is a hard requirement: every board action has a key. A new GUI shortcut goes in the document handler, which skips `.term-host` targets.

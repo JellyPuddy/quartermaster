@@ -171,6 +171,16 @@ in `overview_artifact:`, and link the `work-items` skill. Then "show my work ite
 session refreshes it. To act on items from the phone, talk to a qm chat through Claude's Remote
 Control.
 
+### Desktop app
+
+`qm gui` installs as a Chrome app window: with it open, click the install icon in the address
+bar (or ⋮ → Cast, save and share → Install page as app) and install **Quartermaster**. The
+app's Dock icon shows the same count as the tab title, the chats whose move is yours (blocked,
+or your turn and not snoozed). While `qm gui` isn't running the window shows a "qm gui isn't
+running" page that comes back by itself once you start it. `qm gui` still opens its URL with
+`open`, so Chrome may launch it in a tab unless you turn on "Open supported links" in the app's
+settings in Chrome.
+
 ### Automations
 
 Manage your claude.ai cloud routines (scheduled Claude Code agents that run on claude.ai) from
@@ -312,6 +322,10 @@ Know this before you install it:
   tmux chats running `claude`, `git worktree` add and remove, `gh` (which posts your review
   drafts and, on your click in its verdict form, submits your review on GitHub), and whatever
   dev-server, test-database and IDE commands you configure.
+- **The `qm gui` page registers a service worker in your browser** for `127.0.0.1:<port>`. It
+  stores one offline page in the browser's cache and answers only page loads that fail because
+  `qm gui` isn't running; it caches nothing else and sends nothing anywhere. Chrome's site data
+  settings for that address remove it.
 - **Some features start `claude -p` in the background** (summaries, asides, benchmarks), which
   counts against your Claude usage or API bill. Benchmark runs keep their folders (script,
   results, logs) in `~/.local/share/quartermaster/benchmarks/`, outside `~/.claude`, where

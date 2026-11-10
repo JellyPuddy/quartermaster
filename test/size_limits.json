@@ -3,7 +3,7 @@
   "lib/quartermaster/branch_diff.rb": 448,
   "lib/quartermaster/cleanup.rb": 459,
   "lib/quartermaster/drafts.rb": 419,
-  "lib/quartermaster/gui.rb": 511,
+  "lib/quartermaster/gui.rb": 516,
   "lib/quartermaster/gui/js/chat-side.js": 496,
   "lib/quartermaster/gui/js/drafts.js": 541,
   "lib/quartermaster/gui/js/issues.js": 593,

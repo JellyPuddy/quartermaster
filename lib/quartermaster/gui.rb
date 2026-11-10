@@ -13,7 +13,11 @@ module Quartermaster
     # /assets/js/NAME.js, nothing else — the pattern admits no path traversal.
     ASSET_DIR = File.join(__dir__, "gui")
     ASSET_ROUTE = %r{\A/assets/(css/[a-z0-9-]+\.css|js/[a-z0-9-]+\.js)\z}
-    ASSET_TYPES = { ".css" => "text/css; charset=utf-8", ".js" => "text/javascript; charset=utf-8" }.freeze
+    # The installed app's files sit at the root, so the service worker's scope is the whole page.
+    APP_FILES = { "/manifest.webmanifest" => "manifest.webmanifest", "/sw.js" => "sw.js",
+                  "/icons/icon-192.png" => "icons/icon-192.png", "/icons/icon-512.png" => "icons/icon-512.png" }.freeze
+    ASSET_TYPES = { ".css" => "text/css; charset=utf-8", ".js" => "text/javascript; charset=utf-8",
+                    ".webmanifest" => "application/manifest+json", ".png" => "image/png" }.freeze
 
     # The runner is the seam to the dev server, the IDE and worktrees; tests pass a stub. Off the live
     # data root (pf_live false) it is fenced: no dev-server command that changes what it serves (PfFence).
@@ -108,8 +112,9 @@ module Quartermaster
       FeatureUse.new.request(method, route, body)
       if method == "GET" && route == "/"
         ["200 OK", "text/html; charset=utf-8", page]
-      elsif method == "GET" && (asset = route[ASSET_ROUTE, 1]) && File.file?(File.join(ASSET_DIR, asset))
-        ["200 OK", ASSET_TYPES.fetch(File.extname(asset)), File.read(File.join(ASSET_DIR, asset))]
+      elsif method == "GET" && (asset = route[ASSET_ROUTE, 1] || APP_FILES[route]) && File.file?(File.join(ASSET_DIR, asset))
+        read = asset.end_with?(".png") ? :binread : :read
+        ["200 OK", ASSET_TYPES.fetch(File.extname(asset)), File.public_send(read, File.join(ASSET_DIR, asset))]
       elsif method == "GET" && route == "/api/state"
         json(@state.build)
       elsif method == "GET" && route == "/api/pulse"

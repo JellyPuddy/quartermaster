@@ -88,6 +88,34 @@ class GuiTest < Minitest::Test
     assert js.start_with?(%("use strict";))
   end
 
+  def test_serves_the_installable_app_files_from_the_root
+    page = gui.respond("GET", "/", ok_host, "")[2]
+    assert_includes page, %(<link rel="manifest" href="/manifest.webmanifest">)
+    assert_includes page, %(rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png")
+
+    status, content_type, body = gui.respond("GET", "/manifest.webmanifest", ok_host, "")
+    assert_equal ["200 OK", "application/manifest+json"], [status, content_type]
+    manifest = JSON.parse(body)
+    assert_equal %w[Quartermaster qm / / standalone], manifest.values_at("name", "short_name", "start_url", "scope", "display")
+    assert_equal %w[192x192 512x512], manifest["icons"].map { |i| i["sizes"] }
+
+    status, content_type, sw = gui.respond("GET", "/sw.js", ok_host, "")
+    assert_equal ["200 OK", "text/javascript; charset=utf-8"], [status, content_type]
+    assert_includes sw, %(event.request.mode !== "navigate")
+
+    { "/icons/icon-192.png" => 192, "/icons/icon-512.png" => 512 }.each do |path, size|
+      status, content_type, png = gui.respond("GET", path, ok_host, "")
+      assert_equal ["200 OK", "image/png"], [status, content_type], path
+      assert_equal "\x89PNG\r\n\x1a\n".b, png.byteslice(0, 8), path
+      assert_equal [size, size], png.byteslice(16, 8).unpack("NN"), path
+    end
+
+    ["/icons/../page.html", "/icons/nope.png", "/assets/sw.js", "/js/sw.js", "/sw.js/"].each do |path|
+      assert_equal "404 Not Found", gui.respond("GET", path, ok_host, "")[0], path
+    end
+    assert_equal "403 Forbidden", gui.respond("GET", "/sw.js", { "host" => "evil.example.com" }, "")[0]
+  end
+
   def test_assets_are_only_the_gui_stylesheets_and_scripts
     ["/assets/js/../../gui.rb", "/assets/../gui.rb", "/assets/%2e%2e/gui.rb", "/assets/page.html",
      "/assets/js/nope.js", "/assets/css/base.js", "/assets/js/core.css", "/assets//etc/passwd",
