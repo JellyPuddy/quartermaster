@@ -29,7 +29,8 @@ module Quartermaster
     end
 
     def entries_for(item)
-      [*degradations(item), staleness(item), pr_merged(item)].compact
+      merged = pr_merged(item) unless item.state == "resolved"
+      [*degradations(item), staleness(item), merged].compact
     end
 
     # Acknowledge the item's current degradation warnings — or one session's,
@@ -85,10 +86,16 @@ module Quartermaster
       root = @project_map.root_for(item.project)
       return false unless root
 
-      ["refs/heads/#{branch}", "refs/remotes/origin/#{branch}"].none? do |ref|
-        system("git", "-C", root, "rev-parse", "--verify", "--quiet", ref,
-               out: File::NULL, err: File::NULL)
-      end
+      refs = branch_refs(root)
+      !refs.include?("refs/heads/#{branch}") && !refs.include?("refs/remotes/origin/#{branch}")
+    end
+
+    # Local and origin branch refs of a repo, listed once per instance (one
+    # instance per state build).
+    def branch_refs(root)
+      @branch_refs ||= {}
+      @branch_refs[root] ||= Set.new(Quartermaster.git(root, "for-each-ref", "--format=%(refname)",
+                                                       "refs/heads", "refs/remotes/origin").to_s.split("\n"))
     end
 
     # When the item last saw movement — newest of the file itself and its

@@ -175,6 +175,44 @@ class AttentionTest < Minitest::Test
     assert_empty build_attention.entries_for(Quartermaster::WorkItem.find("orphan"))
   end
 
+  def test_a_branch_only_on_origin_still_exists
+    Dir.mktmpdir do |dir|
+      system("git", "init", "-q", "-b", "main", dir)
+      system("git", "-C", dir, "-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false",
+             "commit", "-q", "--allow-empty", "-m", "init")
+      system("git", "-C", dir, "update-ref", "refs/remotes/origin/chore/pushed", "HEAD")
+      map = Quartermaster::ProjectMap.new(roots: { "Repo" => dir })
+
+      item = Quartermaster::WorkItem.create("Pushed", project: "Repo", branch: "chore/pushed")
+      attention = build_attention(project_map: map)
+      refute attention.branch_gone?(item, "chore/pushed")
+      assert attention.branch_gone?(item, "chore/elsewhere")
+    end
+  end
+
+  def test_branch_refs_are_listed_once_per_repo_per_instance
+    Dir.mktmpdir do |dir|
+      system("git", "init", "-q", "-b", "main", dir)
+      system("git", "-C", dir, "-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false",
+             "commit", "-q", "--allow-empty", "-m", "init")
+      map = Quartermaster::ProjectMap.new(roots: { "Repo" => dir })
+      item = Quartermaster::WorkItem.create("Later", project: "Repo", branch: "chore/later")
+
+      attention = build_attention(project_map: map)
+      assert attention.branch_gone?(item, "chore/later")
+      system("git", "-C", dir, "branch", "-q", "chore/later")
+      assert attention.branch_gone?(item, "chore/later"), "the listing is taken once per instance"
+      refute build_attention(project_map: map).branch_gone?(item, "chore/later")
+    end
+  end
+
+  def test_resolved_items_get_no_merged_pr_nudge
+    item = Quartermaster::WorkItem.create("Done", project: "No project", branch: "issue/9-done")
+    item.update_state("resolved")
+    resolved = Quartermaster::WorkItem.find("done")
+    assert_empty build_attention(pr_states: { "issue/9-done" => "MERGED" }).entries_for(resolved)
+  end
+
   def test_pr_states_are_cached_across_instances
     item = Quartermaster::WorkItem.create("Shipped", project: "No project", branch: "issue/1-shipped")
 

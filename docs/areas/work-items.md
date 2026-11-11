@@ -110,7 +110,8 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
     default 30) within 7 days.
   - **stale** — an `in_progress` item quiet 10+ days (`activity_at`: newest of the file's
     mtime and its sessions' last events — also the board's sort key), unless snoozed.
-  - **pr_merged** — every linked branch's PR merged → "resolve?". State change stays manual.
+  - **pr_merged** — every linked branch's PR merged → "resolve?", on unresolved items only.
+    State change stays manual.
 - **Two dismissal verbs**: `qm ack SLUG [SESSION]` is permanent per transcript
   (`ack_degrade` on that session; a newer session warns independently); `qm snooze SLUG
   Nd|turn|clear` is per item — `Nd` mutes staleness until a date, `turn` quiets the chat's
@@ -150,7 +151,9 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
   on stdout, exit 1) down to a 50 kB floor — dense JSONL can overflow haiku.
 - **The merged-PR nudge waits for the whole stack**: one merged bottom PR means nothing. A
   PR-less branch gone locally and on origin is ignored (a forgotten unlink after a rename
-  would block the nudge forever); a merged PR's deleted branch still counts.
+  would block the nudge forever); a merged PR's deleted branch still counts. Existence comes
+  from one `git for-each-ref refs/heads refs/remotes/origin` listing per repo per `Attention`
+  instance (one per state build), never a git spawn per branch.
 - **Resolving clears the item's diff viewed marks** ([diff](diff.md)).
 - **Deleting rewrites no log**: `sessions.jsonl`, `events.jsonl` and `board-writes.jsonl` keep
   every line that names the slug, and the guard check and the file removal run under the
