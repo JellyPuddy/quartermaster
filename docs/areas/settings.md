@@ -32,8 +32,7 @@ governs (`projects.App.typo`), a project without a root, an argv without `PATH` 
 benchmark with only one of database/skill or a database that isn't `\w+`, a `default_mode` not in
 `modes`, a `default_project` that isn't a project, a loose starter without a prompt, `dev_server`
 keys without a command. Warnings: a root, benchmark skill or state-file folder missing, a
-dev-server or test-DB command not on `PATH` (or `~/bin`), an `ide_label` without `ide_command`,
-a link key still at its old place `epics.{tracker_url, notion_author, notion_label}` (moved to `issue_links`). The
+dev-server or test-DB command not on `PATH` (or `~/bin`), an `ide_label` without `ide_command`. The
 folder and PATH checks go through a `Probe`; tests pass a stub.
 
 **File** — `ConfigFile.load` holds the text, the parsed mapping and the text's SHA-256 digest.
@@ -109,7 +108,7 @@ work-item count; clicking the name or any cell opens that project's card (and th
 the section) and scrolls there. Below it a document: General (`default_project`, `automations.token_source`), IDE (the
 global `ide_command` / `ide_label`), one card per project, collapsed by default (its summary
 shows root, item count, an unsaved dot and error/warning counts), sectioned Basics, Dev server,
-Worktrees, Pull requests, Epics from issues, Links from issues (its "More" fold holds the link keys' old place under `epics`), IDE override, Benchmarks, then a "Rarely changed" fold with the
+Worktrees, Pull requests, Epics from issues, Links from issues, IDE override, Benchmarks, then a "Rarely changed" fold with the
 loose-chat starters, the API prices table and the phone page. Beside it a sticky column: Save
 (disabled while there are errors or no changes) with Revert and the unsaved-change count, the
 Check list (each issue jumps to its field, opening the folds above it, and flashes it; an

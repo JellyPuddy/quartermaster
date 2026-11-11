@@ -85,10 +85,6 @@ module Quartermaster
           "issue_links"),
       key("projects.*.issue_links.notion_label", "string", "The label that Notion link gets.", "issue_links",
           default: ProjectSettings::DEFAULT_NOTION_LABEL),
-      *%w[tracker_url notion_author notion_label].map do |name|
-        key("projects.*.epics.#{name}", "string", "Old place of issue_links.#{name}, read while that is unset.",
-            "issue_links", collapsed: true)
-      end,
       key("projects.*.benchmark.database", "string",
           "The Postgres database benchmark runs read (or clone as a template); letters, digits and _ only.",
           "benchmarks", collapsed: true),

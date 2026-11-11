@@ -56,7 +56,7 @@ module Quartermaster
       @benchmark = parse_benchmark(@config.section("benchmark"))
       epics = @config.section("epics")
       @epics = Epics.new(issue_types: Array(epics["issue_types"]).map { |type| type.to_s.strip }.reject(&:empty?))
-      @issue_links = parse_issue_links(@config.section("issue_links"), epics)
+      @issue_links = parse_issue_links(@config.section("issue_links"))
     end
 
     # A feature key's raw value, for features that read their own keys; the
@@ -97,16 +97,13 @@ module Quartermaster
       Benchmark.new(database: database, skill: skill, notes: string(bench["notes"]))
     end
 
-    # Each link key falls back to its old place under epics: (where qm read
-    # it before every issue item got links), so a value set there still works.
-    def parse_issue_links(links, epics)
-      read = ->(key) { string(links[key]) || string(epics[key]) }
+    def parse_issue_links(links)
       headings = Array(links["heading_links"]).filter_map do |rule|
         heading, label = rule.to_s.split("=", 2).map(&:strip)
         [heading, label.to_s.empty? ? heading : label] unless heading.to_s.empty?
       end
-      IssueLinkSettings.new(tracker_url: read["tracker_url"], notion_author: read["notion_author"],
-                            notion_label: read["notion_label"] || DEFAULT_NOTION_LABEL, headings: headings)
+      IssueLinkSettings.new(tracker_url: string(links["tracker_url"]), notion_author: string(links["notion_author"]),
+                            notion_label: string(links["notion_label"]) || DEFAULT_NOTION_LABEL, headings: headings)
     end
 
     def string(value) = value.is_a?(String) && !value.strip.empty? ? value.strip : nil

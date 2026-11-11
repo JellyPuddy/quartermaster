@@ -89,24 +89,6 @@ class ProjectConfigTest < Minitest::Test
     refute plain.epics.epic_type?("Project")
   end
 
-  def test_the_link_keys_set_under_epics_still_read_until_set_under_issue_links
-    c = config(<<~YAML)
-      projects:
-        Old:
-          root: /code/old
-          epics: { tracker_url: "https://old.example/{number}", notion_author: old-bot, notion_label: Page }
-        Both:
-          root: /code/both
-          epics: { tracker_url: "https://old.example/{number}", notion_author: old-bot }
-          issue_links: { tracker_url: "https://new.example/{number}" }
-    YAML
-
-    old = c.settings("Old").issue_links
-    assert_equal ["https://old.example/{number}", "old-bot", "Page"], [old.tracker_url, old.notion_author, old.notion_label]
-    both = c.settings("Both").issue_links
-    assert_equal ["https://new.example/{number}", "old-bot"], [both.tracker_url, both.notion_author], "per key"
-  end
-
   def test_malformed_values_leave_the_feature_off
     c = config(<<~YAML)
       projects:

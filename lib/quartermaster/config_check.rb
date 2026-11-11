@@ -123,16 +123,6 @@ module Quartermaster
         check_command("#{path}.test_db", value["test_db"])
         check_benchmark("#{path}.benchmark", value["benchmark"])
         check_ide(path, value)
-        check_moved_links(path, value["epics"])
-      end
-    end
-
-    # The link keys that moved from epics: to issue_links: still read there.
-    def check_moved_links(path, epics)
-      return unless epics.is_a?(Hash)
-
-      %w[tracker_url notion_author notion_label].each do |key|
-        warning("#{path}.epics.#{key}", "moved: set issue_links.#{key} instead") if text?(epics[key])
       end
     end
 
