@@ -64,6 +64,8 @@ module QmTestHelpers
     Quartermaster::PrStatus::IN_FLIGHT_MUTEX.synchronize { Quartermaster::PrStatus::IN_FLIGHT.clear }
     # An outage left open by a prior test would swallow this test's failures.
     Quartermaster::FailureLog.reset
+    # Each test's transcripts dir starts empty, so what a prior test found or missed is void.
+    Quartermaster::TranscriptMemo.clear
   end
 
   def run_hook(command, stdin, env = {})
@@ -136,6 +138,14 @@ module QmTestHelpers
     yield
   ensure
     $stdin = STDIN
+  end
+
+  def write_transcript(session_id, entries)
+    dir = File.join(Quartermaster::TRANSCRIPTS_DIR, "-proj")
+    FileUtils.mkdir_p(dir)
+    path = File.join(dir, "#{session_id}.jsonl")
+    File.write(path, entries.map { |e| "#{JSON.generate(e)}\n" }.join)
+    path
   end
 end
 
@@ -292,14 +302,6 @@ module ChatAttentionHelpers
   end
 
   def turn(session_id) = Quartermaster::EventLog.new.turn_for(session_id)
-
-  def write_transcript(session_id, entries)
-    dir = File.join(Quartermaster::TRANSCRIPTS_DIR, "-proj")
-    FileUtils.mkdir_p(dir)
-    path = File.join(dir, "#{session_id}.jsonl")
-    File.write(path, entries.map { |e| "#{JSON.generate(e)}\n" }.join)
-    path
-  end
 
   def assistant(ago, input: 10, read: 0, created: 0, tier: "1h", model: "claude-opus")
     creation = tier == "1h" ? { "ephemeral_1h_input_tokens" => created, "ephemeral_5m_input_tokens" => 0 }

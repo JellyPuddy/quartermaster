@@ -157,6 +157,21 @@ class ViewerDataTest < Minitest::Test
       assert_nil Quartermaster.first_prompt("/nonexistent")
     end
   end
+
+  # A live transcript may not hold its first prompt yet; an ended one never will.
+  def test_a_missing_first_prompt_is_remembered_only_once_the_session_ended
+    prompt = { "type" => "user", "message" => { "content" => "Ship it" } }
+    live = write_transcript("sess-live", [])
+    assert_nil Quartermaster.first_prompt(live, live: true)
+    write_transcript("sess-live", [prompt])
+    assert_equal "Ship it", Quartermaster.first_prompt(live, live: true)
+
+    ended = write_transcript("sess-ended", [])
+    assert_nil Quartermaster.first_prompt(ended, live: false)
+    write_transcript("sess-ended", [prompt])
+    assert_nil Quartermaster.first_prompt(ended, live: false)
+    assert_equal "Ship it", Quartermaster.first_prompt(ended, live: true), "a resumed session reads its transcript again"
+  end
 end
 
 class CliLinkingTest < Minitest::Test

@@ -566,6 +566,34 @@ class HookLinkingTest < Minitest::Test
     assert_nil Quartermaster::SessionLog.new.events.find { |e| e["event"] == "end" }["empty"]
   end
 
+  def ended_session(id, live: false) = Quartermaster::Session.new(id: id, live: live, last_event: nil, start_event: {})
+
+  # An expired transcript is the one that keeps globbing every project dir,
+  # so its miss is remembered: a file appearing later under that id goes unseen.
+  def test_an_ended_sessions_missing_transcript_is_not_searched_for_again
+    assert_nil ended_session("sess-gone").transcript
+
+    path = write_transcript("sess-gone", [])
+    assert_nil ended_session("sess-gone").transcript
+    assert_equal path, ended_session("sess-gone", live: true).transcript
+  end
+
+  def test_a_live_sessions_missing_transcript_is_found_once_it_appears
+    assert_nil ended_session("sess-new", live: true).transcript
+
+    path = write_transcript("sess-new", [])
+    assert_equal path, ended_session("sess-new", live: true).transcript
+    assert_equal "resumable", ended_session("sess-new").tier
+  end
+
+  def test_a_remembered_transcript_that_was_pruned_reads_as_gone
+    path = write_transcript("sess-pruned", [])
+    assert_equal path, ended_session("sess-pruned").transcript
+
+    File.delete(path)
+    assert_equal "expired", ended_session("sess-pruned").tier
+  end
+
   def test_used_sessions_stay_attached_after_ending
     Dir.mktmpdir do |dir|
       transcript = File.join(dir, "t.jsonl")

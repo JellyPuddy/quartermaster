@@ -1,6 +1,6 @@
 # Capture
 
-**Code:** `lib/quartermaster/hook_handler.rb`, `lib/quartermaster/session.rb`, `lib/quartermaster/session_log.rb`, `lib/quartermaster/project_map.rb`, `lib/quartermaster/project_config.rb`, `lib/quartermaster/project_settings.rb`, `lib/quartermaster/failure_log.rb`, `lib/quartermaster/error_log.rb`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
+**Code:** `lib/quartermaster/hook_handler.rb`, `lib/quartermaster/session.rb`, `lib/quartermaster/transcript_memo.rb`, `lib/quartermaster/session_log.rb`, `lib/quartermaster/project_map.rb`, `lib/quartermaster/project_config.rb`, `lib/quartermaster/project_settings.rb`, `lib/quartermaster/failure_log.rb`, `lib/quartermaster/error_log.rb`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
 **Tests:** `test/hook_test.rb`, `test/chat_attention_test.rb`, `test/prompt_snapshots_test.rb`, `test/failure_log_test.rb`, `test/error_log_test.rb`
 **Depends on:** none
 
@@ -117,6 +117,14 @@ fallback protocol for when the injection is missing.
   back to globbing `~/.claude/projects/*/<session-id>.jsonl` — ids are globally unique.
   Without this such sessions read as expired and the empty-session cleanup would detach
   them.
+- **Transcript lookups are remembered for the process** (`TranscriptMemo`, used by
+  `locate_transcript` and `Quartermaster.first_prompt`, which `Session` asks with its `live?`):
+  qm gui rebuilds every `Session` per state build, and expired transcripts would otherwise
+  glob every project dir each time. A found path holds while the file exists; a miss and a
+  missing first prompt hold only for a session that is not live (a live one's transcript or
+  first prompt may still appear); a first prompt found holds for its path. Keyed by session id
+  and transcript path, unbounded (both grow only with real use). Callers that don't pass
+  `live:` count as live, so the hooks never remember a miss.
 - **A missing transcript at SessionEnd reliably means "opened and closed unused"**: Claude
   Code never persists a transcript for a zero-message session, and real transcripts are
   written incrementally.
@@ -144,7 +152,8 @@ fallback protocol for when the injection is missing.
 - `config.yml` — `projects:` (name → path, or a mapping with `root:` and feature keys),
   `default_project:`, `loose_starters:`; seeded on first run with no projects (`CONFIG_SEED`, the
   file [settings](settings.md) writes for none).
-  `ProjectConfig.current` re-parses only when the file's text changed and reads every key through
+  `ProjectConfig.current` re-reads only when the file's stat (mtime, size, inode) changed, or
+  it was unreadable, re-parses only when its text changed, and reads every key through
   `ConfigReader` ([settings](settings.md)); a broken file reads as no projects.
 - Hook stdin: `session_id`, `cwd`, `transcript_path`, `hook_event_name`, plus `source` on
   SessionStart (`startup|resume|clear|compact`) and `reason` on SessionEnd.

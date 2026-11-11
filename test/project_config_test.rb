@@ -149,6 +149,22 @@ class ProjectConfigTest < Minitest::Test
     assert_empty Quartermaster::ProjectConfig.current.roots
   end
 
+  # Every item's dev-server check asks for the config, so an unchanged file
+  # (same stat; a chmod changes neither mtime nor size) is not read again.
+  def test_current_rereads_the_file_only_when_it_changed
+    configure_projects({ "App" => "/code/app" })
+    first = Quartermaster::ProjectConfig.current
+
+    File.chmod(0o000, Quartermaster::CONFIG_FILE)
+    assert_same first, Quartermaster::ProjectConfig.current
+
+    File.chmod(0o644, Quartermaster::CONFIG_FILE)
+    configure_projects({ "App" => "/code/app", "Other" => "/code/other" })
+    assert_equal %w[App Other], Quartermaster::ProjectConfig.current.roots.keys
+  ensure
+    File.chmod(0o644, Quartermaster::CONFIG_FILE)
+  end
+
   def test_the_seed_parses_with_no_projects
     Quartermaster.ensure_setup
 

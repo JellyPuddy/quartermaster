@@ -226,6 +226,22 @@ class AttentionTest < Minitest::Test
     assert_equal "MERGED", exploding.state_for(item, "issue/1-shipped")
   end
 
+  # A state build asks once per branch per item: pr-cache.json is parsed once
+  # per instance, and parsed again only after the instance wrote it.
+  def test_an_instance_reads_the_pr_cache_once_and_again_after_its_own_write
+    item = Quartermaster::WorkItem.create("Shipped", project: "No project", branch: "issue/1-shipped")
+    pr = Quartermaster::PrStatus.new(fetcher: ->(_i, b) { { "state" => "MERGED", "number" => b.size, "url" => "u" } })
+    pr.state_for(item, "issue/1-shipped")
+    assert_equal({ "number" => 15, "url" => "u" }, pr.link_for(item, "issue/1-shipped"))
+
+    File.write(Quartermaster::PrStatus::CACHE_FILE, "{}")
+    assert_equal "MERGED", pr.state_for(item, "issue/1-shipped")
+
+    pr.state_for(item, "issue/2-next")
+    assert_nil pr.link_for(item, "issue/1-shipped")
+    assert_equal({ "number" => 12, "url" => "u" }, pr.link_for(item, "issue/2-next"))
+  end
+
   def test_a_branch_without_a_pr_is_asked_again_sooner_than_one_with_a_pr
     item = Quartermaster::WorkItem.create("Fresh", project: "No project", branch: "issue/3-fresh")
     Quartermaster::PrStatus.new(fetcher: ->(_i, b) { b == "issue/3-fresh" ? nil : "MERGED" }).tap do |pr|

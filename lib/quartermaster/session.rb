@@ -61,13 +61,13 @@ module Quartermaster
     def transcript
       return @transcript if defined?(@transcript)
 
-      @transcript = Quartermaster.locate_transcript(id, @start_event && @start_event["transcript_path"])
+      @transcript = Quartermaster.locate_transcript(id, @start_event && @start_event["transcript_path"], live: live?)
     end
 
     def first_prompt
       return @first_prompt if defined?(@first_prompt)
 
-      @first_prompt = Quartermaster.first_prompt(transcript)
+      @first_prompt = Quartermaster.first_prompt(transcript, live: live?)
     end
   end
 end

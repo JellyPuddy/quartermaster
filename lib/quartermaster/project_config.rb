@@ -3,9 +3,10 @@
 module Quartermaster
   # What config.yml says, read through ConfigReader: each project's root and
   # settings (ProjectSettings), the default project, the IDE, the loose-chat
-  # starters, the price overrides and the phone page's URL. `current` parses
-  # the file once per change of its text — hooks, every GUI state build and
-  # each item's dev-server check ask it — and an unreadable or malformed file
+  # starters, the price overrides and the phone page's URL. `current` reads
+  # the file only when its stat (mtime, size, inode) changed and parses it
+  # once per change of its text — hooks, every GUI state build and each
+  # item's dev-server check ask it — and an unreadable or malformed file
   # reads as an empty config, never an error.
   class ProjectConfig
     Starter = Struct.new(:key, :label, :prompt, keyword_init: true) do
@@ -13,15 +14,26 @@ module Quartermaster
     end
 
     def self.current
+      stat = file_stat
+      cached = @cached
+      return cached.last if stat && cached && cached[1] == stat
+
       text = begin
         File.read(CONFIG_FILE)
       rescue SystemCallError
+        stat = nil # unreadable: ask again next time, a chmod leaves the stat as it was
         ""
       end
-      cached = @cached
-      return cached.last if cached && cached.first == text
+      return (@cached = [text, stat, cached.last]).last if cached && cached.first == text
 
-      new(parse(text)).tap { |config| @cached = [text, config] }
+      new(parse(text)).tap { |config| @cached = [text, stat, config] }
+    end
+
+    def self.file_stat
+      stat = File.stat(CONFIG_FILE)
+      [stat.mtime, stat.size, stat.ino]
+    rescue SystemCallError
+      nil
     end
 
     def self.parse(text)

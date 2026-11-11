@@ -153,12 +153,14 @@ module Quartermaster
   # The transcript_path a hook reports is keyed to the session's cwd and can
   # be wrong — `claude --worktree --resume` reports the worktree's slug while
   # the transcript actually lives under the original project's. Session ids
-  # are globally unique, so fall back to searching all project directories.
-  def self.locate_transcript(session_id, recorded_path)
+  # are globally unique, so fall back to searching all project directories,
+  # once per session id while TranscriptMemo's rules hold. live: false only
+  # for a session known to be over, whose miss is then final.
+  def self.locate_transcript(session_id, recorded_path, live: true)
     return recorded_path if recorded_path && File.exist?(recorded_path)
     return nil unless session_id
 
-    Dir[File.join(TRANSCRIPTS_DIR, "*", "#{session_id}.jsonl")].first
+    TranscriptMemo.transcript(session_id, live: live) { Dir[File.join(TRANSCRIPTS_DIR, "*", "#{session_id}.jsonl")].first }
   end
 
   def self.shorten_home(path)
@@ -199,9 +201,17 @@ module Quartermaster
     nil
   end
 
-  def self.first_prompt(transcript_path)
+  # Read once per transcript (TranscriptMemo); live: false only for a session
+  # known to be over, whose transcript can no longer gain a first prompt.
+  def self.first_prompt(transcript_path, live: true)
     return nil unless transcript_path && File.exist?(transcript_path)
 
+    TranscriptMemo.first_prompt(transcript_path, live: live) { read_first_prompt(transcript_path) }
+  rescue StandardError
+    nil
+  end
+
+  def self.read_first_prompt(transcript_path)
     File.foreach(transcript_path) do |line|
       entry = json_object(line) or next
       next unless entry["type"] == "user"
@@ -209,8 +219,6 @@ module Quartermaster
       text = prompt_text(entry)
       return text if text
     end
-    nil
-  rescue StandardError
     nil
   end
 
@@ -422,6 +430,7 @@ require_relative "quartermaster/config_reader"
 require_relative "quartermaster/project_settings"
 require_relative "quartermaster/project_config"
 require_relative "quartermaster/project_map"
+require_relative "quartermaster/transcript_memo"
 require_relative "quartermaster/session"
 require_relative "quartermaster/session_log"
 require_relative "quartermaster/atomic_file"

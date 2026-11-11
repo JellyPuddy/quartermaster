@@ -72,7 +72,7 @@ runs its listed files as fresh processes, `QM_TEST_JOBS` at once (default: CPUs;
 The key reference: `ConfigSchema` lists exactly these keys ([settings](areas/settings.md)), and
 a test checks this section names each one. qm writes the file (Settings view, `qm config`) in its
 own layout, dropping comments and keeping keys it doesn't govern; the seed is its header line and
-`projects: {}`. Code reads it only through `ProjectConfig` (re-parsed when its text changes; schema
+`projects: {}`. Code reads it only through `ProjectConfig` (re-read when its stat changes, re-parsed when its text does; schema
 keys only, via `ConfigReader`); a broken file reads as no projects, a bad key leaves its feature off
 (buttons hidden, actions name the `qm config set` to run). A project is a root path or a mapping:
 

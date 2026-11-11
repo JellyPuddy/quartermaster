@@ -102,9 +102,10 @@ module Quartermaster
     def store(key, fetched)
       pr = fetched.is_a?(Hash) ? fetched.slice("state", "number", "url") : { "state" => fetched }
       CACHE_MUTEX.synchronize do
-        cache = read_cache
+        cache = load_cache
         cache[key] = pr.merge("ts" => @now.to_i)
         write_cache(cache)
+        @cache = nil
       end
       pr["state"]
     end
@@ -119,7 +120,14 @@ module Quartermaster
       nil
     end
 
+    # Parsed once per instance (a state build asks per branch per item) and
+    # dropped by #store, under the mutex its background threads write under,
+    # so a parse never outlives the write it raced.
     def read_cache
+      @cache || CACHE_MUTEX.synchronize { @cache ||= load_cache }
+    end
+
+    def load_cache
       JSON.parse(File.read(CACHE_FILE))
     rescue StandardError
       {}
