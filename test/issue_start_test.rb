@@ -414,7 +414,7 @@ class GuiIssueStartTest < Minitest::Test
 
   def test_start_follows_the_job_into_the_new_items_chat_or_opens_the_held_one
     html = page
-    assert_includes html, 'act("issue-start", { args: { number: iss.number, project: iss.project, from, as_epic: asEpic, epic: iss.into } })'
+    assert_includes html, 'act("issue-start", { args: { number: iss.number, project: iss.project, from, ...(iss.into ? { epic: iss.into } : { as_epic: asEpic }) } })'
     assert_includes html, 'toast(`#${iss.number} is already ${r.slug}: opened its chat`);', "A4 says so"
     assert_includes html, "if (!iss.existing && !asEpic) issueStarting.add(iss.slug);", "marked before act's refresh can carry the finish"
     assert_includes html, "issueStartFinished(r);\n}", "jobFinished hands every finish over"
@@ -427,8 +427,9 @@ class GuiIssueStartTest < Minitest::Test
 
   def test_an_epic_issue_previews_with_the_badge_and_an_on_switch_and_starting_it_opens_the_epic
     html = page
-    assert_includes html, 'if (iss.epic) m.querySelector(".sub").prepend(el("span", "epic-kind is-epic-badge", "◆ Epic"));'
-    assert_includes html, "const asEpicSwitch = iss.epic && !iss.existing ? issueEpicSwitch() : null;",
+    assert_includes html, "const epicIssue = iss.epic && !iss.into;", "a start inside an epic is never an epic"
+    assert_includes html, 'if (epicIssue) m.querySelector(".sub").prepend(el("span", "epic-kind is-epic-badge", "◆ Epic"));'
+    assert_includes html, "const asEpicSwitch = epicIssue && !iss.existing ? issueEpicSwitch() : null;",
                     "every entry point: the switch lives in the one preview they all end in"
     assert_includes html, '<input type="checkbox" role="switch" checked>', "on by default"
     assert_includes html, "startIssue(m, iss, from, asEpic())", "Start sends the switch"

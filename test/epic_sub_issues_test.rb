@@ -203,7 +203,9 @@ class GuiEpicSubIssuesTest < Minitest::Test
     html = page
     assert_includes html, 'body: JSON.stringify({ cmd: "epic-sub-issues", slug: null, args: { epic: slug } }),'
     assert_includes html, "issueStartModal(s.number, epic.project, { epic: epic.slug })"
-    assert_includes html, "act(\"issue-start\", { args: { number: iss.number, project: iss.project, from, as_epic: asEpic, epic: iss.into } })"
+    assert_includes html, "act(\"issue-start\", { args: { number: iss.number, project: iss.project, from, ...(iss.into ? { epic: iss.into } : { as_epic: asEpic }) } })",
+                    "inside an epic: epic, never as_epic"
+    assert_includes html, "const epicIssue = iss.epic && !iss.into;", "inside an epic: no ◆ Epic badge, no Start as epic switch"
   end
 end
 
