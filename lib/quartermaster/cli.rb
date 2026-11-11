@@ -6,7 +6,7 @@ module Quartermaster
   # to the method #run calls with argv, so a new command touches only its
   # group. The hooks and the irregular commands stay explicit in #run.
   class CLI
-    COMMAND_GROUPS = [CliViewer, CliWorkspace, CliPrs, CliCleanup, CliChats, CliAttention, CliSetup, CliConfig, CliAutomation, CliTodo].freeze
+    COMMAND_GROUPS = [CliViewer, CliWorkspace, CliPrs, CliCleanup, CliChats, CliAttention, CliSetup, CliConfig, CliAutomation, CliTodo, CliEpic].freeze
     include CliFormat
     include(*COMMAND_GROUPS)
 
@@ -26,7 +26,6 @@ module Quartermaster
       "retitle" => :cmd_retitle,
       "describe" => :cmd_describe,
       "issues-dir" => :cmd_issues_dir,
-      "list" => :cmd_list,
       "install-hooks" => :cmd_install_hooks,
       "ask" => :cmd_ask,
       "grep" => :cmd_grep
@@ -99,27 +98,24 @@ module Quartermaster
     end
 
     def cmd_new(argv)
-      options = { project: "No project" }
+      options = { project: "No project", front: {} }
       parser = OptionParser.new do |o|
         o.on("--project PROJECT") { |v| options[:project] = v }
         o.on("--branch BRANCH") { |v| options[:branch] = v }
         o.on("--session SESSION_ID") { |v| options[:session] = v }
         o.on("--description TEXT") { |v| options[:description] = v }
         o.on("--pf-mode MODE") { |v| options[:pf_mode] = v }
+        o.on("--kind KIND") { |v| options[:front]["kind"] = v }
+        o.on("--epic SLUG") { |v| options[:front]["epic"] = v }
       end
       title = FreeTextArgs.parse(parser, argv).join(" ").strip
       if title.empty?
-        abort("usage: qm new [--project P] [--branch B] [--session ID] [--description TEXT] [--pf-mode MODE] [--] TITLE")
+        abort("usage: qm new [--project P] [--branch B] [--session ID] [--description TEXT] [--pf-mode MODE] [--kind epic | --epic SLUG] [--] TITLE")
       end
+      raise ArgumentError, "--kind takes only 'epic'" unless [nil, WorkItem::EPIC_KIND].include?(options[:front]["kind"])
 
-      item = WorkItem.create(
-        title,
-        project: options[:project],
-        branch: options[:branch],
-        session_id: options[:session],
-        description: options[:description],
-        pf_mode: options[:pf_mode]
-      )
+      item = WorkItem.create(title, project: options[:project], branch: options[:branch], session_id: options[:session],
+                                    description: options[:description], pf_mode: options[:pf_mode], front: options[:front])
       report_claim(item.claim_session(options[:session]), options[:session], item.slug) if options[:session]
       puts item.slug
     end
@@ -194,25 +190,6 @@ module Quartermaster
       puts "cleanup: #{plan.summary} — qm cleanup #{item.slug}"
     rescue StandardError => e
       Quartermaster.log_error("cleanup-offer", e)
-    end
-
-    def cmd_list(argv)
-      kind = nil
-      OptionParser.new { |o| o.on("--kind KIND") { |v| kind = v } }.parse(argv)
-      items = WorkItem.all.select { |item| kind ? item.kind == kind : !item.automation? }
-      if items.empty?
-        puts "No work items yet. Create one with: qm new TITLE"
-        return
-      end
-
-      rows = items.map do |item|
-        [item.state || "?", item.project || "?", item.slug, item.sessions.size.to_s,
-         item.branches.empty? ? "-" : item.branches.join(" ")]
-      end
-      widths = rows.transpose.map { |col| col.map(&:length).max }
-      rows.each do |row|
-        puts row.each_with_index.map { |cell, i| cell.ljust(widths[i]) }.join("  ")
-      end
     end
 
     def cmd_link_branch(argv)

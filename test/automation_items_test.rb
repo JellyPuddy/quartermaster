@@ -56,7 +56,7 @@ class AutomationItemsTest < Minitest::Test
     refute_includes kinded, "plain-work"
 
     help, = capture_io { Quartermaster::CLI.new.run(%w[help]) }
-    assert_includes help, "qm list [--kind automation]"
+    assert_includes help, "qm list [--kind automation|epic]"
   end
 
   def test_qm_show_names_kind_routine_and_runner

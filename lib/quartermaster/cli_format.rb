@@ -43,7 +43,9 @@ module Quartermaster
         ["qm open-chat SLUG [--benchmark BRANCH]", "bring the qm gui up on the item's (or a loose--<id>) chat: its open Arc tab, else a new browser tab (a notification's click); --benchmark also opens that branch's benchmark modal"]
       ],
       "Work items" => [
-        ["qm new TITLE [flags]", "create a work item, prints its slug (--project P, --branch B, --session ID, --description TEXT, --pf-mode MODE)"],
+        ["qm new TITLE [flags]", "create a work item, prints its slug (--project P, --branch B, --session ID, --description TEXT, --pf-mode MODE; --kind epic makes an epic, --epic SLUG puts the item in one)"],
+        ["qm epic SLUG EPIC_SLUG|--clear", "put the item in an epic (one level: not an epic or automation itself), or take it out"],
+        ['qm link SLUG "LABEL" URL|--remove', "add a link (an http(s) url) to the item, replacing one with the same label, or remove it"],
         ["qm attach SLUG --session ID", "attach a session to a work item (detaches it from any other item)"],
         ["qm detach SLUG --session ID", "detach a session, leaving it unlinked"],
         ["qm note SLUG TEXT", "append a dated progress note (--kind #{NOTE_KINDS.join("|")}, default #{DEFAULT_NOTE_KIND}); text may start with \"- \", or follow --"],
@@ -57,14 +59,14 @@ module Quartermaster
         ["qm move SLUG PROJECT", "reassign the item to another project"],
         ["qm retitle SLUG NEW_TITLE", "change the title (the slug never changes)"],
         ["qm describe SLUG [TEXT]", "replace the Description; '-' or no TEXT reads stdin"],
-        ["qm show SLUG", "print the item with its sessions and warnings"],
+        ["qm show SLUG", "print the item with its sessions and warnings (an epic: its children and links; a child: its epic)"],
         ["qm draft add SLUG --path P --line N --body TEXT", "record a review finding as a 🤖 GitHub draft on the item's PR for the user to curate and post (--start-line, --side old, --commit SHA, --file, --reply-to THREAD_ID, --pr URL, --body-file F; --summary [--verdict V] for the overall verdict; see qm draft add --help)"],
         ["qm draft list SLUG [--json]", "the item's drafts: review comments, replies, review summaries, chat comments, annotations"],
         ["qm issues-dir SLUG", "print the item's issue drafts directory, creating it (the /draft-issues skill writes there)"],
         ["qm cleanup SLUG [--yes] [--force P]", "plan removing the item's worktrees, test DBs, merged and temp branches, issue drafts; --yes runs the [x] ones, --force adds a ⚠ one"],
         ["qm sweep [--yes] [--force P]", "the same over every .claude/worktrees worktree and worktree-* branch of every known repo, and the issue drafts of resolved or deleted items"],
         ["qm delete SLUG [--force]", "remove an item made by accident and kill its chat; refuses one with notes, branches, 2+ sessions, a board or a description unless --force (sessions just unlink; run qm cleanup first for worktrees)"],
-        ["qm list [--kind automation]", "table of all work items (also the default without a terminal); automations only with --kind automation"],
+        ["qm list [--kind automation|epic]", "table of all work items (also the default without a terminal), ◆ marking epics and a child's epic; automations only with --kind automation, epics only with --kind epic"],
         ["qm ask QUERY", "find items by meaning: describe what you half-remember (headless claude -p)"],
         ["qm feature-use [--days N]", "which commands, GUI actions and GUI reads were used in the last N days (default 30), and which known ones weren't"],
         ["qm grep PHRASE", "find sessions whose prompts or replies contain PHRASE (rg over transcripts, asides left out), by work item"]

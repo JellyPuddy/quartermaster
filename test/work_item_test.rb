@@ -376,3 +376,159 @@ class WorkItemToHTest < Minitest::Test
     assert_equal "second snapshot", snaps.first["text"]
   end
 end
+
+# Epics (docs/areas/work-items.md): a `kind: epic` item groups children one level
+# deep; a child names it in `epic:`, and links hang on any item.
+class EpicTest < Minitest::Test
+  include QmTestHelpers
+
+  def qm(*argv) = capture_io { Quartermaster::CLI.new.run(argv) }
+
+  def qm_fails(*argv)
+    capture_io do
+      error = assert_raises(SystemExit) { Quartermaster::CLI.new.run(argv) }
+      refute error.success?
+    end
+  end
+
+  def find(slug) = Quartermaster::WorkItem.find(slug)
+
+  def epic(title = "Epic Alpha") = Quartermaster::WorkItem.create(title, project: "MyApp", front: { "kind" => "epic" })
+
+  def test_qm_new_kind_epic_makes_an_epic_with_no_session
+    out, = qm("new", "--kind", "epic", "--project", "MyApp", "Epic Alpha")
+
+    item = find("epic-alpha")
+    assert_equal "epic-alpha\n", out
+    assert item.epic?
+    assert_equal "epic", item.front["kind"]
+    assert_empty item.sessions
+    _, err = qm_fails("new", "--kind", "automation", "Sneaky")
+    assert_includes err, "--kind takes only 'epic'"
+  end
+
+  def test_qm_new_epic_puts_the_new_item_inside_the_epic
+    epic
+    out, = qm("new", "--epic", "epic-alpha", "Child one")
+
+    assert_equal "child-one\n", out
+    assert_equal "epic-alpha", find("child-one").epic
+    assert_equal ["child-one"], find("epic-alpha").children.map(&:slug)
+  end
+
+  def test_qm_new_into_a_missing_or_non_epic_target_creates_nothing
+    Quartermaster::WorkItem.create("Plain", project: "MyApp")
+
+    _, err = qm_fails("new", "--epic", "plain", "Child one")
+    assert_includes err, "'plain' is not an epic"
+    _, err = qm_fails("new", "--epic", "nope", "Child two")
+    assert_includes err, "no work item 'nope'"
+    _, err = qm_fails("new", "--kind", "epic", "--epic", "plain", "Nested")
+    assert_includes err, "an epic can't be inside another epic"
+    assert_equal ["plain"], Quartermaster::WorkItem.all.map(&:slug)
+  end
+
+  def test_qm_epic_sets_and_clears_an_items_epic_keeping_unknown_fields
+    epic
+    item = Quartermaster::WorkItem.create("Child", project: "MyApp")
+    item.front["future_field"] = "kept"
+    item.save
+
+    out, = qm("epic", "child", "epic-alpha")
+    assert_equal "child → epic epic-alpha\n", out
+    assert_equal "epic-alpha", find("child").epic
+    assert_equal "kept", find("child").front["future_field"]
+
+    out, = qm("epic", "child", "--clear")
+    assert_equal "child → (no epic)\n", out
+    assert_nil find("child").epic
+    refute find("child").front.key?("epic")
+    assert_equal "kept", find("child").front["future_field"]
+  end
+
+  def test_qm_epic_refuses_nesting_automations_self_and_non_epics
+    epic
+    epic("Epic Beta")
+    auto = Quartermaster::WorkItem.create("Digest", project: "MyApp", front: { "kind" => "automation" })
+    Quartermaster::WorkItem.create("Plain", project: "MyApp")
+    Quartermaster::WorkItem.create("Other", project: "MyApp")
+
+    assert_includes qm_fails("epic", "epic-beta", "epic-alpha")[1], "an epic can't be inside another epic"
+    assert_includes qm_fails("epic", auto.slug, "epic-alpha")[1], "an automation can't join an epic"
+    assert_includes qm_fails("epic", "plain", "other")[1], "'other' is not an epic"
+    assert_includes qm_fails("epic", "plain", "plain")[1], "'plain' is not an epic"
+    assert_includes qm_fails("epic", "plain")[1], "usage: qm epic"
+    assert_nil find("plain").epic
+  end
+
+  def test_qm_link_adds_replaces_by_label_and_removes
+    epic
+
+    qm("link", "epic-alpha", "Tracker", "https://example.com/t/1")
+    qm("link", "epic-alpha", "Doc", "https://example.com/doc")
+    out, = qm("link", "epic-alpha", "Tracker", "https://example.com/t/2")
+    assert_equal "epic-alpha → Tracker, Doc\n", out
+    assert_equal [{ "label" => "Tracker", "url" => "https://example.com/t/2" },
+                  { "label" => "Doc", "url" => "https://example.com/doc" }], find("epic-alpha").links
+
+    out, = qm("link", "epic-alpha", "Tracker", "--remove")
+    assert_equal "epic-alpha → Doc\n", out
+    assert_includes qm_fails("link", "epic-alpha", "Tracker", "--remove")[1], "no link 'Tracker'"
+    assert_includes qm_fails("link", "epic-alpha", "Bad", "javascript:alert(1)")[1], "http(s)"
+    assert_includes qm_fails("link", "epic-alpha", "Doc")[1], "usage: qm link"
+    assert_equal ["Doc"], find("epic-alpha").links.map { |l| l["label"] }
+  end
+
+  def test_qm_list_marks_epics_and_names_a_childs_epic
+    epic
+    qm("new", "--project", "MyApp", "--epic", "epic-alpha", "Child one")
+    Quartermaster::WorkItem.create("Loner", project: "MyApp")
+
+    out, = qm("list")
+    rows = out.lines.to_h { |l| [l.split[2], l] }
+    assert_includes rows["epic-alpha"], "◆ epic"
+    assert_includes rows["child-one"], "◆ epic-alpha"
+    refute_includes rows["loner"], "◆"
+    epics_only, = qm("list", "--kind", "epic")
+    assert_equal ["epic-alpha"], epics_only.lines.map { |l| l.split[2] }
+  end
+
+  def test_qm_show_lists_an_epics_children_and_links_and_a_childs_epic
+    epic.update_state("active")
+    qm("new", "--epic", "epic-alpha", "Child one")
+    qm("new", "--epic", "epic-alpha", "Child two")
+    find("child-two").update_state("resolved")
+    qm("link", "epic-alpha", "Tracker", "https://example.com/t/1")
+
+    out, = qm("show", "epic-alpha")
+    assert_includes out.lines[1], "epic"
+    refute_includes out.lines[1], "routine"
+    assert_includes out, "Children\e[0m\nchild-one  in_progress  Child one\nchild-two  resolved     Child two\n"
+    assert_includes out, "Links\e[0m\nTracker  https://example.com/t/1\n"
+
+    child, = qm("show", "child-one")
+    assert_includes child, "Epic: Epic Alpha (epic-alpha)"
+  end
+
+  def test_a_dangling_epic_reads_as_none_and_children_keep_their_field
+    epic
+    qm("new", "--epic", "epic-alpha", "Child one")
+    File.delete(Quartermaster::WorkItem.path_for("epic-alpha"))
+
+    assert_equal "epic-alpha", find("child-one").epic
+    assert_nil find("child-one").epic_item
+    child, = qm("show", "child-one")
+    assert_includes child, "Epic: epic-alpha (missing)"
+  end
+
+  def test_to_h_carries_kind_epic_and_links_for_the_gui
+    epic
+    qm("new", "--epic", "epic-alpha", "Child one")
+    qm("link", "epic-alpha", "Doc", "https://example.com/doc")
+
+    assert_equal({ "kind" => "epic", "epic" => nil, "links" => [{ "label" => "Doc", "url" => "https://example.com/doc" }] },
+                 find("epic-alpha").to_h.slice("kind", "epic", "links"))
+    assert_equal({ "kind" => nil, "epic" => "epic-alpha", "links" => [] },
+                 find("child-one").to_h.slice("kind", "epic", "links"))
+  end
+end

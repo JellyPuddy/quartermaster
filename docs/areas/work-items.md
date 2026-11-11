@@ -1,6 +1,6 @@
 # Work items
 
-**Code:** `lib/quartermaster/work_item.rb`, `lib/quartermaster/atomic_file.rb`, `lib/quartermaster/note.rb`, `lib/quartermaster/attention.rb`, `lib/quartermaster/item_deletion.rb`
+**Code:** `lib/quartermaster/work_item.rb`, `lib/quartermaster/work_item_epic.rb`, `lib/quartermaster/atomic_file.rb`, `lib/quartermaster/note.rb`, `lib/quartermaster/attention.rb`, `lib/quartermaster/item_deletion.rb`
 **Tests:** `test/work_item_test.rb`, `test/automation_items_test.rb`, `test/item_deletion_test.rb`, `test/attention_test.rb`, `test/distill_test.rb`, `test/history_rotation_test.rb`
 **Depends on:** [capture](capture.md)
 
@@ -19,6 +19,21 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
   `Attention`, the phone page (`Overview`: neither rows nor counts), plain `qm list`, the
   viewer rows, the attach-session picker and the unlinked-session listing. `qm list --kind
   automation` lists only them; `qm show` names kind, routine and runner on its meta line.
+- **Epics are work items of `kind: epic`** (`WorkItemEpic`, mixed into `WorkItem`): an
+  ordinary item (description, notes, states, a chat if wanted) that groups others one level
+  deep. A child carries `epic: <epic slug>`; the epic stores no list, `children` scans every
+  item for it. `join_epic` (`qm epic SLUG EPIC`, `qm new --epic EPIC`) refuses an epic or an
+  automation as the child and a target that is missing or not `kind: epic` (so no item is its
+  own epic); `leave_epic` (`qm epic SLUG --clear`) drops the key. Deleting or resolving an
+  epic leaves its children's `epic:` alone: `epic_item` is nil for a dangling slug and
+  `qm show` prints it as `(missing)`. `qm new --kind epic` makes one (no session unless
+  `--session`); `--kind` takes nothing else. `qm list` reads `◆ epic` on an epic and
+  `◆ <epic>` on a child; `qm show` adds the child's epic, an epic's children (slug, state,
+  title) and the links. The GUI payload (`to_h`) carries `kind`, `epic` and `links`.
+- **Links** (`links:`, a list of `{label, url}`) hang on any item; the GUI shows an epic's.
+  `set_link` (`qm link SLUG LABEL URL`) appends, or replaces the url of the link with that
+  label; `remove_link` (`--remove`) refuses a label that isn't there. A url must be
+  `http(s)://`, because the GUI opens it in a tab.
 
 - **Created** by `qm new "Title" [--project P] [--session ID] [--description …]` (slug from
   the title by `WorkItem.slugify`: accents transliterated, `Café` → `cafe`, then only `a-z0-9`
@@ -134,6 +149,9 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
   `v:` bump, since readers already keep unknown front keys.
 - **`pf_mode` needs a dev server**: only an item whose project has `dev_server:` in config.yml
   takes one, and only one of that server's `modes`; anything else is refused naming the setting.
+- **Epics are one level deep and checked under the lock**: the target check runs inside the
+  same flock as the write (`create`, `join_epic`), so an epic can't turn up as a child
+  meanwhile. `epic:` and `links:` needed no `v:` bump, like `kind`.
 
 ## Data
 
@@ -150,7 +168,9 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
 | `pf_mode` | dev-server projects only; absent = the server's `default_mode` |
 | `rotations` | `[{at, from, via, carried, decisions, open}]`, oldest first ([rotation](rotation.md)) |
 | `snooze_until`, `turn_snoozed_at` | staleness mute date; your-turn quiet time |
-| `kind`, `routine`, `runner` | absent on ordinary items; `automation`, its routine id, `cloud` on an automation |
+| `kind`, `routine`, `runner` | absent on ordinary items; `automation`, its routine id, `cloud` on an automation; `kind: epic` on an epic |
+| `epic` | a child's epic slug; absent outside an epic, never on an epic or automation |
+| `links` | `[{label, url}]`, labels unique, urls `http(s)://`; absent when none |
 
 ## Known limits
 

@@ -2,6 +2,7 @@
 
 module Quartermaster
   class WorkItem
+    include WorkItemEpic
     attr_reader :slug, :front, :body
 
     def self.slugify(title)
@@ -43,6 +44,7 @@ module Quartermaster
 
     def self.create_locked(title, project:, branch:, session_id:, description:, pf_mode:, slug:, extra:)
       raise ArgumentError, "work item '#{slug}' already exists" if File.exist?(path_for(slug))
+      check_epic_target!(extra["epic"], kind: extra["kind"], slug: slug) if extra["epic"]
 
       validate_pf_mode(project, pf_mode) if pf_mode
 
@@ -442,9 +444,7 @@ module Quartermaster
       section_body("## Description").strip
     end
 
-    # Notes newest-first — the order the GUI's timeline and card preview expect;
-    # the file stores them oldest-first (append order).
-    # Newest first. 'position' is the note's 1-based place in the file — the
+    # Newest first, the order the GUI's timeline and card preview expect. 'position' is the note's 1-based place in the file — the
     # handle `qm retag` takes, stable regardless of which end a reader counts from.
     def notes
       stored = []
@@ -506,7 +506,7 @@ module Quartermaster
         "slug" => slug, "title" => title, "state" => state, "project" => project,
         "branches" => branches, "temp_branches" => temp_branches, "issue_number" => issue_number, "board" => board,
         "pf_mode" => pf_mode, "board_answers_dir" => board_answers_dir,
-        "kind" => kind, "routine" => routine, "runner" => runner,
+        "kind" => kind, "routine" => routine, "runner" => runner, "epic" => epic, "links" => links,
         "session_ids" => sessions.map { |s| s["id"] }, "sessions" => sessions.size,
         "description" => description, "notes" => notes.map(&:to_h), "snapshots" => snapshots
       }
@@ -542,7 +542,6 @@ module Quartermaster
 
       kind
     end
-
 
     def section_body(heading)
       lines = body.lines

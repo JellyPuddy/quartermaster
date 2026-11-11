@@ -1,6 +1,6 @@
 # CLI and viewer
 
-**Code:** `lib/quartermaster/cli.rb`, `lib/quartermaster/cli_format.rb`, `lib/quartermaster/cli_viewer.rb`, `lib/quartermaster/cli_attention.rb`, `lib/quartermaster/cli_chats.rb`, `lib/quartermaster/cli_prs.rb`, `lib/quartermaster/cli_cleanup.rb`, `lib/quartermaster/cli_workspace.rb`, `lib/quartermaster/cli_setup.rb`, `lib/quartermaster/free_text_args.rb`, `lib/quartermaster/viewer.rb`, `lib/quartermaster/feature_use.rb`, `lib/quartermaster/ruby_pin.rb`, `lib/quartermaster/ruby_floor.rb`, `lib/quartermaster/doctor.rb`, `quartermaster`
+**Code:** `lib/quartermaster/cli.rb`, `lib/quartermaster/cli_format.rb`, `lib/quartermaster/cli_viewer.rb`, `lib/quartermaster/cli_attention.rb`, `lib/quartermaster/cli_chats.rb`, `lib/quartermaster/cli_prs.rb`, `lib/quartermaster/cli_cleanup.rb`, `lib/quartermaster/cli_workspace.rb`, `lib/quartermaster/cli_setup.rb`, `lib/quartermaster/cli_epic.rb`, `lib/quartermaster/free_text_args.rb`, `lib/quartermaster/viewer.rb`, `lib/quartermaster/feature_use.rb`, `lib/quartermaster/ruby_pin.rb`, `lib/quartermaster/ruby_floor.rb`, `lib/quartermaster/doctor.rb`, `quartermaster`
 **Tests:** `test/viewer_test.rb`, `test/free_text_args_test.rb`, `test/feature_use_test.rb`, `test/ruby_pin_test.rb`, `test/doctor_test.rb`
 **Depends on:** [work-items](work-items.md), [linking](linking.md), [gui-shell](gui-shell.md)
 
@@ -28,15 +28,17 @@ else (see [capture](capture.md)), then requires `lib/quartermaster` through its 
   `--benchmark BRANCH` opens that branch's benchmark modal over it.
 
 **Work items**
-- `qm new TITLE` — create an item, print its slug (`--project`, `--branch`, `--session`, `--description`, `--pf-mode`).
+- `qm new TITLE` — create an item, print its slug (`--project`, `--branch`, `--session`, `--description`, `--pf-mode`; `--kind epic` for an epic, `--epic SLUG` for a child of one).
+- `qm epic SLUG EPIC_SLUG` / `qm epic SLUG --clear` — put an item in an epic or take it out ([work-items](work-items.md)).
+- `qm link SLUG LABEL URL` / `qm link SLUG LABEL --remove` — add or replace (by label) an item's link, or remove it.
 - `qm attach SLUG --session ID` / `qm detach SLUG --session ID` — link or unlink a session; attach moves it off any other item.
 - `qm note SLUG [--kind open|decision|history] TEXT` / `qm retag SLUG POSITION KIND` — add a note, change a note's kind.
 - `qm state SLUG STATE` — in_progress | active | fridge | resolved.
 - `qm link-branch SLUG [BRANCH] [--temp]` / `qm unlink-branch SLUG BRANCH` — branch links (default: current branch; `--temp` marks a scratch branch cleanup may delete).
 - `qm board SLUG [URL|clear] [--answers-dir DIR]` / `qm board-rows SLUG [--json]` / `qm board-answer SLUG ROW TEXT` — status board URL, mirrored rows, answering a blocked row.
 - `qm move SLUG PROJECT` / `qm retitle SLUG TITLE` / `qm describe SLUG [TEXT|-]` — project, title (slug never changes), description (stdin-capable).
-- `qm show SLUG` — the item with sessions, warnings, stack lines and usage (and kind, routine, runner for an automation).
-- `qm list [--kind automation]` — table of all items but automations; `--kind automation` lists only those.
+- `qm show SLUG` — the item with sessions, warnings, stack lines and usage (and kind, routine, runner for an automation; an epic's children and any links; a child's epic).
+- `qm list [--kind automation|epic]` — table of all items but automations, with an epic column (`◆ epic`, `◆ <epic>`); `--kind` lists only that kind.
 - `qm draft add SLUG …` (`--summary [--verdict V]` for the PR's suggested verdict) / `qm draft list SLUG [--json]` — Claude's review drafts ([review](review.md)).
 - `qm issues-dir SLUG` — the item's issue-drafts directory ([drafts](drafts.md)).
 - `qm cleanup SLUG [--yes] [--force P]` / `qm sweep [--yes] [--force P]` — plan or run worktree cleanup ([worktrees](worktrees.md)).
@@ -91,7 +93,7 @@ Internal, called by the viewer's fzf bindings: `viewer-rows`, `sessions-view`, `
 <run dir>`, a benchmark run's detached pipeline ([benchmarks](benchmarks.md)).
 
 **Command groups.** `CLI` keeps the work-item commands; the rest live in modules mixed into it,
-one file each: `CliViewer` (viewer rows and pickers, `show`, sessions), `CliAttention` (inbox,
+one file each: `CliViewer` (viewer rows and pickers, `list`, `show`, sessions), `CliEpic` (`epic`, `link`, the epic parts of `show`), `CliAttention` (inbox,
 attention, overview, ack, snooze, distill), `CliChats` (commands acting on the running GUI),
 `CliPrs` (pr, pr-requires, draft), `CliCleanup` (cleanup, sweep), `CliWorkspace` (resume, start,
 pf, IDE, terminal), `CliSetup` (how qm itself runs: pin-ruby, doctor), `CliConfig` (`qm config`, owned by

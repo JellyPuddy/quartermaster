@@ -6,6 +6,7 @@ module Quartermaster
   module CliViewer
     COMMANDS = {
       "sessions" => :cmd_sessions,
+      "list" => :cmd_list,
       "show" => :cmd_show,
       "show-session" => :cmd_show_session,
       "viewer-rows" => :cmd_viewer_rows,
@@ -81,6 +82,27 @@ module Quartermaster
       end
     end
 
+    # One row per item; the epic column reads "◆ epic" on an epic and
+    # "◆ <epic slug>" on a child.
+    def cmd_list(argv)
+      kind = nil
+      OptionParser.new { |o| o.on("--kind KIND") { |v| kind = v } }.parse(argv)
+      items = WorkItem.all.select { |item| kind ? item.kind == kind : !item.automation? }
+      if items.empty?
+        puts "No work items yet. Create one with: qm new TITLE"
+        return
+      end
+
+      rows = items.map do |item|
+        [item.state || "?", item.project || "?", item.slug, item.epic? ? "◆ epic" : (item.epic ? "◆ #{item.epic}" : "-"),
+         item.sessions.size.to_s, item.branches.empty? ? "-" : item.branches.join(" ")]
+      end
+      widths = rows.transpose.map { |col| col.map(&:length).max }
+      rows.each do |row|
+        puts row.each_with_index.map { |cell, i| cell.ljust(widths[i]) }.join("  ").rstrip
+      end
+    end
+
     def cmd_show(argv)
       item = WorkItem.find(argv.first || abort("usage: qm show SLUG"))
       GhStack.sync(item)
@@ -90,7 +112,8 @@ module Quartermaster
         state = pr_status.state_for(item, branch)
         state ? "#{branch} (PR #{state})" : branch
       end
-      meta = [item.state, item.project, item.kind && "#{item.kind} #{item.routine || "(no routine yet)"} (#{item.runner || "?"})",
+      meta = [item.state, item.project, item.epic? ? "◆ epic" : nil,
+              item.automation? ? "automation #{item.routine || "(no routine yet)"} (#{item.runner || "?"})" : nil,
               *branch_bits,
               item.issue_number && "issue ##{item.issue_number}",
               item.front["snooze_until"] && "snoozed until #{item.front["snooze_until"]}",
@@ -100,6 +123,7 @@ module Quartermaster
       puts paint(item.title.to_s, 1)
       puts meta
       stacks.each { |chain| puts stack_line(chain) }
+      puts epic_line(item) if item.epic
       # The one thing to know about this item, up top — same rule as the GUI card.
       if (headline = item.headline_note)
         puts note_line(headline)
@@ -109,6 +133,7 @@ module Quartermaster
       lines = session_lines(item)
       puts(lines.empty? ? "(none)" : lines.map { |l| l.tr("\t", "  ") })
       usage_lines(item).each { |line| puts line }
+      epic_sections(item).each { |line| puts line }
       puts
       puts show_body(item)
     end

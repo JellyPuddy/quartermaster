@@ -20,6 +20,12 @@ session. `qm todo add "renew the passport" [--item SLUG | --project NAME]` puts 
 the GUI's Todos tab (`t`) lists, filters by project, reorders and ticks them, and turns one into a
 work item with its chat started (`w`). Done todos stay in the list until you delete them.
 
+Bigger work can be grouped into **epics**: an epic is a work item of its own (`qm new "Title"
+--kind epic`), and an item joins one with `qm new "Title" --epic EPIC` or `qm epic SLUG EPIC`
+(`--clear` takes it out); epics don't nest. `qm link SLUG "Label" https://…` hangs a link on an
+item (`--remove` drops it), `qm list` marks epics and children with ◆, and `qm show` on an epic
+lists its children and links.
+
 > [!WARNING]
 > **This project is 100% vibe-coded.** Claude Code wrote essentially all of it, steered by
 > one person for their own daily use. There are no guarantees whatsoever about its quality,
