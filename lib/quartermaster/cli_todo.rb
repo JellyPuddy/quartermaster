@@ -5,7 +5,7 @@ module Quartermaster
   # only ever what the flags say, never guessed from QM_ITEM or the cwd.
   module CliTodo
     COMMANDS = { "todo" => :cmd_todo }.freeze
-    TODO_USAGE = 'usage: qm todo add [--item SLUG | --project NAME] [--] "text" | qm todo list | qm todo done N'
+    TODO_USAGE = 'usage: qm todo add [--item SLUG | --project NAME] [--] "text" | qm todo list | qm todo done N [--] [outcome]'
 
     private
 
@@ -46,8 +46,9 @@ module Quartermaster
       todo = n&.positive? && list.open[n - 1]
       raise ArgumentError, "no open todo #{argv.first} (numbers as qm todo list prints them)" unless todo
 
-      list.done(todo["id"])
-      puts "done: #{todo["text"]}"
+      outcome = FreeTextArgs.words(argv.drop(1)).join(" ").gsub(/\s+/, " ").strip
+      list.done(todo["id"], outcome: outcome)
+      puts "done: #{todo["text"]}#{" — #{outcome}" unless outcome.empty?}"
     end
 
     def todo_tag(todo)

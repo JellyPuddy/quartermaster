@@ -53,12 +53,13 @@ module Quartermaster
 
     # project: "" clears it; a todo on an item keeps none. item: a slug (it
     # must exist) moves the todo onto that item; "" takes it off, keeping
-    # the project it showed.
-    def edit(id, text: nil, project: nil, item: nil)
+    # the project it showed. outcome: "" clears it.
+    def edit(id, text: nil, project: nil, item: nil, outcome: nil)
       target = item.to_s.empty? ? nil : WorkItem.find(item)
       change do |list|
         todo = find(list, id)
         todo["text"] = one_line(text) if text
+        set_outcome(todo, outcome) unless outcome.nil?
         if target then attach(todo, item: target.slug)
         elsif item == "" && todo["item"] then attach(todo, project: project.nil? ? former_project(todo.delete("item")) : project)
         elsif !project.nil? then attach(todo, item: todo["item"], project: project)
@@ -83,14 +84,17 @@ module Quartermaster
     end
 
     # item: the work item the todo became; its project goes with it.
-    def done(id, item: nil)
+    # outcome: how it ended, one line; a blank one leaves any earlier outcome.
+    def done(id, item: nil, outcome: nil)
       change do |list|
         todo = find(list, id)
         todo["done_at"] = now
         attach(todo, item: item) if item
+        set_outcome(todo, outcome) unless outcome.to_s.strip.empty?
       end
     end
 
+    # The outcome stays, so a re-tick brings it back.
     def undone(id)
       change { |list| find(list, id).delete("done_at") }
     end
@@ -132,6 +136,11 @@ module Quartermaster
       else
         todo["project"] = project.strip
       end
+    end
+
+    def set_outcome(todo, outcome)
+      line = outcome.to_s.gsub(/\s+/, " ").strip
+      line.empty? ? todo.delete("outcome") : todo["outcome"] = line
     end
 
     def former_project(slug)

@@ -62,6 +62,12 @@ body[data-mode="todos"] .legend .item-key { display: none; }
 .td-more:hover { border-color: var(--border-strong); color: var(--ink); }
 .td-row.done .td-text { color: var(--faint); text-decoration: line-through; }
 .td-row.done .td-proj, .td-row.done .td-item { opacity: .6; }
+.td-row:has(.td-outcome) .td-text, .td-row.outcome-edit .td-text { flex: 0 1 auto; max-width: 45%; }
+.td-row.done .td-outcome {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12.5px; color: var(--muted);
+}
+.td-outcome-edit { flex: 1 1 55%; }
 
 .td-edit { flex: 1 1 auto; display: flex; align-items: center; gap: 6px; min-width: 0; }
 .td-edit input { flex: 1 1 auto; }

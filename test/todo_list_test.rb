@@ -72,6 +72,45 @@ class TodoListTest < Minitest::Test
     refute list.todos.first.key?("done_at")
   end
 
+  def test_done_with_an_outcome_keeps_it_on_one_line_and_undone_keeps_it
+    todo = list.add("ask about the refund")
+    list.done(todo["id"], outcome: "  refunded\n in full ")
+    assert_equal "refunded in full", list.todos.first["outcome"]
+
+    list.undone(todo["id"])
+    assert_equal "refunded in full", list.todos.first["outcome"]
+    list.done(todo["id"])
+    assert_equal "refunded in full", list.todos.first["outcome"]
+  end
+
+  def test_done_with_a_blank_outcome_stores_none
+    todo = list.add("water the plants")
+    list.done(todo["id"], outcome: " \n ")
+    refute list.todos.first.key?("outcome")
+  end
+
+  def test_edit_sets_and_clears_an_outcome
+    todo = list.add("call the bank")
+    list.done(todo["id"])
+    list.edit(todo["id"], outcome: "they waived the fee")
+    assert_equal "they waived the fee", list.todos.first["outcome"]
+    list.edit(todo["id"], text: "call the bank back")
+    assert_equal "they waived the fee", list.todos.first["outcome"]
+    list.edit(todo["id"], outcome: "")
+    refute list.todos.first.key?("outcome")
+    assert_equal "call the bank back", list.todos.first["text"]
+  end
+
+  def test_an_outcome_leaves_unknown_fields_and_the_version_alone
+    File.write(file, JSON.generate("v" => 1, "todos" => [{ "id" => "abc", "text" => "old", "created" => "2026-01-01T00:00:00Z",
+                                                           "colour" => "red" }]))
+    list.done("abc", outcome: "sorted")
+
+    data = JSON.parse(File.read(file))
+    assert_equal 1, data["v"]
+    assert_equal({ "colour" => "red", "outcome" => "sorted" }, data["todos"].first.slice("colour", "outcome"))
+  end
+
   def test_delete_removes_a_todo_outright
     keep = list.add("keep")
     gone = list.add("gone")
@@ -213,6 +252,16 @@ class TodoListTest < Minitest::Test
     out, = qm("list")
     assert_equal "1. - fix the tap  [Home]\n2. renew the passport\n", out
     assert_equal "check the deploy", list.done_recent.first["text"]
+    refute list.done_recent.first.key?("outcome")
+
+    out, err, status = qm("done", "2", "renewed", "for", "ten years")
+    assert status.success?, err
+    assert_equal "done: renew the passport — renewed for ten years\n", out
+    assert_equal "renewed for ten years", list.done_recent.first["outcome"]
+
+    out, err, status = qm("done", "1", "--", "-fixed by the plumber")
+    assert status.success?, err
+    assert_equal "done: - fix the tap — -fixed by the plumber\n", out
   end
 
   def test_the_cli_refuses_bad_input

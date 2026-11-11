@@ -15,9 +15,10 @@ module Quartermaster
       return ok.merge("todo" => @list.add(args["text"], item: presence(args["item"]), project: args["project"])) if cmd == "todo-add"
 
       case cmd
-      when "todo-edit" then @list.edit(id(args), text: args["text"], project: args["project"], item: args["item"]&.to_s)
+      when "todo-edit"
+        @list.edit(id(args), text: args["text"], project: args["project"], item: args["item"]&.to_s, outcome: args["outcome"]&.to_s)
       when "todo-move" then @list.move(id(args), before: presence(args["before"]), after: presence(args["after"]))
-      when "todo-done" then args["done"] == false ? @list.undone(id(args)) : @list.done(id(args))
+      when "todo-done" then args["done"] == false ? @list.undone(id(args)) : @list.done(id(args), outcome: presence(args["outcome"]))
       when "todo-delete" then @list.delete(id(args))
       end
       ok
@@ -50,7 +51,7 @@ module Quartermaster
       (list.open(all) + list.done_recent(all)).map do |todo|
         item = items[todo["item"]]
         { "id" => todo["id"], "text" => todo["text"], "created" => todo["created"], "done_at" => todo["done_at"],
-          "item" => todo["item"], "project" => item ? item.project : todo["project"], "itemTitle" => item&.title }
+          "outcome" => todo["outcome"], "item" => todo["item"], "project" => item ? item.project : todo["project"], "itemTitle" => item&.title }
       end
     end
 

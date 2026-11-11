@@ -100,6 +100,22 @@ class GuiTodosTest < Minitest::Test
     assert_equal 1, stored.size
   end
 
+  def test_done_with_an_outcome_and_edit_sets_or_clears_it_and_the_state_carries_it
+    id = act("todo-add", text: "chase the invoice")["todo"]["id"]
+    other = act("todo-add", text: "book the train")["todo"]["id"]
+
+    assert act("todo-done", id: id, done: true, outcome: "paid on Friday")["ok"]
+    assert act("todo-done", id: other, done: true, outcome: "")["ok"]
+    assert_equal "paid on Friday", todos.find { |t| t["id"] == id }["outcome"]
+    assert_nil todos.find { |t| t["id"] == other }["outcome"]
+    refute stored.find { |t| t["id"] == other }.key?("outcome")
+
+    assert act("todo-edit", id: id, outcome: "paid late, on Monday")["ok"]
+    assert_equal "paid late, on Monday", todos.find { |t| t["id"] == id }["outcome"]
+    act("todo-edit", id: id, outcome: "")
+    refute stored.find { |t| t["id"] == id }.key?("outcome")
+  end
+
   def test_delete_removes_a_todo_and_an_unknown_id_is_an_error
     id = act("todo-add", text: "gone soon")["todo"]["id"]
 
@@ -239,7 +255,11 @@ class GuiTodosTest < Minitest::Test
   def test_the_todos_tab_posts_the_todo_actions_and_moves_against_the_visible_neighbour
     html = page
 
-    ['act("todo-add", { args: { text, project } })', 'act("todo-done", { args: { id: t.id, done: !t.done_at } })',
+    ['act("todo-add", { args: { text, project } })', "const args = { id: t.id, done: !t.done_at };",
+     'if (outcome) args.outcome = outcome;', 'act("todo-done", { args })',
+     'act("todo-edit", { args: { id: t.id, outcome } })', 'add(t.done_at ? "Outcome…" : "Done with outcome…", () => outcomeTodo(t));',
+     'case "X": if (t) { e.preventDefault(); outcomeTodo(t); } break;', '<kbd>⇧X</kbd>',
+     '.td-row.done .td-outcome {', '<script src="/assets/js/todos-outcome.js"></script>',
      'act("todo-delete", { args: { id: t.id } })', 'act("todo-edit", { args })',
      'moveTodoNextTo(t, d > 0 ? "after" : "before", neighbour.id)',
      'optimisticAct(change, "todo-move", { args: { id: t.id, [where]: neighbourId } })',

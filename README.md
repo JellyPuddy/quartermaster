@@ -16,11 +16,14 @@ current, so Claude itself writes the notes.
 
 qm also keeps **your own to-do list**: things you must do yourself, often outside any Claude
 session. `qm todo add "renew the passport" [--item SLUG | --project NAME]` puts one on top,
-`qm todo list` numbers the open ones in priority order, and `qm todo done N` ticks one off;
+`qm todo list` numbers the open ones in priority order, and `qm todo done N [outcome]` ticks one
+off, optionally with a one-line outcome (how or why it ended);
 the GUI's Todos tab (`t`) lists, filters by project, reorders and ticks them, and turns one into a
 work item with its chat started (`w`). It shows each epic as an outline (its todos, its open items
 and theirs, a "+ todo" line, foldable) above the todos in no epic, and a todo's ⋯ menu moves it
-onto an epic or item, or off it. Done todos stay in the list until you delete them.
+onto an epic or item, or off it. Ticking stays one click (`x`); `⇧X` or ⋯ → Done with outcome…
+ticks it with an outcome, which the Done section shows beside the todo and ⋯ → Outcome… changes.
+Done todos stay in the list until you delete them.
 
 Bigger work can be grouped into **epics**: an epic is a work item of its own (`qm new "Title"
 --kind epic`), and an item joins one with `qm new "Title" --epic EPIC` or `qm epic SLUG EPIC`
