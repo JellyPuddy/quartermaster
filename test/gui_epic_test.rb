@@ -150,6 +150,61 @@ class GuiEpicTest < Minitest::Test
     assert_equal [nil, "epic-alpha", []], items["child"].values_at("kind", "epic", "links")
   end
 
+  # A drop into an epic posts epic-set: it moves the item in and out of epics
+  # and leaves its state alone.
+  def test_epic_set_from_a_drop_keeps_the_item_state
+    epic!
+    Quartermaster::WorkItem.create("Child", project: "Nowhere").update_state("fridge")
+
+    act("epic-set", "child", epic: "epic-alpha")
+    assert_equal %w[epic-alpha fridge], [item("child").epic, item("child").state]
+    act("epic-set", "child", epic: "")
+    assert_equal [nil, "fridge"], [item("child").epic, item("child").state]
+  end
+
+  # A refused drop toasts the error qm epic prints.
+  def test_epic_set_refuses_automations_and_an_epic_dropped_on_itself_with_the_cli_text
+    epic!
+    Quartermaster::WorkItem.create("Nightly", project: "Nowhere", front: { "kind" => "automation" })
+
+    assert_equal({ "ok" => false, "error" => "an automation can't join an epic" }, act("epic-set", "nightly", epic: "epic-alpha").slice("ok", "error"))
+    assert_equal({ "ok" => false, "error" => "an epic can't be inside another epic (one level only)" },
+                 act("epic-set", "epic-alpha", epic: "epic-alpha").slice("ok", "error"))
+    assert_nil item("nightly").epic
+    assert_nil item("epic-alpha").epic
+  end
+
+  def page_function(page, name)
+    page[/^(?:async )?function #{name}\(.*?^}$/m] or flunk("no function #{name} on the page")
+  end
+
+  # Drag and drop into an epic (epic-drop.js): every surface marks its sources
+  # and targets, and a drop posts epic-set through the one helper ⋯ → Epic… uses.
+  def test_the_page_wires_drag_into_an_epic_on_the_board_todos_and_chats
+    page = served_page(server, ok_host)
+
+    move = page_function(page, "moveToEpic")
+    assert_includes move, 'act("epic-set", { slug: it.slug, args: { epic } })'
+    refute_includes move, "state"
+    assert_includes page_function(page, "epicMenu"), "moveToEpic(it, epic)"
+    {
+      "card" => "epicDragSource(c, it.slug);",
+      "epicCard" => "epicDropTarget(c, e.slug);",
+      "epicChildRow" => "epicDragSource(r, it.slug);",
+      "render" => 'epicDropTarget(col, "");',
+      "todoChildRow" => "epicDragSource(r, it.slug);",
+      "todoEpicNode" => "epicDropTarget(head, e.slug);",
+      "chatRow" => "epicDragSource(row, a.slug);",
+      "chatEpicBlock" => "epicDropTarget(head, epic.slug);"
+    }.each { |fn, seam| assert_includes page_function(page, fn), seam, fn }
+    assert_includes page_function(page, "epicCard"), "epicDragSource(c, e.slug);"
+    drop = page_function(page, "epicDropAt")
+    assert_includes drop, "ev.dataTransfer.types.includes(EPIC_DRAG_TYPE)", "a file or todo drag never lands in an epic"
+    assert_includes drop, 'if (!it || epic === (it.epic || "")) return null;', "a drop where it already is posts nothing"
+    assert_includes page, "moveToEpic(d.it, d.epic);"
+    assert_includes page, 'act("todo-move", { args: { id, [where]: row.dataset.id } });', "todos keep their reorder drag"
+  end
+
   # The board's epic card is client-side; the page must carry it and its hooks.
   def test_the_page_carries_the_epic_card_and_its_controls
     page = served_page(server, ok_host)

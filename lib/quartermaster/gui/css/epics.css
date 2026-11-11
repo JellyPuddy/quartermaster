@@ -41,6 +41,8 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 button.epic-tag { cursor: pointer; }
+.epic-dragging { opacity: .45; }
+.epic-drop-on { outline: 2px dashed var(--accent); outline-offset: -2px; background: var(--accent-soft); border-radius: var(--radius); }
 
 .new-kind { margin: 4px 0 12px; }
 .links-editor { display: flex; flex-direction: column; gap: 6px; }

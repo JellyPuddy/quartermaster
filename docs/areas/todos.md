@@ -75,7 +75,8 @@ epic?" when every child is resolved and no todo is open on it or them; chips and
 `epics.js`'s, so resolving opens the cleanup plan as on the board),
 the epic's own open todos, a "+ todo on <epic>" line (an inline input; Enter posts `todo-add`
 with `item` = the epic), its open child items as compact rows (state dot, title, live,
-sessions, open-todo count; a click opens the chat) each followed by its todos, a resolved child
+sessions, open-todo count; a click opens the chat; dragged onto another epic's head it moves
+there, `epic-set` via `epic-drop.js`, a separate drag from the todos' reorder) each followed by its todos, a resolved child
 only while it has an open todo, then "n resolved items". A todo in the outline shows no project
 tag or item chip: its place says both. A click on the head folds the node, remembered per
 browser (`qm-todo-epics-collapsed`). A todo is in an epic when its item is the epic or a child of

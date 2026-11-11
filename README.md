@@ -32,7 +32,9 @@ lists its children and links. A session is never linked to an epic by guesswork,
 `qm attach` or a chat started from it; a child's session is told its epic, an epic's session
 its children. On the GUI board an epic is a card holding its items (which leave their columns),
 its todos, link chips and, once everything in it is done, an offer to resolve it; the New item
-dialog makes epics or puts the item in one, ⋯ → **Epic…** moves an item, and an epic's detail
+dialog makes epics or puts the item in one, ⋯ → **Epic…** moves an item (so does dragging it onto
+an epic, on the board, in the Todos outline or onto a Chats epic header; dropped on a bare board
+column it leaves its epic; a drop never changes its state), and an epic's detail
 sheet edits its links. In `qm gui`'s Chats view the list groups chats by epic (▸ folds a block to
 its status dots), and an item's side panel opens with its epic: links, sibling chats to switch
 to, the epic's todos to tick or add, and a nudge to resolve it once everything is done.

@@ -20,7 +20,8 @@ blocked + unsnoozed your_turn chats.
   form one block per epic, blocks in the order of their most urgent row, rows inside in attention
   order; the epic's own entry is a row only while it has a turn, else the header stands for it. The
   header (EPIC, title, "n live · n todos") opens the epic in the chat view; ▸ folds the block to its
-  status dots (`qm-chat-epic-folds`, localStorage). Rows in no epic (a dangling `epic:` included)
+  status dots (`qm-chat-epic-folds`, localStorage); a row dropped on a header joins that epic
+  (`epic-set`, `epic-drop.js` in [gui-shell](gui-shell.md)). Rows in no epic (a dangling `epic:` included)
   follow under "no epic" — no label while no epic has a block — then loose chats and runs. `j`/`k`
   walk the list as shown: an epic's header, its unfolded rows, the rest. The shrunk strip keeps a ◆
   and the fold per block. A child's chat head starts its title with a "◆ epic ›" crumb to the epic.
