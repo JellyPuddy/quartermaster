@@ -67,10 +67,13 @@ fallback protocol for when the injection is missing.
   outage. A test holds the list equal to the `log_success` call sites in `lib/`.
 - **Unseen errors** (`ErrorLog`): the header lines of the log's last 256 KB that are neither
   transient nor recovered, newer than the iso8601 time in `errors-seen-at` (absent or
-  unreadable: the last 24 h), each with its continuation lines. They feed the GUI's error
-  badge (`errors` in the state, Mark seen = the `errors-seen` action, which writes now into
-  `errors-seen-at`; [gui-shell](gui-shell.md)) and the status line's `⚠ N qm errors`
-  ([side-panel](side-panel.md)), which repeats the parse because it may not load lib/.
+  unreadable: the last 24 h), each with its continuation lines. A process parses the tail
+  again only when the log's version (the file-version rule below) changes; the cut by
+  `errors-seen-at` and the 24 h window applies per call, so Mark seen and the moving window
+  show without a log write. They feed the GUI's error badge (`errors` in the state, Mark seen =
+  the `errors-seen` action, which writes now into `errors-seen-at`; [gui-shell](gui-shell.md))
+  and the status line's `⚠ N qm errors` ([side-panel](side-panel.md)), which repeats the parse
+  because it may not load lib/.
 
 ## Rules
 
@@ -127,8 +130,8 @@ fallback protocol for when the injection is missing.
   `live:` count as live, so the hooks never remember a miss.
 - **A file's version** (`FileVersion.of`) is its stat's mtime, ctime, size and inode: a write,
   an atomic replace and a chmod each move it, so a cache keyed on it (`ProjectConfig`,
-  [`WorkItemFile`](work-items.md)) reads the file again after any change and never in between.
-  A file that can't be stat'ed has none (nil).
+  [`WorkItemFile`](work-items.md), `ErrorLog`) reads the file again after any change and never
+  in between. A file that can't be stat'ed has none (nil).
 - **A missing transcript at SessionEnd reliably means "opened and closed unused"**: Claude
   Code never persists a transcript for a zero-message session, and real transcripts are
   written incrementally.

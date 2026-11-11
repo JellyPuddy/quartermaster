@@ -6,7 +6,9 @@ module Quartermaster
   # The errors in qm.log the user hasn't seen yet: header lines (FailureLog's
   # format) that are neither transient nor recovered, newer than the time in
   # errors-seen-at (absent or unreadable: the last WINDOW), each with its
-  # backtrace continuation lines. Reads only the log's last tail_bytes. Feeds
+  # backtrace continuation lines. Reads only the log's last tail_bytes, and
+  # only when the log's FileVersion changed since the process last parsed it:
+  # the parsed errors are kept frozen and filtered by `since` per call. Feeds
   # the GUI's error badge and qm doctor; the status line repeats the parse,
   # since it may not load lib/.
   class ErrorLog
@@ -17,6 +19,10 @@ module Quartermaster
     HEADER = /\A(\S+) \[([^\]]*)\] (.*)\z/
     NOT_ERRORS = /\A(?:#{FailureLog::TRANSIENT} |recovered after )/
 
+    class << self
+      attr_accessor :parsed
+    end
+
     def initialize(log: LOG_FILE, seen_file: SEEN_FILE, now: Time.now, tail_bytes: TAIL_BYTES)
       @log = log
       @seen_file = seen_file
@@ -26,7 +32,10 @@ module Quartermaster
 
     # Unseen errors, oldest first: {"at", "context", "lines" (header first)}.
     def entries
-      @entries ||= parse(tail).select { |entry| entry.delete(:time) > since }
+      @entries ||= begin
+        after = since
+        logged.filter_map { |time, entry| entry if time > after }
+      end
     end
 
     def count = entries.size
@@ -49,6 +58,22 @@ module Quartermaster
     end
 
     private
+
+    # Every error in the tail as [time, frozen entry], parsed once per log version.
+    def logged
+      key = [@log, @tail_bytes, FileVersion.of(@log)]
+      cached = ErrorLog.parsed
+      return cached.last if key.last && cached&.first == key
+
+      found = parse(tail).map { |entry| [entry.delete(:time), deep_freeze(entry)].freeze }.freeze
+      ErrorLog.parsed = [key, found].freeze if key.last
+      found
+    end
+
+    def deep_freeze(entry)
+      entry["lines"].each(&:freeze)
+      entry.each_value(&:freeze).freeze
+    end
 
     def tail
       File.open(@log, "rb") do |f|

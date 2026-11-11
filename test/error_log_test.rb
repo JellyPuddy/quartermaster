@@ -101,6 +101,63 @@ class ErrorLogTest < Minitest::Test
     assert_equal ["z"], error_log(tail_bytes: tail).entries.map { |e| e["context"] }
   end
 
+  def counting_reads(log)
+    reads = 0
+    log.define_singleton_method(:tail) do
+      reads += 1
+      super()
+    end
+    [log, -> { reads }]
+  end
+
+  def test_an_unchanged_log_is_not_read_again
+    write_log("#{at(1)} [x] RuntimeError: boom\n")
+    assert_equal 1, error_log.count
+
+    log, reads = counting_reads(error_log)
+
+    assert_equal 1, log.count
+    assert_equal 0, reads.call
+  end
+
+  def test_an_appended_error_shows_on_the_next_summary
+    write_log("#{at(2)} [x] RuntimeError: first\n")
+    assert_equal 1, error_log.summary["count"]
+
+    File.write(log_path, "#{at(1)} [y] RuntimeError: second\n", mode: "a")
+    log, reads = counting_reads(error_log)
+
+    assert_equal %w[y x], log.summary["entries"].map { |e| e["context"] }
+    assert_equal 1, reads.call
+  end
+
+  def test_mark_seen_shows_on_the_next_summary_without_a_log_change
+    write_log("#{at(1)} [x] RuntimeError: boom\n")
+    assert_equal 1, error_log.summary["count"]
+
+    error_log.mark_seen
+
+    assert_equal({ "count" => 0, "entries" => [] }, error_log.summary)
+    File.write(log_path, "#{(NOW + 30).iso8601} [y] RuntimeError: after\n", mode: "a")
+    assert_equal 1, Quartermaster::ErrorLog.new(now: NOW + 60).count
+  end
+
+  def test_the_window_moves_without_a_log_change
+    write_log("#{at(23)} [x] RuntimeError: near the edge\n")
+    assert_equal 1, error_log.count
+
+    assert_equal 0, Quartermaster::ErrorLog.new(now: NOW + (2 * 3600)).count
+  end
+
+  def test_entries_handed_out_cannot_change_the_cached_ones
+    write_log("#{at(1)} [x] RuntimeError: boom\n  lib/x.rb:1\n")
+    entry = error_log.entries.first
+
+    assert_raises(FrozenError) { entry["lines"] << "  added" }
+    assert_raises(FrozenError) { entry["context"] = "changed" }
+    assert_equal ["#{at(1)} [x] RuntimeError: boom", "  lib/x.rb:1"], error_log.entries.first["lines"]
+  end
+
   def gui = Quartermaster::Gui.new(port: 4567, runner: quiet_runner)
   def ok_host = { "host" => "127.0.0.1:4567", "origin" => "http://127.0.0.1:4567" }
   def mark_seen_body = JSON.generate("cmd" => "errors-seen")
