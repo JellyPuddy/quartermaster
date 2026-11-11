@@ -30,9 +30,9 @@ moment the work moves to another item. A project with a `dev_server:` adds the d
 commands (`qm work-on`, `qm pf-mode`); one with `pr_prerequisites: true` adds `qm pr-requires` ([prs](prs.md)).
 
 An unmatched session gets the **unlinked injection**: the project baseline from cwd, a
-shortlist of open items, epics and automations left out (`slug — title (project, branches, state)`), and the linking
-protocol — continues an item → `qm attach <slug> --session ID`; substantial new work →
-`qm new "Title" --project P --session ID --description …`, after sanity-checking the
+shortlist of open items, epics and automations left out (`slug — title (project, branches,
+state)`), and the linking protocol — continues an item → `qm attach <slug> --session ID`;
+substantial new work → `qm new "Title" --project P --session ID --description …`, after sanity-checking the
 project against the topic (ask the user on a suspected mismatch, e.g. a work-repo cwd on a
 personal-tooling topic); trivial or throwaway → do nothing and don't mention tracking. Such
 sessions sit in the inbox and age out.
