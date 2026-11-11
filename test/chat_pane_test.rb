@@ -504,6 +504,8 @@ class GuiChatPaneTest < Minitest::Test
     assert_includes page, 'localStorage.setItem("qm-chat-epic-folds", JSON.stringify([...chatEpicFolds]))', "folds remembered per browser"
     assert_includes page_function(page, "moveChat"), "const rows = [...chatListSlugs(), ...looseChats.map(l => l.name)];",
                     "j/k walk the list as it shows, skipping folded rows"
+    assert_includes page_function(page, "chatListSlugs"), "b.rows.filter(a => a.slug === chatSlug)",
+                    "a folded block keeps the selected chat, so j/k go on from its dot"
     assert_includes page, "body.chats-min .chat-epic-head > :not(.chat-epic-chev):not(.chat-epic-glyph) { display: none; }",
                     "the shrunk strip keeps a glyph and the fold per block"
   end
@@ -518,7 +520,8 @@ class GuiChatPaneTest < Minitest::Test
     assert_includes side, "r.onclick = () => selectChat(c.slug);"
     assert_includes side, %(if (!isEpic) chatEpicTodoList(sec, "Todos on this item", chatOpenTodosOn(it.slug), true);)
     assert_includes side, %(chatEpicTodoList(sec, "Todos on the epic", chatOpenTodosOn(epic.slug), false);)
-    assert_includes page_function(page, "chatEpicTodoList"), 'act("todo-done", { args: { id: t.id, done: true } })'
+    assert_includes page_function(page, "chatEpicTodoList"), '{ box.blur(); act("todo-done", { args: { id: t.id, done: true } }); }',
+                    "a ticked box lets go of focus, or renderChatSide would hold the panel still"
     assert_includes page_function(page, "chatEpicTodoAdd"), 'act("todo-add", { args: { text: input.value.trim(), item: epic.slug } })'
     resolvable = page_function(page, "chatEpicResolvable")
     assert_includes resolvable, %(epic.state !== "resolved" && children.length > 0 &&)
