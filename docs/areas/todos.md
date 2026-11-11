@@ -74,7 +74,7 @@ letter, and "✓ all done — resolve
 epic?" when every child is resolved and no todo is open on it or them; chips and suggestion are
 `epics.js`'s, so resolving opens the cleanup plan as on the board),
 the epic's own open todos, a "+ todo on <epic>" line (an inline input; Enter posts `todo-add`
-with `item` = the epic), its open child items as compact rows (state dot, title, live,
+with `item` = the epic), its open child items as compact rows (state dot, title, live, their link chips,
 sessions, open-todo count; a click opens the chat; dragged onto another epic's head it moves
 there, `epic-set` via `epic-drop.js`, a separate drag from the todos' reorder) each followed by its todos, a resolved child
 only while it has an open todo, then "n resolved items". A todo in the outline shows no project

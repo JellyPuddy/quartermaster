@@ -36,15 +36,16 @@ or items in another epic), and its Epic block in the chats side panel lists the 
 an item, each with a Start that begins it inside the epic (`qm start-issue N --epic SLUG` from the
 CLI). Every item started from an issue, epic or not, gets the links its project's `issue_links`
 settings derive: Tracker, Notion, and e.g. Design (the first URL under the issue body's Design
-heading); later, `qm link SLUG --refresh` or the epic's ↻ links adds the links it is missing, leaving
+heading); later, `qm link SLUG --refresh` or ↻ links beside the item's link chips (board card, chats side panel,
+Todos) adds the links it is missing, leaving
 yours alone. A session is never linked to an epic by guesswork, only by
 `qm attach` or a chat started from it; a child's session is told its epic, an epic's session
 its children. On the GUI board an epic is a card holding its items (which leave their columns),
 its todos, link chips and, once everything in it is done, an offer to resolve it; the New item
 dialog makes epics or puts the item in one, ⋯ → **Epic…** moves an item (so does dragging it onto
 an epic, on the board, in the Todos outline or onto a Chats epic header; dropped on a bare board
-column it leaves its epic; a drop never changes its state), and an epic's detail
-sheet edits its links. In `qm gui`'s Chats view the list groups chats by epic (▸ folds a block to
+column it leaves its epic; a drop never changes its state), and any item's ⋯ → **Links…** edits its links in the detail
+sheet. In `qm gui`'s Chats view the list groups chats by epic (▸ folds a block to
 its status dots), and an item's side panel opens with its epic: links, sibling chats to switch
 to, the epic's todos to tick or add, and a nudge to resolve it once everything is done.
 

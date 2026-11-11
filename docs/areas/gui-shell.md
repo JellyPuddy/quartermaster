@@ -104,15 +104,14 @@ stale, red degrading, green merged), light and dark.
 which `/api/state` still carries for their chat view; filters All / Open / per state; an inbox
 rail of unlinked sessions. Card actions on one line: Resume · Start · State ▾ · ⋯ (note and
 the rest live in ⋯). A card click (or Enter) opens the item's chat in the chat view; the
-**detail sheet** opens from ⋯ "Open detail", the chat view's `i` or the side panel's "Full
-detail": description, branches with worktree
-chips, the board link, a notes timeline with kind filter chips (all / open / decision /
-history, when more than one kind exists), sessions with tier badge, resume and Unlink
-(detach), snapshots, and **Delete item…** at the foot: an in-page confirm, and when the
-server's guard refuses (`needs_force`, [work-items](work-items.md)) the dialog lists what the
-item holds and offers **Delete anyway**; the next refresh no longer finds the item and closes the sheet.
-Every section header collapses; filter and fold state survive refreshes and reset when
-another item opens. A session row (or an inbox row) opens the **session sheet** above it:
+**detail sheet** opens from ⋯ "Open detail", the chat view's `i` or the side panel's "Full detail":
+description, branches with worktree chips, the board link, Links with their editor (⋯ "Links…" opens
+the sheet there, label focused), a notes timeline with kind filter chips (all / open / decision /
+history, when more than one kind exists), sessions with tier badge, resume and Unlink (detach),
+snapshots, and **Delete item…** at the foot: an in-page confirm, and when the server's guard refuses
+(`needs_force`, [work-items](work-items.md)) the dialog lists what the item holds and offers **Delete
+anyway**; the next refresh no longer finds the item and closes the sheet. Every section header
+collapses; filter and fold state survive refreshes and reset when another item opens. A session row (or an inbox row) opens the **session sheet** above it:
 the transcript's turns parsed on demand (`GET /api/session/<id>`, clipped server-side) —
 prompt, a derived tool digest (tallies + touched file basenames) and the reply's opening,
 since Claude Code never persists its own per-turn summaries. Expired sessions degrade to
@@ -126,6 +125,7 @@ open children as rows (click: their chat), "n resolved" and its own open todos (
 header folds it, remembered per browser. Its children leave their columns while its state is shown, else
 cards tagged ◆. An epic matches a search when it or a child does. "✓ all done — resolve epic?" shows for
 children all resolved and no open todo on it or them; it runs `changeState` (cleanup plan and all). Chats and Todos reuse these helpers (`epicOf`, `linkChips`, `resolveSuggestion`, …) and `epics.css`'s chips.
+**Link chips on every item**: the one `linkChips(it)` also sits on a normal card's top line, an epic's child rows, the chats side panel's Item head and the Todos outline's item rows; it ends in **↻ links** for any item whose description has a GitHub issue URL, and is empty (hidden, `:empty`) with neither links nor that URL, so a plain card stays as it was.
 **Drag into an epic** (`epic-drop.js`): a card, epic card or epic row dropped on an epic card joins it; on a column's bare part (its own epic's card and itself excepted) it leaves its epic. Todos and chats mark their own sources and targets with `epicDragSource`/`epicDropTarget`; document-level handlers take only drags of their own dataTransfer type (never a todo reorder or a file), skip a drop where the item already is, and post through `moveToEpic`, as ⋯ → Epic… does: only `epic` changes, never the state, and a refusal is `qm epic`'s text in `act`'s toast.
 `GuiEpicActions`: `new` with `kind`/`epic` (New item), `epic-set` (⋯ → Epic… and drops, empty clears), `link-set`/`link-remove` (sheet), `epic-make`/`epic-unmake` (⋯ → Turn into epic / work item via `epicTurnEntry`: none for an automation, disabled with the reason while refused).
 

@@ -150,6 +150,35 @@ class GuiEpicTest < Minitest::Test
     assert_equal [nil, "epic-alpha", []], items["child"].values_at("kind", "epic", "links")
   end
 
+  def test_the_state_carries_a_normal_items_links
+    Quartermaster::WorkItem.create("Plain", project: "Nowhere").set_link("Design", "https://example.com/d")
+
+    items = JSON.parse(server.respond("GET", "/api/state", ok_host, "")[2])["items"].to_h { |i| [i["slug"], i] }
+
+    assert_equal [{ "label" => "Design", "url" => "https://example.com/d" }], items["plain"]["links"]
+  end
+
+  # Decision 4: every item shows the one linkChips (its ↻ for any item whose
+  # description links a GitHub issue) where an epic shows its chips, and its
+  # Links editor is one ⋯ entry away.
+  def test_the_page_shows_link_chips_and_the_links_editor_for_every_item
+    page = served_page(server, ok_host)
+
+    chips = page_function(page, "linkChips")
+    assert_includes chips, 'if (GITHUB_ISSUE_URL.test(it.description || "")) box.appendChild(linksRefreshButton(it));'
+    refute_includes chips, "isEpic", "↻ links is not epic-only"
+    {
+      "card" => "top.appendChild(linkChips(it));",
+      "epicChildRow" => "r.appendChild(linkChips(it));",
+      "todoChildRow" => "r.insertBefore(linkChips(it), r.querySelector(\".sess\"));",
+      "renderChatSide" => "if (!isEpic(it)) head.appendChild(linkChips(it));"
+    }.each { |fn, seam| assert_includes page_function(page, fn), seam, fn }
+    assert_includes page_function(page, "moreMenu"), 'add("Links…", () => openDetailLinks(it));'
+    assert_includes page_function(page, "openDetailLinks"), "openDetail(it);"
+    refute_match(/isEpic\(it\)\) \{\s*const lsec/, page_function(page, "openDetail"), "the Links section is on every item's sheet")
+    assert_equal 1, page.scan(/^function linkChips\(/).size
+  end
+
   # A drop into an epic posts epic-set: it moves the item in and out of epics
   # and leaves its state alone.
   def test_epic_set_from_a_drop_keeps_the_item_state

@@ -589,9 +589,9 @@ class EpicLinksRefreshTest < Minitest::Test
     end
   end
 
-  def test_the_link_chips_carry_the_refresh_button_for_an_epic_with_an_issue
+  def test_the_link_chips_carry_the_refresh_button_for_any_item_with_an_issue
     html = served_page(Quartermaster::Gui.new(port: 4567, runner: quiet_runner, tmux: FakeTmux.new), host)
-    assert_includes html, 'if (isEpic(it) && GITHUB_ISSUE_URL.test(it.description || "")) box.appendChild(linksRefreshButton(it));'
+    assert_includes html, 'if (GITHUB_ISSUE_URL.test(it.description || "")) box.appendChild(linksRefreshButton(it));'
     assert_includes html, 'act("epic-links-refresh", { slug: it.slug })'
   end
 end

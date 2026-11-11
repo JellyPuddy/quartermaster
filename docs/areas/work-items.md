@@ -38,12 +38,13 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
   title) and the links. The GUI payload (`to_h`) carries `kind`, `epic` and `links`, from which the board nests
   children in epic cards ([gui-shell](gui-shell.md)).
 - **Links** (`links:`, a list of `{label, url}`) hang on any item; an item started from a
-  GitHub issue gets that issue's links at creation ([issues](issues.md)); the GUI shows an epic's.
+  GitHub issue gets that issue's links at creation ([issues](issues.md)); the GUI shows every
+  item's as chips and edits them in the detail sheet's Links section (⋯ → Links…).
   `set_link` (`qm link SLUG LABEL URL`) appends, or replaces the url of the link with that
   label; `remove_link` (`--remove`) refuses a label that isn't there. A url must be
   `http(s)://`, because the GUI opens it in a tab. Any item whose description holds a GitHub
   issue URL can refresh its links from that issue (`qm link SLUG --refresh`, or **↻ links** after
-  an epic's chips on every surface that draws them; the `epic-links-refresh` GuiJobs job keyed by the
+  the item's chips on every surface that draws them; the `epic-links-refresh` GuiJobs job keyed by the
   slug takes any item): `IssueStart#refresh_links` re-derives them with `IssueLinks` and
   `add_missing_links` adds only those whose label and url the item lacks — never replacing or
   removing a link the user set.

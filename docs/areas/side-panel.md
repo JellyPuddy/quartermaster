@@ -6,7 +6,8 @@
 
 ## What it does
 
-The chat view's right panel, top to bottom: an Item head with **Full detail** (`i`, the detail
+The chat view's right panel, top to bottom: an Item head with the item's link chips (`linkChips`,
+not for an epic, whose chips are in its block) and **Full detail** (`i`, the detail
 sheet), the Epic block for an item in an epic or "This epic" for the epic itself (title, link chips,
 the "✓ all done — resolve epic?" suggestion, the epic's description for a child, its open children
 with their attention state to switch to, its GitHub sub-issues no item holds yet with a Start each
