@@ -171,6 +171,16 @@ class GuiSettingsTest < Minitest::Test
     assert_equal Quartermaster::ConfigSchema::TYPES.sort, widgets.sort
   end
 
+  # A project key renders only under a section SETTINGS_PROJECT_SECTIONS lists.
+  def test_every_project_section_in_the_schema_has_a_title_on_the_page
+    page = served_page(gui, { "host" => "127.0.0.1:4567" })
+    listed = page[/const SETTINGS_PROJECT_SECTIONS = (\[.*?\]);/m, 1].scan(/\["(\w+)", "[^"]+"\]/).flatten
+    used = Quartermaster::ConfigSchema::KEYS.select { |k| k.path.start_with?("projects.*.") }.map(&:section).uniq
+
+    assert_includes listed, "epics"
+    assert_empty used - listed
+  end
+
   def test_settings_opens_from_the_header_cog_not_a_mode_tab
     page = served_page(gui, { "host" => "127.0.0.1:4567" })
 

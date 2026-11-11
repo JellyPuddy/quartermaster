@@ -102,28 +102,38 @@ module Quartermaster
     # Any GitHub issue as a work item: prints the preview, then starts it in
     # the running GUI (worktree on its background job, then the chat with the
     # kickoff in the item's pane). Without a GUI it makes the item and
-    # worktree here and prints how to start the chat. No y/N: chats run this
-    # too, and the preview is there to read afterwards.
+    # worktree here and prints how to start the chat. An epic issue starts as
+    # an epic item (no branch, worktree or chat) unless --as-item. No y/N:
+    # chats run this too, and the preview is there to read afterwards.
     def cmd_start_issue(argv)
       project = nil
-      rest = OptionParser.new { |o| o.on("--project PROJECT") { |v| project = v } }.parse(argv)
-      abort("usage: qm start-issue NUMBER [--project P]") unless rest.size == 1
+      as_item = false
+      rest = OptionParser.new do |o|
+        o.on("--project PROJECT") { |v| project = v }
+        o.on("--as-item") { as_item = true }
+      end.parse(argv)
+      abort("usage: qm start-issue NUMBER [--project P] [--as-item]") unless rest.size == 1
 
       project ||= default_issue_project
       starter = IssueStart.new(runner: @runner || CommandRunner.new)
       preview = starter.preview(rest.first, project)
       print_issue_preview(preview)
 
-      reply = gui_action("start-issue", "issue-start", args: { "number" => preview["number"], "project" => project },
-                                                       optional: true)
+      args = { "number" => preview["number"], "project" => project }
+      args["as_epic"] = false if as_item
+      reply = gui_action("start-issue", "issue-start", args: args, optional: true)
       if reply
-        puts(if reply["existing"] then "#{reply["slug"]}: its chat is open in the qm gui"
+        puts(if reply["existing"] && reply["epic"] then "#{reply["slug"]}: the epic already holding it"
+             elsif reply["existing"] then "#{reply["slug"]}: its chat is open in the qm gui"
+             elsif reply["epic"] then "#{reply["slug"]}: created as an epic in the qm gui"
              else "#{reply["slug"]}: starting in the qm gui — its chat opens in the item's pane once the worktree is ready"
              end)
       elsif (existing = preview["existing"])
         puts "#{existing["slug"]} already holds ##{preview["number"]} — continue there: qm resume #{existing["slug"]}"
+      elsif preview["epic"] && !as_item
+        puts "#{starter.start(preview, as_epic: true)[:item].slug}: created as an epic (no branch, worktree or chat)"
       else
-        started = starter.start(preview)
+        started = starter.start(preview, as_epic: false)
         path = started[:target].path
         puts "#{started[:item].slug}: created, worktree #{short_path(path)} on #{preview["branch"]}"
         puts "no qm gui running — start its chat with:"
@@ -182,6 +192,10 @@ module Quartermaster
       else
         puts "  project #{preview["project"]}, branch #{preview["branch"]}#{" (existing, reused)" if preview["reuse_branch"]}"
       end
+      return unless preview["epic"]
+
+      puts "  ◆ an epic: starts as an epic item (--as-item: a normal item with branch and chat)"
+      puts "  links: #{preview["links"].map { |link| "#{link["label"]} #{link["url"]}" }.join(", ")}" unless preview["links"].empty?
     end
 
     # POSTs one action to the running GUI like its page does; a local process

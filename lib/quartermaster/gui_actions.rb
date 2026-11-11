@@ -84,8 +84,7 @@ module Quartermaster
       when "build-progress" then gui_build_progress(slug)
       when "branch-stats-commentary" then gui_branch_stats_commentary(slug, args["branch"])
       when "board-answer" then gui_board_answer(slug, args["doc_id"], args["text"])
-      when "issue-preview" then ok.merge("issue" => issue_start.preview(args["number"], issue_project(args)))
-      when "issue-start" then gui_issue_start(args)
+      when *GuiIssueActions::COMMANDS then GuiIssueActions.new(runner: @runner, jobs: @jobs, tmux: @tmux, pane: method(:gui_pane)).dispatch(cmd, args)
       when "pr-chat" then gui_pr_chat(args["url"])
       when "pr-review" then gui_pr_review(args["url"])
       when "pr-pf" then pr_workspace_job(args["url"], pf: true)
@@ -652,36 +651,6 @@ module Quartermaster
     def gui_pr_review(url)
       ok.merge(PrReviewStart.new(tmux: @tmux, pr_items: @pr_items).start(PrInbox.new.find(url)))
     end
-
-    # Start work on a GitHub issue. An item already holding it gets its chat
-    # opened instead ("existing"); otherwise the worktree (a fetch, git
-    # worktree add, maybe a test DB) is made on a background job keyed by the
-    # new item's slug, which then opens the chat with the kickoff prompt. from:
-    # the drafting item's slug, noted with what the issue became.
-    def gui_issue_start(args)
-      preview = issue_start.preview(args["number"], issue_project(args))
-      if (existing = preview["existing"])
-        item = WorkItem.find(existing["slug"])
-        item.update_state("in_progress") if item.state == "resolved"
-        return gui_pane(item.slug, fresh: false).merge("slug" => item.slug, "existing" => true, "issue" => preview)
-      end
-
-      from = presence(args["from"])
-      WorkItem.find(from) if from
-      slug = preview["slug"]
-      @jobs.background(slug, "starting ##{preview["number"]}…") do
-        started = issue_start.start(preview, from: from, progress: ->(label) { @jobs.relabel(slug, label) })
-        item = started[:item]
-        plan = Launcher.new.chat_plan(item, fresh: true, prompt: IssueStart.kickoff(preview["number"]))
-        @tmux.open(item.slug, cwd: plan[:cwd], argv: plan[:argv], env: plan[:env]) unless plan[:mode] == :live
-        { "ok" => true, "slug" => item.slug, "branch" => preview["branch"], "path" => started[:target].path,
-          "message" => "##{preview["number"]} started as #{item.slug} in #{Quartermaster.shorten_home(started[:target].path)}" }
-      end.merge("slug" => slug, "issue" => preview)
-    end
-
-    def issue_start = IssueStart.new(runner: @runner)
-
-    def issue_project(args) = presence(args["project"]) || ProjectConfig.current.default_project || ProjectMap::NO_PROJECT
 
     # The dev server / the IDE on the PR's own branch (a new worktree when none has it).
     # The job is keyed by the PR's item when it has one, so the item's other

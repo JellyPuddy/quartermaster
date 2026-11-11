@@ -26,10 +26,19 @@ module Quartermaster
       def read_only_url = "postgres:///#{database}?options=-c%20default_transaction_read_only%3Don"
     end
 
+    # How the project's GitHub issues start as epics (docs/areas/issues.md):
+    # issue_types the issue type names that make an issue an epic, tracker_url
+    # the Tracker link's template, notion_author the login whose comment
+    # carries the Notion link, notion_label that link's label.
+    Epics = Struct.new(:issue_types, :tracker_url, :notion_author, :notion_label, keyword_init: true) do
+      def epic_type?(name) = !name.to_s.empty? && issue_types.any? { |type| type.casecmp?(name.to_s) }
+    end
+
     DEFAULT_REVIEW_SKILL = "/code-review"
+    DEFAULT_NOTION_LABEL = "Notion"
 
     # ide is this project's own override of the global IDE (ProjectConfig#ide).
-    attr_reader :name, :root, :dev_server, :test_db, :benchmark, :ide
+    attr_reader :name, :root, :dev_server, :test_db, :benchmark, :ide, :epics
 
     # value: the project's raw entry, or its ConfigReader.
     def initialize(name, value)
@@ -40,6 +49,7 @@ module Quartermaster
       @ide = Ide.parse(@config["ide_command"], @config["ide_label"])
       @test_db = string(@config["test_db"])
       @benchmark = parse_benchmark(@config.section("benchmark"))
+      @epics = parse_epics(@config.section("epics"))
     end
 
     # A feature key's raw value, for features that read their own keys; the
@@ -78,6 +88,12 @@ module Quartermaster
       return nil unless database.match?(/\A\w+\z/)
 
       Benchmark.new(database: database, skill: skill, notes: string(bench["notes"]))
+    end
+
+    def parse_epics(epics)
+      Epics.new(issue_types: Array(epics["issue_types"]).map { |type| type.to_s.strip }.reject(&:empty?),
+                tracker_url: string(epics["tracker_url"]), notion_author: string(epics["notion_author"]),
+                notion_label: string(epics["notion_label"]) || DEFAULT_NOTION_LABEL)
     end
 
     def string(value) = value.is_a?(String) && !value.strip.empty? ? value.strip : nil

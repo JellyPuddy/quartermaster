@@ -108,7 +108,7 @@ work-item count; clicking the name or any cell opens that project's card (and th
 the section) and scrolls there. Below it a document: General (`default_project`, `automations.token_source`), IDE (the
 global `ide_command` / `ide_label`), one card per project, collapsed by default (its summary
 shows root, item count, an unsaved dot and error/warning counts), sectioned Basics, Dev server,
-Worktrees, Pull requests, IDE override, Benchmarks, then a "Rarely changed" fold with the
+Worktrees, Pull requests, Epics from issues, IDE override, Benchmarks, then a "Rarely changed" fold with the
 loose-chat starters, the API prices table and the phone page. Beside it a sticky column: Save
 (disabled while there are errors or no changes) with Revert and the unsaved-change count, the
 Check list (each issue jumps to its field, opening the folds above it, and flashes it; an

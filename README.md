@@ -28,7 +28,9 @@ Bigger work can be grouped into **epics**: an epic is a work item of its own (`q
 epic (keeping its sessions, notes and chat; new sessions on its branch then stop attaching on
 their own) and `--unmake` turns it back once no item is in it; the GUI's ⋯ menu offers the
 same. `qm link SLUG "Label" https://…` hangs a link on an item (`--remove` drops it), `qm list` marks epics and children with ◆, and `qm show` on an epic
-lists its children and links. A session is never linked to an epic by guesswork, only by
+lists its children and links. A GitHub issue whose type a project lists under `epics.issue_types`
+starts (`qm start-issue N`, or the GUI) as an epic with its Tracker and Notion links, without a
+branch, worktree or chat (`--as-item` starts it as a normal item). A session is never linked to an epic by guesswork, only by
 `qm attach` or a chat started from it; a child's session is told its epic, an epic's session
 its children. On the GUI board an epic is a card holding its items (which leave their columns),
 its todos, link chips and, once everything in it is done, an offer to resolve it; the New item
@@ -294,6 +296,11 @@ projects:
     test_db: my-test-db           # new worktree: my-test-db prepare; cleanup: my-test-db drop PATH [--dry-run]
     review_skill: /review-my-pr   # the PRs view's Review button (default /code-review)
     pr_prerequisites: true        # PRs ship by release: sessions learn `qm pr-requires`
+    epics:                        # GitHub issues of these types start as an epic work item
+      issue_types: [Project, Epic]
+      tracker_url: https://tracker.example/workspace/{repo}/{number}   # its Tracker link ({repo} = owner/name)
+      notion_author: notes-bot    # its Notion link: the first Notion URL in this login's issue comment
+      notion_label: Notion        # that link's label (default Notion)
     benchmark:                    # 🏁 branch benchmarks (a Rails app on Postgres)
       database: my_app_benchmark  # the database a run reads, or clones for a writing case
       skill: ~/.claude/skills/benchmark   # holds SKILL.md and bin/example_bench.rb
@@ -345,6 +352,9 @@ Know this before you install it:
   drafts and, on your click in its verdict form, submits your review on GitHub and then
   assigns the PR to its author and unassigns you), and whatever dev-server, test-database and
   IDE commands you configure.
+- **Starting work on an issue reads it with one `gh api graphql` call**: its title, state,
+  issue type, sub-issues and comments. A comment's text is only searched for the Notion link of
+  the configured `epics.notion_author`; nothing on GitHub is changed.
 - **The `qm gui` page registers a service worker in your browser** for `127.0.0.1:<port>`. It
   stores one offline page in the browser's cache and answers only page loads that fail because
   `qm gui` isn't running; it caches nothing else and sends nothing anywhere. Chrome's site data

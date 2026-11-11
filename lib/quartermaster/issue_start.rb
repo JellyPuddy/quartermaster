@@ -2,13 +2,29 @@
 
 module Quartermaster
   # Any GitHub issue as a work item with its own worktree: preview it
-  # (read-only — gh issue view), then start it: an `issue/<n>-<title>` branch
-  # off freshly fetched origin, its worktree, the item linked to it. The chat
-  # itself is the caller's (the GUI's pane, or the CLI's instructions), with
-  # #kickoff as its first prompt. qm only reads GitHub: nothing is assigned,
-  # labelled or moved.
+  # (read-only — one gh api graphql call), then start it: an
+  # `issue/<n>-<title>` branch off freshly fetched origin, its worktree, the
+  # item linked to it. The chat itself is the caller's (the GUI's pane, or
+  # the CLI's instructions), with #kickoff as its first prompt. An issue whose
+  # type the project lists as an epic type starts as an epic item instead: no
+  # branch, worktree or chat, its IssueLinks set. qm only reads GitHub:
+  # nothing is assigned, labelled or moved.
   class IssueStart
     BRANCH_SLUG_MAX = 40
+    LIST_MAX = 100
+
+    QUERY = <<~GRAPHQL
+      query($owner: String!, $name: String!, $number: Int!) {
+        repository(owner: $owner, name: $name) {
+          issue(number: $number) {
+            number title state url
+            issueType { name }
+            subIssues(first: #{LIST_MAX}) { nodes { number title state url } }
+            comments(first: #{LIST_MAX}) { nodes { author { login } body } }
+          }
+        }
+      }
+    GRAPHQL
 
     def initialize(project_map: ProjectMap.new, runner: CommandRunner.new)
       @project_map = project_map
@@ -31,12 +47,16 @@ module Quartermaster
     # What Start would do, as the JSON the GUI shows: the issue, the project,
     # and either the item that already holds it ("existing") or the branch it
     # would create or reuse. A closed issue is still startable ("closed").
+    # epic: its type is one of the project's epic types; links: what an epic
+    # started from it would carry; sub_issues: GitHub's child issues
+    # ({number, title, state, url}).
     def preview(number, project)
       number = self.class.number(number)
       root, repo = repo_for(project)
       issue = fetch_issue(root, repo, number)
       existing = existing_item(project, number, url: issue["url"])
       reuse = existing ? nil : reusable_branch(root, number)
+      settings = @project_map.settings_for(project).epics
       {
         "number" => number, "title" => issue["title"].to_s, "state" => issue["state"].to_s.downcase,
         "closed" => issue["state"].to_s.casecmp?("closed"), "url" => issue["url"].to_s,
@@ -44,21 +64,35 @@ module Quartermaster
         "branch" => existing ? nil : reuse || branch_name(number, issue["title"].to_s),
         "reuse_branch" => !reuse.nil?,
         "slug" => existing ? existing.slug : WorkItem.slugify(item_title(number, issue["title"].to_s)),
-        "existing" => existing && { "slug" => existing.slug, "title" => existing.title, "state" => existing.state }
+        "existing" => existing && { "slug" => existing.slug, "title" => existing.title, "state" => existing.state,
+                                    "epic" => existing.epic? },
+        "epic" => settings.epic_type?(issue.dig("issueType", "name")),
+        "links" => IssueLinks.new(settings).for(issue, repo),
+        "sub_issues" => sub_issues(issue)
       }
+    end
+
+    # The links an epic started from the project's issue #number would carry
+    # (IssueLinks), read from GitHub now.
+    def links_for(project, number)
+      root, repo = repo_for(project)
+      IssueLinks.new(@project_map.settings_for(project).epics).for(fetch_issue(root, repo, self.class.number(number)), repo)
     end
 
     # Creates the worktree first, then the item: a retry after a failed item
     # step finds the branch unlinked and reuses it. from: the item the issue
     # was drafted in, which gets a note saying what it became. progress:
-    # called with a short label before each slow step.
-    def start(preview, from: nil, progress: nil)
+    # called with a short label before each slow step. as_epic (default: the
+    # preview's epic) makes an epic item carrying the preview's links instead,
+    # with no worktree (target nil).
+    def start(preview, from: nil, progress: nil, as_epic: nil)
       raise ArgumentError, "##{preview["number"]} is already #{preview["existing"]["slug"]}" if preview["existing"]
 
       project = preview["project"]
       title = item_title(preview["number"], preview["title"])
       slug = WorkItem.slugify(title)
       raise ArgumentError, "work item '#{slug}' already exists" if File.exist?(WorkItem.path_for(slug))
+      return start_epic(preview, title, from) if as_epic.nil? ? preview["epic"] : as_epic
 
       root, repo = repo_for(project)
       target = TargetWorktree.new(project_map: @project_map, runner: @runner)
@@ -73,9 +107,9 @@ module Quartermaster
                    target.materialize_branch(project, preview["branch"], base: "origin/#{default}")
                  end
 
-      item = WorkItem.create(title, project: project, description: "#{preview["url"]}\n\n#{preview["title"]}")
+      item = WorkItem.create(title, project: project, description: description(preview))
       item.link_branch(preview["branch"])
-      WorkItem.find(from).add_note("##{preview["number"]} started as #{item.slug}", kind: "history") if from
+      note_started(from, preview, item)
       { item: WorkItem.find(item.slug), target: worktree }
     end
 
@@ -95,6 +129,26 @@ module Quartermaster
     private
 
     def item_title(number, title) = "#{title} (##{number})"
+
+    def description(preview) = "#{preview["url"]}\n\n#{preview["title"]}"
+
+    def start_epic(preview, title, from)
+      front = { "kind" => WorkItemEpic::EPIC_KIND }
+      front["links"] = preview["links"] unless Array(preview["links"]).empty?
+      item = WorkItem.create(title, project: preview["project"], description: description(preview), front: front)
+      note_started(from, preview, item)
+      { item: item, target: nil }
+    end
+
+    def note_started(from, preview, item)
+      WorkItem.find(from).add_note("##{preview["number"]} started as #{item.slug}", kind: "history") if from
+    end
+
+    def sub_issues(issue)
+      Array(issue.dig("subIssues", "nodes")).filter_map do |sub|
+        sub.slice("number", "title", "state", "url") if sub.is_a?(Hash) && sub["number"]
+      end
+    end
 
     # issue/<n>-<slug of the title>, the slug cut at a word boundary so the
     # branch (and its worktree directory) stays readable.
@@ -130,16 +184,22 @@ module Quartermaster
       [root, repo]
     end
 
+    # The issue with its type, sub-issues and comments, in one read.
     def fetch_issue(root, repo, number)
-      result = @runner.call(["gh", "issue", "view", number.to_s, "--repo", repo, "--json", "number,title,state,url"],
+      owner, name = repo.split("/", 2)
+      result = @runner.call(["gh", "api", "graphql", "-H", "GraphQL-Features: issue_types,sub_issues",
+                             "-f", "owner=#{owner}", "-f", "name=#{name}", "-F", "number=#{number}", "-f", "query=#{QUERY}"],
                             chdir: root)
       unless result.success?
-        message = [result.err, result.out].map(&:strip).find { |text| !text.empty? } || "gh issue view failed"
+        message = [result.err, result.out].map(&:strip).find { |text| !text.empty? } || "gh api graphql failed"
         raise ArgumentError, "no issue ##{number} in #{repo}: #{message}"
       end
-      JSON.parse(result.out)
+      issue = JSON.parse(result.out).dig("data", "repository", "issue")
+      raise ArgumentError, "no issue ##{number} in #{repo}" unless issue.is_a?(Hash)
+
+      issue
     rescue JSON::ParserError
-      raise ArgumentError, "gh issue view ##{number} did not answer JSON"
+      raise ArgumentError, "gh api graphql for ##{number} did not answer JSON"
     end
 
     # origin/HEAD when this clone knows it, else GitHub's answer.
