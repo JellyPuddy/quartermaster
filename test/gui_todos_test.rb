@@ -241,7 +241,8 @@ class GuiTodosTest < Minitest::Test
 
     ['act("todo-add", { args: { text, project } })', 'act("todo-done", { args: { id: t.id, done: !t.done_at } })',
      'act("todo-delete", { args: { id: t.id } })', 'act("todo-edit", { args })',
-     'act("todo-move", { args: { id: t.id, [d > 0 ? "after" : "before"]: neighbour.id } })',
+     'moveTodoNextTo(t, d > 0 ? "after" : "before", neighbour.id)',
+     'optimisticAct(change, "todo-move", { args: { id: t.id, [where]: neighbourId } })',
      "const open = todoVisibleOpen();",
      'act("todo-to-item", { args: { id: t.id, title, project, prompt: ta.value.trim() } })',
      "if (it) openChat(it);", 'localStorage.setItem("qm-todo-project", project)'].each { |seam| assert_includes html, seam }
@@ -252,11 +253,41 @@ class GuiTodosTest < Minitest::Test
 
     ["renderTodoOutline(body);", "const todoVisibleOpen = () => todoOutlineRows();",
      "const open = todoVisibleOpen().filter(r => todoGroup(r) === todoGroup(t));",
-     'act("todo-add", { args: { text, item: e.slug } })', 'act("todo-edit", { args: { id: t.id, item: o.slug } })',
+     'act("todo-add", { args: { text, item: e.slug } })', 'const pick = o => { closePop(); moveTodoTo(t, o.slug); };',
+     'optimisticAct(change, "todo-edit", { args: { id: t.id, item: slug } })',
      'add("Move to epic / item…", () => todoMovePicker(anchor, t));', 'localStorage.setItem("qm-todo-epics-collapsed"',
      '{ slug: "", label: "— nothing (just its project)", cls: "none" }', ".tde-node {"].each { |seam| assert_includes html, seam }
     assert_operator html.index("/assets/js/todos.js"), :<, html.index("/assets/js/todos-outline.js")
     assert_operator html.index("/assets/js/todos-outline.js"), :<, html.index("/assets/js/events.js")
+  end
+
+  def page_function(html, name)
+    html[/^function #{name}\(.*?^}$/m] or flunk("no function #{name} on the page")
+  end
+
+  # A todo's drag: between rows of its own group it reorders; on an epic's head,
+  # an item row, "Not in an epic" or another group's row it moves the todo onto
+  # that item with the todo-edit ⋯ → Move to posts. Its own drag type keeps an
+  # item's drag or a file out, and an item's drag stays epic-drop.js's.
+  def test_a_todo_drag_moves_it_onto_a_head_and_reorders_between_rows
+    html = page
+
+    {
+      "todoEpicNode" => "todoDropTarget(head, e.slug);",
+      "todoChildRow" => "todoDropTarget(r, it.slug);",
+      "renderTodoOutline" => 'todoDropTarget(head, "");'
+    }.each { |fn, seam| assert_includes page_function(html, fn), seam, fn }
+    drop = page_function(html, "todoDropAt")
+    assert_includes drop, "e.dataTransfer.types.includes(TODO_DRAG_TYPE)", "an item's drag or a file is not a todo's"
+    assert_includes drop, 'const onto = e.target.closest("[data-todo-drop]");'
+    assert_includes drop, "if (row && row.dataset.group === todoGroup(t)) {", "its own group's rows reorder"
+    assert_includes drop, 'row.dataset.group === "loose" ? ""', "a loose row takes it off its item"
+    assert_includes drop, "if (slug === null || slug === (t.item || \"\")) return null;", "a drop where it already is posts nothing"
+    assert_includes html, "e.dataTransfer.setData(TODO_DRAG_TYPE, t.id);"
+    assert_includes html, "if (d.row) moveTodoNextTo(d.t, d.where, d.row.dataset.id);\n  else moveTodoTo(d.t, d.item);"
+    assert_includes page_function(html, "todoDropMark"), "epicDropMark(d && d.head);", "a move lights the head up, a reorder draws a line"
+    assert_operator html.index("/assets/js/epic-drop.js"), :<, html.index("/assets/js/todos-drag.js"), "it marks the body with epicDropTarget at load"
+    assert_operator html.index("/assets/js/todos-drag.js"), :<, html.index("/assets/js/events.js")
   end
 
   # Plan decision 13: resolving an epic from the Todos outline opens the cleanup plan like the board.

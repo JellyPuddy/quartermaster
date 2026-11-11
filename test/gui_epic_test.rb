@@ -213,7 +213,7 @@ class GuiEpicTest < Minitest::Test
     page = served_page(server, ok_host)
 
     move = page_function(page, "moveToEpic")
-    assert_includes move, 'act("epic-set", { slug: it.slug, args: { epic } })'
+    assert_includes move, '"epic-set", { slug: it.slug, args: { epic } })'
     refute_includes move, "state"
     assert_includes page_function(page, "epicMenu"), "moveToEpic(it, epic)"
     {
@@ -222,17 +222,33 @@ class GuiEpicTest < Minitest::Test
       "epicChildRow" => "epicDragSource(r, it.slug);",
       "render" => 'epicDropTarget(col, "");',
       "todoChildRow" => "epicDragSource(r, it.slug);",
-      "todoEpicNode" => "epicDropTarget(head, e.slug);",
+      "todoEpicNode" => "epicDropTarget(node, e.slug);",
       "chatRow" => "epicDragSource(row, a.slug);",
-      "chatEpicBlock" => "epicDropTarget(head, epic.slug);"
+      "chatEpicBlock" => "epicDropTarget(box, epic.slug);"
     }.each { |fn, seam| assert_includes page_function(page, fn), seam, fn }
+    assert_includes page, 'epicDropTarget($("#att-body"), "");', "the chats list outside the epics takes a chat out"
+    assert_includes page, 'epicDropTarget($("#todo-body"), "");', "the Todos body outside the epics takes an item out"
     assert_includes page_function(page, "epicCard"), "epicDragSource(c, e.slug);"
     drop = page_function(page, "epicDropAt")
     assert_includes drop, "ev.dataTransfer.types.includes(EPIC_DRAG_TYPE)", "a file or todo drag never lands in an epic"
     assert_includes drop, 'if (!it || epic === (it.epic || "")) return null;', "a drop where it already is posts nothing"
     assert_includes drop, 'if (epic === "" && over && over.dataset.dragItem === epicDrag) return null;', "a card let go on itself keeps its epic"
     assert_includes page, "moveToEpic(d.it, d.epic);"
-    assert_includes page, 'act("todo-move", { args: { id, [where]: row.dataset.id } });', "todos keep their reorder drag"
+    assert_includes page, 'optimisticAct(change, "todo-move", { args: { id: t.id, [where]: neighbourId } });', "todos keep their reorder drag"
+  end
+
+  # Every drop shows at once: the page's copy changes and redraws before the
+  # action posts, and a refusal undoes it (act has toasted the error).
+  def test_a_drop_changes_the_page_first_and_a_refusal_puts_it_back
+    page = served_page(server, ok_host)
+
+    optimistic = page_function(page, "optimisticAct")
+    assert_operator optimistic.index("const undo = change();"), :<, optimistic.index("render();")
+    assert_operator optimistic.index("render();"), :<, optimistic.index("await act(cmd, opts);")
+    assert_includes optimistic, "if (!r.ok) { undo(); render(); }"
+    move = page_function(page, "moveToEpic")
+    assert_includes move, "it.epic = epic || null; return () => { it.epic = was; };"
+    assert_includes move, 'optimisticAct(change, "epic-set", { slug: it.slug, args: { epic } })'
   end
 
   # The board's epic card is client-side; the page must carry it and its hooks.

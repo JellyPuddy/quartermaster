@@ -1,6 +1,6 @@
 # Todos
 
-**Code:** `lib/quartermaster/todo_list.rb`, `lib/quartermaster/cli_todo.rb`, `lib/quartermaster/gui_todo_actions.rb`, `lib/quartermaster/gui/js/todos.js`, `lib/quartermaster/gui/js/todos-outline.js`, `lib/quartermaster/gui/css/todos.css`
+**Code:** `lib/quartermaster/todo_list.rb`, `lib/quartermaster/cli_todo.rb`, `lib/quartermaster/gui_todo_actions.rb`, `lib/quartermaster/gui/js/todos.js`, `lib/quartermaster/gui/js/todos-outline.js`, `lib/quartermaster/gui/js/todos-drag.js`, `lib/quartermaster/gui/css/todos.css`
 **Tests:** `test/todo_list_test.rb`, `test/gui_todos_test.rb`
 **Depends on:** [work-items](work-items.md), [linking](linking.md), [cli](cli.md), [gui-shell](gui-shell.md)
 
@@ -66,7 +66,12 @@ epic" head while an epic shows), then a collapsed Done section (the 20 newest; u
 reopens one). A row: checkbox, text, project tag, an item chip (the item's title; a click opens
 its chat), a drag handle and a ⋯ menu (Edit, → Work item, Delete). A todo whose item has gone shows the slug. The ⋯ menu's "Move to epic / item…" is a filterable
 picker (type, Enter takes the first match) of the epics with their open children, the other
-open items, and "nothing (just its project)"; it posts `todo-edit {id, item}`.
+open items, and "nothing (just its project)"; it posts `todo-edit {id, item}` (`moveTodoTo`).
+**A todo's drag** (`todos-drag.js`; its ⠿, its own dataTransfer type): let go on a row of its own group it reorders,
+a line before or after that row (`todo-move`); on an epic's head, an item row, the "Not in an
+epic" head or a row of another group it moves onto that epic or item ("" for the loose part:
+no item, keeping the project it showed), the head lit up, through `moveTodoTo` as the picker.
+Both change the page's copy first (`optimisticAct`, [gui-shell](gui-shell.md)).
 **The epic outline:** one node per epic (a resolved one only while a todo hangs in it; under a
 project filter, the epics of that project or holding an open todo of it): a head (EPIC chip,
 state dot, title, "n items · n open · n todos", a chip per http(s) link with its label's first
@@ -75,8 +80,9 @@ epic?" when every child is resolved and no todo is open on it or them; chips and
 `epics.js`'s, so resolving opens the cleanup plan as on the board),
 the epic's own open todos, a "+ todo on <epic>" line (an inline input; Enter posts `todo-add`
 with `item` = the epic), its open child items as compact rows (state dot, title, live, their link chips,
-sessions, open-todo count; a click opens the chat; dragged onto another epic's head it moves
-there, `epic-set` via `epic-drop.js`, a separate drag from the todos' reorder) each followed by its todos, a resolved child
+sessions, open-todo count; a click opens the chat; dragged onto another epic's node it moves
+there, onto the outline outside every node it leaves its epic, `epic-set` via `epic-drop.js`, a
+separate drag from a todo's) each followed by its todos, a resolved child
 only while it has an open todo, then "n resolved items". A todo in the outline shows no project
 tag or item chip: its place says both. A click on the head folds the node, remembered per
 browser (`qm-todo-epics-collapsed`). A todo is in an epic when its item is the epic or a child of

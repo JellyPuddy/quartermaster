@@ -11,7 +11,7 @@ body[data-mode="prs"] .legend .item-key, body[data-mode="issues"] .legend .item-
   flex: none; width: 300px; border-right: 1px solid var(--border); background: var(--surface);
   display: flex; flex-direction: column; min-height: 0;
 }
-.att-body { overflow-y: auto; padding: 0 10px 24px; display: flex; flex-direction: column; gap: 6px; }
+.att-body { flex: 1 1 auto; overflow-y: auto; padding: 0 10px 24px; display: flex; flex-direction: column; gap: 6px; }
 .att-order { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
 .att-min {
   border: 1px solid var(--border-strong); background: var(--surface); color: var(--muted); font-family: var(--mono);

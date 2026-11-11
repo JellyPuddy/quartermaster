@@ -29,7 +29,7 @@ body[data-mode="todos"] .legend .item-key { display: none; }
 .td-chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
 .td-chip-n { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
 
-.td-body { display: flex; flex-direction: column; gap: 4px; }
+.td-body { display: flex; flex-direction: column; gap: 4px; padding-bottom: 48px; }
 .td-row {
   display: flex; align-items: center; gap: 10px; min-width: 0;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
