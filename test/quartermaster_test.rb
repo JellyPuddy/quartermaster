@@ -93,6 +93,7 @@ SUITE_FILES = %w[
   local_automation_cli_test
   todo_list_test
   gui_todos_test
+  gui_epic_test
   docs_shape_test
   size_ratchet_test
   parallel_suite_test
