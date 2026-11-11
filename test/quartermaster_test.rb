@@ -12,6 +12,7 @@ SUITE_FILES = %w[
   free_text_args_test
   failure_log_test
   error_log_test
+  file_version_test
   viewer_test
   attention_test
   run_attention_test

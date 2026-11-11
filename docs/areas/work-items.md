@@ -129,9 +129,9 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
   it, keeping the file's mode), so readers that take no lock — the GUI, the viewer, `qm list`,
   every mutator's first `find` — see the old or the new item, never a truncated one. A plain
   `File.write` let concurrent `qm note`s fail with "malformed work item file".
-- **An item file is parsed once per version** (`WorkItemFile`, keyed on its mtime, ctime, size,
-  inode), so any write shows on the next read. Readers get a deep-copied front and the frozen
-  body; sections and notes derived from it live and die with that version.
+- **An item file is parsed once per version** (`WorkItemFile`, keyed on the file's version,
+  see [capture](capture.md)), so any write shows on the next read. Readers get a deep-copied
+  front and the frozen body; sections and notes derived from it live and die with that version.
 - **The stored note format is parsed and written only by `Note`** (`NOTE_LINE`). The kind
   marker is omitted for the default, so pre-kind notes and ordinary notes read identically —
   no migration was needed.

@@ -1,7 +1,7 @@
 # Capture
 
-**Code:** `lib/quartermaster/hook_handler.rb`, `lib/quartermaster/session.rb`, `lib/quartermaster/transcript_memo.rb`, `lib/quartermaster/session_log.rb`, `lib/quartermaster/project_map.rb`, `lib/quartermaster/project_config.rb`, `lib/quartermaster/project_settings.rb`, `lib/quartermaster/failure_log.rb`, `lib/quartermaster/error_log.rb`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
-**Tests:** `test/hook_test.rb`, `test/chat_attention_test.rb`, `test/prompt_snapshots_test.rb`, `test/failure_log_test.rb`, `test/error_log_test.rb`
+**Code:** `lib/quartermaster/hook_handler.rb`, `lib/quartermaster/session.rb`, `lib/quartermaster/transcript_memo.rb`, `lib/quartermaster/session_log.rb`, `lib/quartermaster/project_map.rb`, `lib/quartermaster/project_config.rb`, `lib/quartermaster/project_settings.rb`, `lib/quartermaster/file_version.rb`, `lib/quartermaster/failure_log.rb`, `lib/quartermaster/error_log.rb`, `hooks/record-event.sh`, `hooks/record-board-write.sh`, `hooks/snapshot-worktree.sh`
+**Tests:** `test/hook_test.rb`, `test/chat_attention_test.rb`, `test/prompt_snapshots_test.rb`, `test/failure_log_test.rb`, `test/error_log_test.rb`, `test/file_version_test.rb`
 **Depends on:** none
 
 ## What it does
@@ -125,6 +125,10 @@ fallback protocol for when the injection is missing.
   first prompt may still appear); a first prompt found holds for its path. Keyed by session id
   and transcript path, unbounded (both grow only with real use). Callers that don't pass
   `live:` count as live, so the hooks never remember a miss.
+- **A file's version** (`FileVersion.of`) is its stat's mtime, ctime, size and inode: a write,
+  an atomic replace and a chmod each move it, so a cache keyed on it (`ProjectConfig`,
+  [`WorkItemFile`](work-items.md)) reads the file again after any change and never in between.
+  A file that can't be stat'ed has none (nil).
 - **A missing transcript at SessionEnd reliably means "opened and closed unused"**: Claude
   Code never persists a transcript for a zero-message session, and real transcripts are
   written incrementally.
@@ -152,8 +156,8 @@ fallback protocol for when the injection is missing.
 - `config.yml` — `projects:` (name → path, or a mapping with `root:` and feature keys),
   `default_project:`, `loose_starters:`; seeded on first run with no projects (`CONFIG_SEED`, the
   file [settings](settings.md) writes for none).
-  `ProjectConfig.current` re-reads only when the file's stat (mtime, size, inode) changed, or
-  it was unreadable, re-parses only when its text changed, and reads every key through
+  `ProjectConfig.current` re-reads only when the file's version changed (see **A file's
+  version** under Rules), re-parses only when its text changed, and reads every key through
   `ConfigReader` ([settings](settings.md)); a broken file reads as no projects.
 - Hook stdin: `session_id`, `cwd`, `transcript_path`, `hook_event_name`, plus `source` on
   SessionStart (`startup|resume|clear|compact`) and `reason` on SessionEnd.

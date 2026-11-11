@@ -150,19 +150,43 @@ class ProjectConfigTest < Minitest::Test
   end
 
   # Every item's dev-server check asks for the config, so an unchanged file
-  # (same stat; a chmod changes neither mtime nor size) is not read again.
+  # is not read again.
   def test_current_rereads_the_file_only_when_it_changed
     configure_projects({ "App" => "/code/app" })
     first = Quartermaster::ProjectConfig.current
+    reads = count_config_reads { 2.times { assert_same first, Quartermaster::ProjectConfig.current } }
+    assert_equal 0, reads
 
-    File.chmod(0o000, Quartermaster::CONFIG_FILE)
-    assert_same first, Quartermaster::ProjectConfig.current
-
-    File.chmod(0o644, Quartermaster::CONFIG_FILE)
     configure_projects({ "App" => "/code/app", "Other" => "/code/other" })
     assert_equal %w[App Other], Quartermaster::ProjectConfig.current.roots.keys
+  end
+
+  # A chmod moves the file's version, so an unreadable file reads as empty
+  # and the same text made readable again is read again.
+  def test_an_unreadable_config_reads_as_empty_until_it_is_readable_again
+    configure_projects({ "App" => "/code/app" })
+    assert_equal %w[App], Quartermaster::ProjectConfig.current.roots.keys
+
+    File.chmod(0o000, Quartermaster::CONFIG_FILE)
+    assert_empty Quartermaster::ProjectConfig.current.roots
+
+    File.chmod(0o644, Quartermaster::CONFIG_FILE)
+    assert_equal %w[App], Quartermaster::ProjectConfig.current.roots.keys
   ensure
     File.chmod(0o644, Quartermaster::CONFIG_FILE)
+  end
+
+  def count_config_reads
+    reads = 0
+    original = File.method(:read)
+    File.define_singleton_method(:read) do |path, *args, **opts|
+      reads += 1 if path == Quartermaster::CONFIG_FILE
+      original.call(path, *args, **opts)
+    end
+    yield
+    reads
+  ensure
+    File.singleton_class.remove_method(:read)
   end
 
   def test_the_seed_parses_with_no_projects

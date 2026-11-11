@@ -4,13 +4,13 @@ module Quartermaster
   # A work item file's front matter and body, parsed once per version of the
   # file for the life of the process: a GUI state build reads every item
   # several times (the items, the inbox, the chat list) and the files rarely
-  # change between builds. The version is the file's stat (mtime, ctime,
-  # size, inode), which every write moves, so a qm write or a hand edit shows
-  # on the next read. No reader can change what the next one gets: each gets
-  # a deep copy of the front matter and the one frozen body. What WorkItem
-  # derives from a cached body (sections, notes) is kept with it, so it lasts
-  # exactly as long as that version of the file. Entries of files no longer
-  # listed go whenever the directory is listed.
+  # change between builds. The version is the file's FileVersion, which
+  # every write moves, so a qm write or a hand edit shows on the next read.
+  # No reader can change what the next one gets: each gets a deep copy of the
+  # front matter and the one frozen body. What WorkItem derives from a cached
+  # body (sections, notes) is kept with it, so it lasts exactly as long as
+  # that version of the file. Entries of files no longer listed go whenever
+  # the directory is listed.
   module WorkItemFile
     FORMAT = /\A---\n(.*?)\n---\n(.*)\z/m
     PARSED = {}
@@ -21,7 +21,7 @@ module Quartermaster
 
     # [front, body] for the item file at path.
     def read(path, slug)
-      version = version(path)
+      version = FileVersion.of(path)
       raise ArgumentError, "no work item '#{slug}'" unless version
 
       cached = MUTEX.synchronize { PARSED[path] }
@@ -55,13 +55,6 @@ module Quartermaster
         PARSED.clear
         DERIVED.clear
       end
-    end
-
-    def version(path)
-      stat = File.stat(path)
-      [stat.mtime, stat.ctime, stat.size, stat.ino]
-    rescue Errno::ENOENT
-      nil
     end
 
     def parse(path)
