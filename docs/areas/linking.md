@@ -15,10 +15,13 @@ SessionStart hook (`HookHandler#linked_work_item`) picks the item, in order:
 2. **`QM_ITEM=<slug>`** — the launcher contract: a session started with it links to that
    item unconditionally, over branch match. An unknown slug falls through to the next rule.
 3. **Branch auto-match** — an item in the same project whose `branches` include the cwd's
-   exact branch; a non-resolved item wins ties. No fuzzy matching: ambiguity is Claude's.
+   exact branch; a non-resolved item wins ties; an epic never matches. No fuzzy matching:
+   ambiguity is Claude's.
 
 A matched session is attached and gets the **linked injection**: the item's digest
-([work-items](work-items.md)) plus the work-item protocol — note at milestones with a kind
+([work-items](work-items.md)), then for a child of an epic one line naming it
+(`Epic: <title> (<slug>) — <first description line>`) and for an epic its children
+(`- <slug> [<state>] <title>`), plus the work-item protocol — note at milestones with a kind
 (the kind taxonomy, one kind per note, omit `--kind` for `decision`, don't repeat the date);
 retag a handled `open` note by its `#n`; fold governing decisions into the Description;
 update the state; reuse a status board already shown; refine a stale title; put what needs the
@@ -27,7 +30,7 @@ moment the work moves to another item. A project with a `dev_server:` adds the d
 commands (`qm work-on`, `qm pf-mode`); one with `pr_prerequisites: true` adds `qm pr-requires` ([prs](prs.md)).
 
 An unmatched session gets the **unlinked injection**: the project baseline from cwd, a
-shortlist of open items (`slug — title (project, branches, state)`), and the linking
+shortlist of open items, epics and automations left out (`slug — title (project, branches, state)`), and the linking
 protocol — continues an item → `qm attach <slug> --session ID`; substantial new work →
 `qm new "Title" --project P --session ID --description …`, after sanity-checking the
 project against the topic (ask the user on a suspected mismatch, e.g. a work-repo cwd on a
@@ -69,6 +72,10 @@ is manual.
 - **A session belongs to one item.** Every attach (CLI `attach`, `new --session`, GUI attach,
   item-from-session) detaches it everywhere else (`WorkItem.detach_session_elsewhere`): a
   resume links to the *first* item listing the id, so a stale attachment is wrong.
+- **An epic is never guessed**: the branch match and the unlinked shortlist skip it; only
+  an explicit `qm attach <epic>` or a chat started from the epic (`QM_ITEM`) links a session
+  to it. Its children's sessions and its own get the epic lines; an aside gets neither. A
+  failed epic lookup drops the lines, never the injection, and a dangling `epic:` reads as none.
 - **`QM_ITEM` with an unknown slug falls through, never unlinks**: the var leaks from a
   launched session's env into everything it spawns — which is also why the tests unset it
   in `run_hook`.

@@ -205,6 +205,112 @@ class HookLinkingTest < Minitest::Test
     end
   end
 
+  # Epics (docs/areas/linking.md): never guessed, only attached on purpose.
+  def epic_repo(branch)
+    dir = Dir.mktmpdir
+    system("git", "init", "-q", "-b", branch, dir)
+    system("git", "-C", dir, "-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false",
+           "commit", "-q", "--allow-empty", "-m", "init")
+    Quartermaster.ensure_setup
+    File.write(Quartermaster::CONFIG_FILE, { "projects" => { "Repo" => dir } }.to_yaml)
+    dir
+  end
+
+  def create_epic(title = "Epic Alpha", **opts)
+    Quartermaster::WorkItem.create(title, project: "Repo", front: { "kind" => "epic" }, **opts)
+  end
+
+  def test_a_branch_match_never_links_a_session_to_an_epic
+    dir = epic_repo("issue/9-planning")
+    create_epic(branch: "issue/9-planning")
+
+    stdout, = run_hook("hook-session-start", JSON.generate("session_id" => "sess-e1", "cwd" => dir, "source" => "startup"))
+
+    assert_includes stdout, "not linked to a work item"
+    assert_empty Quartermaster::WorkItem.find("epic-alpha").sessions
+  ensure
+    FileUtils.rm_rf(dir) if dir
+  end
+
+  def test_a_branch_shared_by_an_epic_and_its_child_links_the_child
+    dir = epic_repo("issue/9-part")
+    create_epic(branch: "issue/9-part")
+    Quartermaster::WorkItem.create("Child one", project: "Repo", branch: "issue/9-part", front: { "epic" => "epic-alpha" })
+
+    stdout, = run_hook("hook-session-start", JSON.generate("session_id" => "sess-e2", "cwd" => dir, "source" => "startup"))
+
+    assert_includes stdout, "linked to work item 'child-one'"
+  ensure
+    FileUtils.rm_rf(dir) if dir
+  end
+
+  def test_the_unlinked_shortlist_leaves_epics_out
+    create_epic
+    Quartermaster::WorkItem.create("Open thing", project: "Repo")
+
+    stdout, = run_hook("hook-session-start", JSON.generate("session_id" => "sess-e3", "cwd" => "/", "source" => "startup"))
+
+    assert_includes stdout, "open-thing"
+    refute_includes stdout, "epic-alpha"
+  end
+
+  def test_a_child_session_is_told_its_epic_in_one_line
+    create_epic(description: "Ship the new grading flow.\nSecond line stays out.")
+    Quartermaster::WorkItem.create("Child one", project: "Repo", session_id: "sess-e4", front: { "epic" => "epic-alpha" })
+
+    stdout, = run_hook("hook-session-start", JSON.generate("session_id" => "sess-e4", "cwd" => "/", "source" => "resume"))
+
+    assert_includes stdout, "Epic: Epic Alpha (epic-alpha) — Ship the new grading flow.\n"
+    refute_includes stdout, "Second line stays out"
+  end
+
+  def test_an_epic_without_a_description_is_named_without_the_placeholder
+    create_epic
+    Quartermaster::WorkItem.create("Child one", project: "Repo", session_id: "sess-e8", front: { "epic" => "epic-alpha" })
+
+    stdout, = run_hook("hook-session-start", JSON.generate("session_id" => "sess-e8", "cwd" => "/", "source" => "resume"))
+
+    assert_includes stdout, "Epic: Epic Alpha (epic-alpha)\n"
+  end
+
+  def test_a_child_of_a_dangling_epic_gets_no_epic_line
+    Quartermaster::WorkItem.create("Plain", project: "Repo", session_id: "sess-e5")
+    path = Quartermaster::WorkItem.path_for("plain")
+    File.write(path, File.read(path).sub("project: Repo", "project: Repo\nepic: gone"))
+
+    stdout, _stderr, status = run_hook("hook-session-start", JSON.generate("session_id" => "sess-e5", "cwd" => "/", "source" => "resume"))
+
+    assert_equal 0, status.exitstatus
+    assert_includes stdout, "linked to work item 'plain'"
+    refute_includes stdout, "Epic:"
+  end
+
+  def test_a_chat_started_from_an_epic_links_and_lists_its_children
+    create_epic
+    Quartermaster::WorkItem.create("Child one", project: "Repo", front: { "epic" => "epic-alpha" })
+    Quartermaster::WorkItem.create("Child two", project: "Repo", front: { "epic" => "epic-alpha" }).update_state("fridge")
+    Quartermaster::WorkItem.create("Elsewhere", project: "Repo")
+
+    stdout, = run_hook("hook-session-start", JSON.generate("session_id" => "sess-e6", "cwd" => "/", "source" => "startup"),
+                       { "QM_ITEM" => "epic-alpha" })
+
+    assert_includes stdout, "linked to work item 'epic-alpha'"
+    assert_includes stdout, "Children of this epic:\n- child-one [in_progress] Child one\n- child-two [fridge] Child two\n"
+    refute_includes stdout, "elsewhere"
+    assert_equal [{ "id" => "sess-e6" }], Quartermaster::WorkItem.find("epic-alpha").sessions
+  end
+
+  def test_an_aside_on_a_child_gets_no_epic_line
+    create_epic
+    Quartermaster::WorkItem.create("Child one", project: "Repo", front: { "epic" => "epic-alpha" })
+
+    stdout, = run_hook("hook-session-start", JSON.generate("session_id" => "sess-e7", "cwd" => "/", "source" => "startup"),
+                       { "QM_ASIDE" => "child-one" })
+
+    assert_includes stdout, "is an aside"
+    refute_includes stdout, "Epic:"
+  end
+
   def test_resumed_sessions_recognize_the_item_they_are_already_attached_to
     Quartermaster::WorkItem.create("Ongoing", project: "No project", session_id: "sess-r1")
 

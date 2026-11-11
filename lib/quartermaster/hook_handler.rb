@@ -166,7 +166,7 @@ module Quartermaster
       end)
         launched
       elsif branch
-        candidates = WorkItem.all.select { |i| i.branches.include?(branch) && i.project == project }
+        candidates = WorkItem.all.select { |i| i.branches.include?(branch) && i.project == project && !i.epic? }
         candidates.find { |i| i.state != "resolved" } || candidates.first
       end
     end
@@ -175,7 +175,7 @@ module Quartermaster
       <<~CONTEXT
         [qm] This Claude Code session (#{session_id}) is linked to work item '#{item.slug}' — the session id has been attached to it automatically.
 
-        #{item_digest(item)}
+        #{item_digest(item)}#{epic_context(item)}
         Work item protocol:
         - Append a succinct progress note at meaningful milestones: qm note #{item.slug} --kind <#{NOTE_KINDS.join("|")}> "..."
           - open — still unresolved and user-facing: a decision the user owes, a blocked dependency, a known gap, anything you'd describe as "flagged to the user". Always re-injected regardless of age, so keep it short and say what would unblock it.
@@ -191,6 +191,26 @@ module Quartermaster
         - The session sits on the item it is working on right now. The moment its work moves to another item (a different issue, a follow-up, refinement prep), re-link it then and there; likewise when this link is a wrong branch-based guess, telling the user:
           continues another item → qm attach <other-slug> --session #{session_id}; substantial new work → qm new "Title" --project "..." --session #{session_id} (both move the session off this item); trivial or throwaway → qm detach #{item.slug} --session #{session_id} and don't mention tracking again.#{pf_protocol_line(item)}#{pr_requires_protocol_line(item)}
       CONTEXT
+    end
+
+    # A child hears which epic it serves; an epic sees what it groups. Extra
+    # context only: a broken epic lookup must never cost the session its injection.
+    def epic_context(item)
+      if item.epic?
+        children = item.children
+        return "" if children.empty?
+
+        "\nChildren of this epic:\n#{children.map { |c| "- #{c.slug} [#{c.state}] #{c.title}\n" }.join}"
+      elsif (epic = item.epic_item)
+        summary = epic.description.lines.first.to_s.strip
+        summary = "" if summary == ItemDeletion::PLACEHOLDER
+        "\nEpic: #{epic.title} (#{epic.slug})#{" — #{summary}" unless summary.empty?}\n"
+      else
+        ""
+      end
+    rescue StandardError => e
+      Quartermaster.log_error("epic-context", e)
+      ""
     end
 
     # Only a project with a dev server (projects.<name>.dev_server.command) pays these tokens.
@@ -244,7 +264,7 @@ module Quartermaster
     end
 
     def unlinked_context(session_id, project)
-      open_items = WorkItem.all.reject { |i| i.state == "resolved" || i.automation? }
+      open_items = WorkItem.all.reject { |i| i.state == "resolved" || i.automation? || i.epic? }
       listing = open_items.map do |i|
         details = [i.project, *i.branches, i.state].compact.join(", ")
         "- #{i.slug} — #{i.title} (#{details})"
