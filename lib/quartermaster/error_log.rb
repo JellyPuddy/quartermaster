@@ -8,9 +8,10 @@ module Quartermaster
   # errors-seen-at (absent or unreadable: the last WINDOW), each with its
   # backtrace continuation lines. Reads only the log's last tail_bytes, and
   # only when the log's FileVersion changed since the process last parsed it:
-  # the parsed errors are kept frozen and filtered by `since` per call. Feeds
-  # the GUI's error badge and qm doctor; the status line repeats the parse,
-  # since it may not load lib/.
+  # the parsed errors are kept frozen and filtered by `since` per call. A
+  # failed read means no errors and is not kept, so the next call reads again.
+  # Feeds the GUI's error badge and qm doctor; the status line repeats the
+  # parse, since it may not load lib/.
   class ErrorLog
     SEEN_FILE = File.join(ROOT, "errors-seen-at")
     TAIL_BYTES = 256 * 1024
@@ -65,7 +66,9 @@ module Quartermaster
       cached = ErrorLog.parsed
       return cached.last if key.last && cached&.first == key
 
-      found = parse(tail).map { |entry| [entry.delete(:time), deep_freeze(entry)].freeze }.freeze
+      return [] unless (text = tail)
+
+      found = parse(text).map { |entry| [entry.delete(:time), deep_freeze(entry)].freeze }.freeze
       ErrorLog.parsed = [key, found].freeze if key.last
       found
     end
@@ -82,8 +85,10 @@ module Quartermaster
         text = f.read.force_encoding(Encoding::UTF_8).scrub
         start.zero? ? text : text.partition("\n").last
       end
-    rescue SystemCallError
+    rescue Errno::ENOENT
       ""
+    rescue SystemCallError
+      nil
     end
 
     # A continuation belongs to the header above it; one with no error header

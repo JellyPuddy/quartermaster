@@ -5,15 +5,20 @@ module Quartermaster
   # and inode, which every write, replace and chmod moves. The caches that
   # keep a parsed file for the life of the process (ProjectConfig,
   # WorkItemFile, ErrorLog) compare it to decide whether to read the file
-  # again. nil when the file can't be stat'ed.
+  # again. `of` is nil when the file can't be stat'ed; `of!` raises the
+  # stat's error instead.
   module FileVersion
     module_function
 
     def of(path)
-      stat = File.stat(path)
-      [stat.mtime, stat.ctime, stat.size, stat.ino]
+      of!(path)
     rescue SystemCallError
       nil
+    end
+
+    def of!(path)
+      stat = File.stat(path)
+      [stat.mtime, stat.ctime, stat.size, stat.ino]
     end
   end
 end

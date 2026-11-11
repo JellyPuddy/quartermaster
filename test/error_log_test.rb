@@ -83,6 +83,32 @@ class ErrorLogTest < Minitest::Test
     assert_equal({ "count" => 0, "entries" => [] }, error_log.summary)
   end
 
+  def test_a_failed_read_is_tried_again_on_the_next_count
+    write_log("#{at(1)} [x] RuntimeError: boom\n")
+    failures = 1
+    original = File.method(:open)
+    File.define_singleton_method(:open) do |path, *args, **opts, &block|
+      if path == Quartermaster::LOG_FILE && failures.positive?
+        failures -= 1
+        raise Errno::EIO
+      end
+      original.call(path, *args, **opts, &block)
+    end
+
+    assert_equal 0, error_log.count
+    assert_equal 1, error_log.count
+  ensure
+    File.singleton_class.remove_method(:open)
+  end
+
+  def test_a_log_written_after_a_missing_one_is_read
+    assert_equal 0, error_log.count
+
+    write_log("#{at(1)} [x] RuntimeError: boom\n")
+
+    assert_equal 1, error_log.count
+  end
+
   def test_reads_only_the_tail_and_skips_a_cut_entry
     old = "#{at(2)} [x] RuntimeError: early\n" * 50
     write_log("#{old}#{at(1)} [y] RuntimeError: late\n  lib/quartermaster/y.rb:1:in `y'\n")

@@ -21,8 +21,11 @@ module Quartermaster
 
     # [front, body] for the item file at path.
     def read(path, slug)
-      version = FileVersion.of(path)
-      raise ArgumentError, "no work item '#{slug}'" unless version
+      version = begin
+        FileVersion.of!(path)
+      rescue Errno::ENOENT
+        raise ArgumentError, "no work item '#{slug}'"
+      end
 
       cached = MUTEX.synchronize { PARSED[path] }
       unless cached && cached[:version] == version

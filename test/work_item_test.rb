@@ -643,6 +643,15 @@ class WorkItemFileTest < Minitest::Test
     assert_raises(ArgumentError) { Quartermaster::WorkItem.find("cached") }
   end
 
+  # Only a missing file is "no work item"; any other stat error is a real one.
+  def test_a_stat_error_other_than_a_missing_file_raises_it
+    Quartermaster::WorkItem.create("Cached", project: "Nowhere")
+    File.delete(path)
+    File.symlink(path, path)
+
+    assert_raises(Errno::ELOOP) { Quartermaster::WorkItem.find("cached") }
+  end
+
   def test_notes_follow_every_change_to_the_same_item
     item = Quartermaster::WorkItem.create("Cached", project: "Nowhere")
     item.add_note("first")

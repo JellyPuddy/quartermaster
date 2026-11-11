@@ -176,6 +176,34 @@ class ProjectConfigTest < Minitest::Test
     File.chmod(0o644, Quartermaster::CONFIG_FILE)
   end
 
+  # A read that fails without the file changing (EMFILE in a long-running
+  # qm gui) reads as empty once, not until the next write.
+  def test_a_failed_read_is_tried_again_on_the_next_call
+    configure_projects({ "App" => "/code/app" })
+    failures = 1
+    original = File.method(:read)
+    File.define_singleton_method(:read) do |path, *args, **opts|
+      if path == Quartermaster::CONFIG_FILE && failures.positive?
+        failures -= 1
+        raise Errno::EMFILE
+      end
+      original.call(path, *args, **opts)
+    end
+
+    assert_empty Quartermaster::ProjectConfig.current.roots
+    assert_equal %w[App], Quartermaster::ProjectConfig.current.roots.keys
+  ensure
+    File.singleton_class.remove_method(:read)
+  end
+
+  def test_a_config_written_after_a_missing_one_is_read
+    FileUtils.rm_f(Quartermaster::CONFIG_FILE)
+    assert_empty Quartermaster::ProjectConfig.current.roots
+
+    configure_projects({ "App" => "/code/app" })
+    assert_equal %w[App], Quartermaster::ProjectConfig.current.roots.keys
+  end
+
   def count_config_reads
     reads = 0
     original = File.method(:read)

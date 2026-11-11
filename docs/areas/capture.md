@@ -131,7 +131,12 @@ fallback protocol for when the injection is missing.
 - **A file's version** (`FileVersion.of`) is its stat's mtime, ctime, size and inode: a write,
   an atomic replace and a chmod each move it, so a cache keyed on it (`ProjectConfig`,
   [`WorkItemFile`](work-items.md), `ErrorLog`) reads the file again after any change and never
-  in between. A file that can't be stat'ed has none (nil).
+  in between. A file that can't be stat'ed has none (nil; `of!` raises the stat's error
+  instead). A failed read is never cached: `ProjectConfig` and `ErrorLog` answer it with their
+  empty result and read again on the next call, since a failure that leaves the file alone
+  (EMFILE in a long-running `qm gui`, EIO) would otherwise stick until the next write. A
+  missing file is not a failure but the normal empty case, and has no version, so a file
+  created later is read.
 - **A missing transcript at SessionEnd reliably means "opened and closed unused"**: Claude
   Code never persists a transcript for a zero-message session, and real transcripts are
   written incrementally.

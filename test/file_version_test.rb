@@ -45,4 +45,12 @@ class FileVersionTest < Minitest::Test
 
     assert_nil version
   end
+
+  def test_the_raising_variant_raises_what_stat_raises
+    File.delete(@path)
+    File.symlink(@path, @path)
+
+    assert_nil version
+    assert_raises(Errno::ELOOP) { Quartermaster::FileVersion.of!(@path) }
+  end
 end

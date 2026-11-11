@@ -7,7 +7,8 @@ module Quartermaster
   # the file only when its FileVersion changed and parses it once per change
   # of its text — hooks, every GUI state build and each item's dev-server
   # check ask it — and an unreadable or malformed file reads as an empty
-  # config, never an error.
+  # config, never an error. A failed read is not kept, so the next call
+  # reads again.
   class ProjectConfig
     Starter = Struct.new(:key, :label, :prompt, keyword_init: true) do
       def to_h = { "key" => key, "label" => label }
@@ -20,8 +21,10 @@ module Quartermaster
 
       text = begin
         File.read(CONFIG_FILE)
-      rescue SystemCallError
+      rescue Errno::ENOENT
         ""
+      rescue SystemCallError
+        return new(nil)
       end
       return (@cached = [text, version, cached.last]).last if cached && cached.first == text
 
