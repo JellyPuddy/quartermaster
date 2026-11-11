@@ -42,7 +42,8 @@ no qm replacement.
 - **Phone push when a chat is blocked**, ideally through something the Claude app already
   does — researched, not built.
 - **Todos: due dates and reminders; todos on the phone page** (adding from the phone needs a
-  write path the static page doesn't have); **todos on board cards or the side panel** — a todo
-  on an item shows only as that item's chip in the Todos tab.
+  write path the static page doesn't have); **todos on a plain board card** — a todo on an item
+  outside every epic shows only as that item's chip in the Todos tab; epics show theirs (the
+  epic card, the side panel's Epic block, the Todos outline).
 - **Clipboard annotations: ⌘V paste import**, and a global key that finds the item by
   checkout as the pf relay does.
