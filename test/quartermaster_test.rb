@@ -95,6 +95,7 @@ SUITE_FILES = %w[
   todo_list_test
   gui_todos_test
   gui_epic_test
+  gui_globals_test
   docs_shape_test
   size_ratchet_test
   parallel_suite_test
