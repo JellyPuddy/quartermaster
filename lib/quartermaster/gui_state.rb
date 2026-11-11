@@ -11,8 +11,10 @@ module Quartermaster
     attr_reader :benchmarks
 
     # pf_off: why this GUI may not drive the dev server (PfFence), nil when it may.
-    def initialize(runner:, tmux:, caffeinate:, jobs:, terminal_token:, notifier: nil, pf_off: nil, benchmarks: nil)
+    # pr_fetcher: how a branch's PR state is asked (PrStatus's fetcher; nil asks gh).
+    def initialize(runner:, tmux:, caffeinate:, jobs:, terminal_token:, notifier: nil, pf_off: nil, benchmarks: nil, pr_fetcher: nil)
       @runner = runner
+      @pr_fetcher = pr_fetcher
       @benchmarks = benchmarks || BenchmarkRun.new(runner: runner, tmux: tmux)
       @pf_off = pf_off
       @notifier = notifier
@@ -47,7 +49,7 @@ module Quartermaster
       # background: expired PR states are served as-is and refetched on
       # threads, so a state build never blocks on gh. "refreshing" tells the
       # page to poll until those fetches have landed.
-      pr_status = PrStatus.new(background: true)
+      pr_status = PrStatus.new(fetcher: @pr_fetcher, background: true)
       attention = Attention.new(session_log: log, pr_status: pr_status)
       live_ids = log.sessions.select(&:live?).map(&:id)
       project_map = ProjectMap.new

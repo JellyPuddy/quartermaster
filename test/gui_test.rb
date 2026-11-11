@@ -164,6 +164,20 @@ class GuiTest < Minitest::Test
     end
   end
 
+  def test_state_asks_pr_states_through_the_guis_pr_fetcher
+    configure_projects({ "Repo" => Dir.pwd })
+    Quartermaster::WorkItem.create("Echo", project: "Repo", branch: "issue/4-echo")
+    asked = Queue.new
+    server = Quartermaster::Gui.new(port: 4567, runner: quiet_runner,
+                                    pr_fetcher: ->(_item, branch) { asked << branch; { "state" => "OPEN", "number" => 4, "url" => "u4" } })
+
+    server.respond("GET", "/api/state", ok_host, "")
+    assert_equal "issue/4-echo", Timeout.timeout(5) { asked.pop }
+    Timeout.timeout(5) { sleep 0.01 until Quartermaster::PrStatus::IN_FLIGHT_MUTEX.synchronize { Quartermaster::PrStatus::IN_FLIGHT.empty? } }
+    echo = JSON.parse(server.respond("GET", "/api/state", ok_host, "")[2])["items"].find { |i| i["slug"] == "echo" }
+    assert_includes JSON.generate(echo), "u4"
+  end
+
   def test_state_carries_an_items_chains_with_their_worktrees
     Dir.mktmpdir do |dir|
       repo = File.join(dir, "repo")

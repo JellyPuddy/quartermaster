@@ -24,6 +24,17 @@ require "stringio"
 require "time"
 require "timeout"
 
+# Every GUI a test builds answers "no PR" for each branch unless the test passes
+# its own pr_fetcher, so no state build or cleanup plan starts a real `gh pr view`.
+module GuiWithoutGh
+  NO_PR = ->(_item, _branch) {}
+
+  def initialize(pr_fetcher: NO_PR, **options)
+    super
+  end
+end
+Quartermaster::Gui.prepend(GuiWithoutGh)
+
 module QmTestHelpers
   def before_setup
     @threads_before_test = Thread.list

@@ -20,11 +20,11 @@ module Quartermaster
 
     # The runner is the seam to the dev server, the IDE and worktrees; tests pass a stub. Off the live
     # data root (pf_live false) it is fenced: no dev-server command that changes what it serves (PfFence).
-    # tmux is where the chat panes live (Tmux; tests pass one on a test socket). The terminal token is
-    # minted per start and embedded in the page: only a page this server rendered can open a terminal
-    # WebSocket. caffeinate is the header's ☕ toggle, settings_probe what the Settings warnings look at.
+    # tmux is where the chat panes live (Tmux; tests pass one on a test socket). The terminal token is minted per
+    # start and embedded in the page: only a page this server rendered can open a terminal WebSocket. caffeinate is
+    # the ☕ toggle, settings_probe what Settings warns about, pr_fetcher how PR states are asked (nil: gh; PrStatus).
     def initialize(port: nil, runner: CommandRunner.new, tmux: Tmux.new, caffeinate: Caffeinate.new, settings_probe: ConfigCheck::Probe.new,
-                   pr_deployment: PrDeployment.new, pr_memo: PrMemo.new, pf_live: Quartermaster.live_root?, benchmarks: nil, routines: nil)
+                   pr_deployment: PrDeployment.new, pr_memo: PrMemo.new, pf_live: Quartermaster.live_root?, benchmarks: nil, routines: nil, pr_fetcher: nil)
       fence = PfFence.new(runner) unless pf_live
       @runner = runner = fence || runner
       # The diff pane's PR lookups and fetches, reused across requests.
@@ -36,13 +36,13 @@ module Quartermaster
       @mutex = Mutex.new
       @jobs = GuiJobs.new
       @notifier = TurnNotifier.new(runner: runner)
-      @state = GuiState.new(runner: runner, tmux: tmux, caffeinate: caffeinate, jobs: @jobs,
+      @state = GuiState.new(runner: runner, tmux: tmux, caffeinate: caffeinate, jobs: @jobs, pr_fetcher: pr_fetcher,
                             terminal_token: @terminal_token, notifier: @notifier, pf_off: fence&.reason, benchmarks: benchmarks)
       @settings = GuiSettings.new(state: @state, probe: settings_probe)
       @automations = GuiAutomations.new(jobs: @jobs, client: routines || RoutinesClient.new(runner: runner), runner: runner, tmux: tmux)
       @pr_items = PrItems.new
       @actions = GuiActions.new(runner: runner, tmux: tmux, caffeinate: caffeinate, jobs: @jobs, state: @state,
-                                pr_items: @pr_items)
+                                pr_items: @pr_items, pr_fetcher: pr_fetcher)
       # Parsed transcripts for the chat history, shared across requests.
       @history_cache = {}
       @history_lock = Mutex.new

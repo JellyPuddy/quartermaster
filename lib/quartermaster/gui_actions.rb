@@ -11,8 +11,8 @@ module Quartermaster
     UNLOCKED = (%w[issue-preview pr-thread-resolve review-preview] + GuiBenchmarkActions::COMMANDS +
                 GuiTodoActions::COMMANDS).freeze
 
-    def initialize(runner:, tmux:, caffeinate:, jobs:, state:, pr_items:)
-      @runner = runner
+    def initialize(runner:, tmux:, caffeinate:, jobs:, state:, pr_items:, pr_fetcher: nil)
+      @runner, @pr_fetcher = runner, pr_fetcher
       @tmux = tmux
       @caffeinate = caffeinate
       @jobs = jobs
@@ -268,7 +268,7 @@ module Quartermaster
 
     # PR states from the cache only, so a plan never waits on gh.
     def new_cleanup
-      Cleanup.new(runner: @runner, pr_status: PrStatus.new(background: true), pf: Pf.new(runner: @runner))
+      Cleanup.new(runner: @runner, pr_status: PrStatus.new(fetcher: @pr_fetcher, background: true), pf: Pf.new(runner: @runner))
     end
 
     def plan_payload(plan)
