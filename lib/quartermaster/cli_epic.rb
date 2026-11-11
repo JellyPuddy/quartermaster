@@ -10,12 +10,19 @@ module Quartermaster
 
     def cmd_epic(argv)
       slug, target = argv
-      abort("usage: qm epic ITEM_SLUG EPIC_SLUG | qm epic ITEM_SLUG --clear") unless slug && target
+      abort("usage: qm epic ITEM_SLUG EPIC_SLUG|--clear | qm epic SLUG --make|--unmake") unless slug && target
 
       item = WorkItem.find(slug)
-      if target == "--clear"
+      case target
+      when "--clear"
         item.leave_epic
         puts "#{slug} → (no epic)"
+      when "--make"
+        item.make_epic!
+        puts "#{slug} → epic"
+      when "--unmake"
+        item.unmake_epic!
+        puts "#{slug} → work item"
       else
         item.join_epic(target)
         puts "#{slug} → epic #{target}"

@@ -127,7 +127,7 @@ header folds it, remembered per browser. Its children leave their columns while 
 cards tagged ◆. An epic matches a search when it or a child does. "✓ all done — resolve epic?" shows for
 children all resolved and no open todo on it or them; it runs `changeState` (cleanup plan and all). Chats
 and Todos reuse these helpers (`epicOf`, `linkChips`, `resolveSuggestion`, …) and `epics.css`'s chips.
-`GuiEpicActions`: `new` with `kind`/`epic` (New item), `epic-set` (⋯ → Epic…, empty clears), `link-set`/`link-remove` (sheet).
+`GuiEpicActions`: `new` with `kind`/`epic` (New item), `epic-set` (⋯ → Epic…, empty clears), `link-set`/`link-remove` (sheet), `epic-make`/`epic-unmake` (⋯ → Turn into epic / work item via `epicTurnEntry`: none for an automation, disabled with the reason while refused).
 
 **Keyboard map** (board): `j`/`k` move, `h`/`l` column, `/` search, `c` new item, Enter
 chat, `r` resume, `n` new session, `o` PR, `s` state, `a` note, `.` more, Esc close;

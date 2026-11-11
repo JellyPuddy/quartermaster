@@ -80,6 +80,29 @@ class GuiEpicTest < Minitest::Test
     assert_nil item("epic-beta").epic
   end
 
+  def test_epic_make_and_unmake_turn_an_item_into_an_epic_and_back
+    Quartermaster::WorkItem.create("Big plan", project: "Nowhere")
+
+    assert_equal true, act("epic-make", "big-plan")["ok"]
+    assert item("big-plan").epic?
+    assert_equal true, act("epic-unmake", "big-plan")["ok"]
+    refute item("big-plan").epic?
+  end
+
+  def test_epic_make_and_unmake_refuse_what_the_rules_forbid
+    epic!
+    Quartermaster::WorkItem.create("Child", project: "Nowhere", front: { "epic" => "epic-alpha" })
+
+    reply = act("epic-make", "child")
+    assert_equal false, reply["ok"]
+    assert_match(/--clear/, reply["error"])
+    reply = act("epic-unmake", "epic-alpha")
+    assert_equal false, reply["ok"]
+    assert_match(/1 item is still in 'epic-alpha'/, reply["error"])
+    assert item("epic-alpha").epic?
+    refute item("child").epic?
+  end
+
   def test_link_set_adds_and_replaces_by_label_and_remove_drops_it
     epic!
     act("link-set", "epic-alpha", label: "Tracker", url: "https://example.com/t/1")
@@ -104,7 +127,7 @@ class GuiEpicTest < Minitest::Test
   def test_epic_actions_from_another_origin_are_refused
     epic!
     Quartermaster::WorkItem.create("Child", project: "Nowhere")
-    %w[epic-set link-set link-remove].each do |cmd|
+    %w[epic-set link-set link-remove epic-make epic-unmake].each do |cmd|
       status, = respond({ "cmd" => cmd, "slug" => "child", "args" => { "epic" => "epic-alpha" } },
                         ok_host.merge("origin" => "https://evil.example.com"))
       assert_equal "403 Forbidden", status, cmd
@@ -112,6 +135,7 @@ class GuiEpicTest < Minitest::Test
       assert_equal "403 Forbidden", status, "#{cmd} without an Origin"
     end
     assert_nil item("child").epic
+    refute item("child").epic?
   end
 
   def test_the_state_carries_kind_epic_and_links_for_the_board
@@ -130,7 +154,7 @@ class GuiEpicTest < Minitest::Test
   def test_the_page_carries_the_epic_card_and_its_controls
     page = served_page(server, ok_host)
 
-    %w[function epicCard( function epicResolvable( function epicMenu( function linksEditor( epic-set link-set link-remove].each do |needle|
+    %w[function epicCard( function epicResolvable( function epicMenu( function linksEditor( function epicTurnEntry( epic-set epic-make epic-unmake link-set link-remove].each do |needle|
       assert_includes page, needle
     end
   end

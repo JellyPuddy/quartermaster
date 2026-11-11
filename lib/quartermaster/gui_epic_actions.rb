@@ -6,12 +6,14 @@ module Quartermaster
   # epic set or cleared, and an epic's links. Each is a WorkItem mutation under
   # its lock, run under the action mutex like every write to an item.
   class GuiEpicActions
-    COMMANDS = %w[new epic-set link-set link-remove].freeze
+    COMMANDS = %w[new epic-set epic-make epic-unmake link-set link-remove].freeze
 
     def dispatch(cmd, slug, args)
       case cmd
       when "new" then create(args)
       when "epic-set" then set_epic(WorkItem.find(slug), presence(args["epic"]))
+      when "epic-make" then WorkItem.find(slug).make_epic!.then { ok }
+      when "epic-unmake" then WorkItem.find(slug).unmake_epic!.then { ok }
       when "link-set" then WorkItem.find(slug).set_link(args["label"], args["url"].to_s).then { ok }
       when "link-remove" then WorkItem.find(slug).remove_link(args["label"].to_s).then { ok }
       end

@@ -29,7 +29,7 @@ else (see [capture](capture.md)), then requires `lib/quartermaster` through its 
 
 **Work items**
 - `qm new TITLE` — create an item, print its slug (`--project`, `--branch`, `--session`, `--description`, `--pf-mode`; `--kind epic` for an epic, `--epic SLUG` for a child of one).
-- `qm epic SLUG EPIC_SLUG` / `qm epic SLUG --clear` — put an item in an epic or take it out ([work-items](work-items.md)).
+- `qm epic SLUG EPIC_SLUG` / `qm epic SLUG --clear` — put an item in an epic or take it out; `--make` / `--unmake` turn the item itself into an epic or back ([work-items](work-items.md)).
 - `qm link SLUG LABEL URL` / `qm link SLUG LABEL --remove` — add or replace (by label) an item's link, or remove it.
 - `qm attach SLUG --session ID` / `qm detach SLUG --session ID` — link or unlink a session; attach moves it off any other item.
 - `qm note SLUG [--kind open|decision|history] TEXT` / `qm retag SLUG POSITION KIND` — add a note, change a note's kind.

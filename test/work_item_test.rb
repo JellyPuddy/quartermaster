@@ -461,6 +461,47 @@ class EpicTest < Minitest::Test
     assert_nil find("plain").epic
   end
 
+  def test_qm_epic_make_turns_an_item_into_an_epic_keeping_everything_else
+    Quartermaster::WorkItem.create("Big plan", project: "MyApp", session_id: "s-1", description: "The whole thing",
+                                               front: { "future_field" => "kept" })
+    find("big-plan").add_note("first step")
+
+    out, = qm("epic", "big-plan", "--make")
+    assert_equal "big-plan → epic\n", out
+    item = find("big-plan")
+    assert item.epic?
+    assert_equal ["s-1", "kept", "The whole thing", 1], [item.sessions.first["id"], item.front["future_field"], item.description, item.notes.size]
+    assert_includes qm("new", "--epic", "big-plan", "Child one")[0], "child-one"
+  end
+
+  def test_qm_epic_make_refuses_automations_epics_and_items_inside_an_epic
+    epic
+    auto = Quartermaster::WorkItem.create("Digest", project: "MyApp", front: { "kind" => "automation" })
+    Quartermaster::WorkItem.create("Child", project: "MyApp", front: { "epic" => "epic-alpha" })
+
+    assert_includes qm_fails("epic", auto.slug, "--make")[1], "an automation can't be an epic"
+    assert_includes qm_fails("epic", "epic-alpha", "--make")[1], "'epic-alpha' is already an epic"
+    assert_includes qm_fails("epic", "child", "--make")[1], "qm epic child --clear"
+    assert_equal ["automation", nil], [find(auto.slug).kind, find("child").kind]
+  end
+
+  def test_qm_epic_unmake_turns_an_epic_back_unless_it_has_children
+    epic
+    Quartermaster::WorkItem.create("Child one", project: "MyApp", front: { "epic" => "epic-alpha" })
+    Quartermaster::WorkItem.create("Child two", project: "MyApp", front: { "epic" => "epic-alpha" })
+
+    assert_includes qm_fails("epic", "epic-alpha", "--unmake")[1], "2 items are still in 'epic-alpha'"
+    assert find("epic-alpha").epic?
+
+    qm("epic", "child-one", "--clear")
+    qm("epic", "child-two", "--clear")
+    out, = qm("epic", "epic-alpha", "--unmake")
+    assert_equal "epic-alpha → work item\n", out
+    refute find("epic-alpha").epic?
+    refute find("epic-alpha").front.key?("kind")
+    assert_includes qm_fails("epic", "child-one", "--unmake")[1], "'child-one' is not an epic"
+  end
+
   def test_qm_link_adds_replaces_by_label_and_removes
     epic
 

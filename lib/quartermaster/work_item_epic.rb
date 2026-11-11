@@ -51,6 +51,33 @@ module Quartermaster
       end
     end
 
+    # Turns this item into an epic; everything else on it stays.
+    def make_epic!
+      locked do
+        raise ArgumentError, "an automation can't be an epic" if automation?
+        raise ArgumentError, "'#{slug}' is already an epic" if epic?
+        raise ArgumentError, "'#{slug}' is inside epic '#{epic}' (one level only): run `qm epic #{slug} --clear` first" if epic
+
+        front["kind"] = EPIC_KIND
+        save
+      end
+    end
+
+    # Turns this epic back into a plain item, once no item names it as its epic.
+    def unmake_epic!
+      locked do
+        raise ArgumentError, "'#{slug}' is not an epic" unless epic?
+
+        count = children.size
+        if count.positive?
+          raise ArgumentError, "#{count} #{count == 1 ? "item is" : "items are"} still in '#{slug}': " \
+                               "move them out (qm epic CHILD --clear) first"
+        end
+        front.delete("kind")
+        save
+      end
+    end
+
     # Adds the link, or replaces the url of the one with the same label.
     def set_link(label, url)
       label = label.to_s.strip

@@ -24,8 +24,10 @@ onto an epic or item, or off it. Done todos stay in the list until you delete th
 
 Bigger work can be grouped into **epics**: an epic is a work item of its own (`qm new "Title"
 --kind epic`), and an item joins one with `qm new "Title" --epic EPIC` or `qm epic SLUG EPIC`
-(`--clear` takes it out); epics don't nest. `qm link SLUG "Label" https://…` hangs a link on an
-item (`--remove` drops it), `qm list` marks epics and children with ◆, and `qm show` on an epic
+(`--clear` takes it out); epics don't nest. `qm epic SLUG --make` turns an existing item into an
+epic (keeping its sessions, notes and chat; new sessions on its branch then stop attaching on
+their own) and `--unmake` turns it back once no item is in it; the GUI's ⋯ menu offers the
+same. `qm link SLUG "Label" https://…` hangs a link on an item (`--remove` drops it), `qm list` marks epics and children with ◆, and `qm show` on an epic
 lists its children and links. A session is never linked to an epic by guesswork, only by
 `qm attach` or a chat started from it; a child's session is told its epic, an epic's session
 its children. On the GUI board an epic is a card holding its items (which leave their columns),

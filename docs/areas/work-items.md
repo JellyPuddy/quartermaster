@@ -27,7 +27,11 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
   own epic); `leave_epic` (`qm epic SLUG --clear`) drops the key. Deleting or resolving an
   epic leaves its children's `epic:` alone: `epic_item` is nil for a dangling slug and
   `qm show` prints it as `(missing)`. `qm new --kind epic` makes one (no session unless
-  `--session`); `--kind` takes nothing else. `qm list` reads `◆ epic` on an epic and
+  `--session`); `--kind` takes nothing else. `make_epic!` (`qm epic SLUG --make`) turns an
+  existing item into one, keeping everything else on it; it refuses an automation, an epic
+  and an item in an epic (pointing at `--clear`). `unmake_epic!` (`--unmake`) drops `kind`
+  again, refused while any item names it as its epic (says how many). As an epic it is no
+  longer auto-linked by branch ([linking](linking.md)). `qm list` reads `◆ epic` on an epic and
   `◆ <epic>` on a child; `qm show` adds the child's epic, an epic's children (slug, state,
   title) and the links. The GUI payload (`to_h`) carries `kind`, `epic` and `links`, from which the board nests
   children in epic cards ([gui-shell](gui-shell.md)).
@@ -151,7 +155,8 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
 - **`pf_mode` needs a dev server**: only an item whose project has `dev_server:` in config.yml
   takes one, and only one of that server's `modes`; anything else is refused naming the setting.
 - **Epics are one level deep and checked under the lock**: the target check runs inside the
-  same flock as the write (`create`, `join_epic`), so an epic can't turn up as a child
+  same flock as the write (`create`, `join_epic`, `make_epic!`, `unmake_epic!`), so an epic
+  can't turn up as a child, nor a child under an item that just stopped being an epic,
   meanwhile. `epic:` and `links:` needed no `v:` bump, like `kind`.
 
 ## Data
