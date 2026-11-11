@@ -32,9 +32,10 @@ pane without making an item first.
   first prompt (the notifier's unlinked-title rule, `TurnNotifier.unlinked_title`), "New loose chat"
   until a transcript has one. A row opens in the normal chat pane (`chatSlug` = the tmux name,
   `renderLooseMain`): a header and the terminal, no item side panel, diff or history. The same
-  `loose` list carries live local automation run chats (`RunChats`, a `run` field; see
-  [local-automations](local-automations.md)), shown under their own **Runs** group whose one
-  button, ⚙ automation, opens the run's automation instead of → Work item and ✕.
+  `loose` list carries automations' live edit chats (`AutomationEditChats`, an `automation` field;
+  see [automations](automations.md)) under an **Automations** group, and live local automation run
+  chats (`RunChats`, a `run` field; see [local-automations](local-automations.md)) under a **Runs**
+  group; both rows' one button, ⚙ automation, opens the automation instead of → Work item and ✕.
 - **✕** (row and header, one click): `loose-close {id}` on a GuiJobs job keyed by the tmux name —
   types `/exit`, waits up to 5 s for claude to go, kills the tmux session, then dismisses every session
   of that id from the inbox (`SessionLog#dismiss`).

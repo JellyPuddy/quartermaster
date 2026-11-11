@@ -75,7 +75,8 @@ module Quartermaster
         "defaultProject" => config.default_project,
         "looseStarters" => config.loose_starters.values.map(&:to_h),
         "attention" => chat_attention(log),
-        # Live loose chats (LooseChat) and automation run chats (RunChats), the chats list's Loose and Runs groups.
+        # Live loose chats (LooseChat), automation edit chats (AutomationEditChats) and run chats (RunChats):
+        # the chats list's Loose, Automations and Runs groups.
         "loose" => loose_chats(panes, log),
         "pulse" => pulse_now,
         "refreshing" => pr_status.refreshing?,
@@ -145,7 +146,10 @@ module Quartermaster
         "loose" => loose_chats(@tmux.sessions, log), "draftCounts" => Drafts.counts }
     end
 
-    def loose_chats(panes, log) = LooseChat.new(tmux: @tmux, session_log: log).chats(panes) + RunChats.new(session_log: log).chats(panes)
+    def loose_chats(panes, log)
+      LooseChat.new(tmux: @tmux, session_log: log).chats(panes) + AutomationEditChats.new(session_log: log).chats(panes) +
+        RunChats.new(session_log: log).chats(panes)
+    end
 
     # The dev server serves one checkout at a time, so status is global, not
     # per item. Cached briefly: without its status URL the fallback spawns

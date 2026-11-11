@@ -588,6 +588,25 @@ class GuiLocalAutomationsTest < Minitest::Test
                  chats.map { |c| c.values_at("name", "run", "title", "state") }
   end
 
+  def test_an_automations_live_edit_chat_is_listed_with_the_loose_chats_and_its_runs_are_not_it
+    local_automation
+    id = started_run
+    item = Quartermaster::WorkItem.find("nightly")
+    item.attach_session("sess-edit")
+    item.attach_session("sess-#{id}")
+    [["sess-edit", "start"], ["sess-#{id}", "start"]].each do |sid, event|
+      Quartermaster::SessionLog.new.append("event" => event, "session_id" => sid, "cwd" => Dir.home, "project" => "MyApp",
+                                           "pid" => Process.pid, "ts" => Time.now.iso8601)
+    end
+    Quartermaster::WorkItem.create("Plain", project: "MyApp", slug: "plain")
+    chats = Quartermaster::AutomationEditChats.new.chats(["nightly", "nightly--run-#{id}", "plain", "loose--abcd1234"])
+    assert_equal [["nightly", "nightly", "sess-edit", "Nightly", "MyApp"]],
+                 chats.map { |c| c.values_at("name", "automation", "session", "title", "project") }
+    page = served_page(gui, ok_host)
+    assert_includes page, 'renderLooseRows(list, "Automations ", looseChats.filter(lc => lc.automation));'
+    assert_includes page, "!looseOf(chatSlug)"
+  end
+
   def test_a_quiet_automations_run_chat_is_listed_but_left_out_of_the_title_count
     local_automation("notify" => "quiet")
     id = started_run
@@ -605,6 +624,6 @@ class GuiLocalAutomationsTest < Minitest::Test
     assert_includes page, %(case "resume-run": resumeRun(slug, node.dataset.run))
     assert_includes page, %(id="au-new-runner")
     assert_includes page, %(renderLooseRows(list, "Runs ", looseChats.filter(lc => lc.run)))
-    assert_includes page, "showAutomation(lc.run.slug)"
+    assert_includes page, "showAutomation(lc.run ? lc.run.slug : lc.automation)"
   end
 end

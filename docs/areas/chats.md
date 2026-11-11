@@ -13,8 +13,8 @@ blocked + unsnoozed your_turn chats.
 - **Left**: the `ChatAttention` list as the server sorted it (`/api/state` → `attention`: slug, session,
   state, since, tool, snoozed, contextTokens, cacheWarmUntil) — state dots, time waiting, context size
   (amber from 150k, red from 250k), a snooze (`z`) on an unsnoozed your_turn. An item opened from the
-  board that isn't listed shows under "opened from the board"; live loose chats follow under "Loose"
-  ([loose-chats](loose-chats.md)). `‹` shrinks the list to a strip of dots
+  board that isn't listed shows under "opened from the board"; live loose chats follow under "Loose",
+  automations' live edit chats under "Automations" and run chats under "Runs" ([loose-chats](loose-chats.md)). `‹` shrinks the list to a strip of dots
   with initials (`qm-chats-min`, localStorage).
 - **Epics in the list** (`chat-epic.js`, [work-items](work-items.md)): rows of an epic or its children
   form one block per epic, blocks in the order of their most urgent row, rows inside in attention

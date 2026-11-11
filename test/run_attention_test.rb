@@ -95,8 +95,9 @@ class RunAttentionTest < Minitest::Test
 
     assert_equal "200 OK", status
     payload = JSON.parse(body)
-    assert_equal [[tmux, "s-run", "blocked", "Nightly · Thing A"]],
-                 payload["loose"].map { |c| c.values_at("name", "session", "state", "title") }
+    assert_equal [["nightly", nil, "none", "Nightly"], [tmux, "s-run", "blocked", "Nightly · Thing A"]],
+                 payload["loose"].map { |c| c.values_at("name", "session", "state", "title") },
+                 "its own tmux is its edit chat, whose turn its run's session never is"
     assert_empty payload["attention"], "the automation item has no row of its own"
     assert_includes File.read(File.expand_path("../lib/quartermaster/gui/js/notify.js", __dir__)),
                     "looseOf(n.run || n.loose)"

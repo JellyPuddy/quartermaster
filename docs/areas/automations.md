@@ -1,6 +1,6 @@
 # Automations
 
-**Code:** `lib/quartermaster/automations.rb`, `lib/quartermaster/cli_automation.rb`, `lib/quartermaster/routines_client.rb`, `lib/quartermaster/automation_store.rb`, `lib/quartermaster/local_schedule.rb`, `lib/quartermaster/automation_chat.rb`, `lib/quartermaster/gui_automations.rb`, `lib/quartermaster/gui/js/automations.js`, `lib/quartermaster/gui/js/automations-render.js`
+**Code:** `lib/quartermaster/automations.rb`, `lib/quartermaster/cli_automation.rb`, `lib/quartermaster/routines_client.rb`, `lib/quartermaster/automation_store.rb`, `lib/quartermaster/local_schedule.rb`, `lib/quartermaster/automation_chat.rb`, `lib/quartermaster/automation_edit_chats.rb`, `lib/quartermaster/gui_automations.rb`, `lib/quartermaster/gui/js/automations.js`, `lib/quartermaster/gui/js/automations-render.js`
 **Tests:** `test/automation_cli_test.rb`, `test/routines_client_test.rb`, `test/automation_store_test.rb`, `test/local_schedule_test.rb`, `test/automation_chat_test.rb`, `test/gui_automations_test.rb`
 **Depends on:** [work-items](work-items.md) (an automation is a work item), [settings](settings.md) (`automations.token_source`; writes the way `ConfigFile` does), [gui-shell](gui-shell.md) (`CommandRunner`), [chats](chats.md) (its chat is the item's pane)
 
@@ -141,27 +141,27 @@ itself, decisions recorded with `qm note SLUG --kind decision`, the house rules 
 `docs/automations-house-rules.md`, and the item's description and notes (oldest first, kind shown).
 
 **GUI tab** — the ⚙ area's Automations tab (`GuiAutomations`; `automations.js`, `-render.js`,
-`automations.css`): one list for both runners, a ☁ or 💻 badge per row. `GET /api/automations`
-answers the local rows at once (name, project, state, local-time schedule, enabled, runner, links)
-merged with the routines the last list call saw (last run, next run, drift, a routine gone from
-claude.ai), the routines "Not managed by qm", `remote.state` (`idle`, `ok`, `off` with the `qm
-config set` command, `expired` or `error`) and `local` (the tick header). `GET
-/api/automations/<slug>` adds the prompt, file paths, model, repos, connectors, the item's
-description and notes and its runs as last loaded, and `runsState` (`idle`, `ok`, `error`). POSTs
-under `/api/automations/`: `refresh` (the one list call), `runs` (the client's `runs(id, limit:
-10)`, no GET of the routine), `apply` (a schedule as `days` + local `time` or a raw `cron`, and/or
-the `prompt`: saved locally at once, then pushed), `pause`, `resume`, `run`, `pull`, `push` (`force`
-overwrites a drifted routine), `recreate` (the detail's **Re-create on claude.ai**, shown only while
-the row is `missing`), `delete`, `adopt` (`id`, `project`) and `new` (`title`, `project`, `runner`
-from the New form's runner choice: the item and empty files; the page then opens its chat with the
-`automation-chat` action, as Edit with Claude does). Every network call is a `GuiJobs` job
-(`automations`, `automation-<slug>`, `automation-runs-<slug>`, `automation-adopt-<id>`); each action
-ends with one list call, and the page reloads the tab when the state poll hands it the job's end.
-Opening the tab is one refresh; the shown automation's runs load while its `runsState` is `idle` —
-at first, and after an action job on it or a refresh ends, both of which set loaded runs back to
-`idle` (a refresh spares runs that arrived while it ran). Apply is per automation; Description saves
-through `describe` (`/api/action`), never pushed. Local rows, details and actions are
-`GuiLocalAutomations`'s ([local-automations](local-automations.md)).
+`automations.css`): one list for both runners, a ☁ or 💻 badge per row. `GET /api/automations` answers
+the local rows at once (name, project, state, local-time schedule, enabled, runner, links) merged with
+the routines the last list call saw (last run, next run, drift, a routine gone from claude.ai), the
+routines "Not managed by qm", `remote.state` (`idle`, `ok`, `off` with the `qm config set` command,
+`expired` or `error`) and `local` (the tick header). `GET /api/automations/<slug>` adds the prompt, file
+paths, model, repos, connectors, the item's description and notes and its runs as last loaded, and
+`runsState` (`idle`, `ok`, `error`). POSTs under `/api/automations/`: `refresh` (the one list call),
+`runs` (the client's `runs(id, limit: 10)`, no GET of the routine), `apply` (a schedule as `days` +
+local `time` or a raw `cron`, and/or the `prompt`: saved locally at once, then pushed), `pause`,
+`resume`, `run`, `pull`, `push` (`force` overwrites a drifted routine), `recreate` (the detail's
+**Re-create on claude.ai**, shown only while the row is `missing`), `delete`, `adopt` (`id`, `project`)
+and `new` (`title`, `project`, `runner` from the New form's runner choice: the item and empty files; the
+page then opens its chat with the `automation-chat` action, as Edit with Claude does; while it lives,
+`AutomationEditChats` lists it under the chats list's **Automations**, [loose-chats](loose-chats.md)).
+Every network call is a `GuiJobs` job (`automations`, `automation-<slug>`, `automation-runs-<slug>`,
+`automation-adopt-<id>`); each action ends with one list call, and the page reloads the tab when the
+state poll hands it the job's end. Opening the tab is one refresh; the shown automation's runs load
+while its `runsState` is `idle` — at first, and after an action job on it or a refresh ends, both of
+which set loaded runs back to `idle` (a refresh spares runs that arrived while it ran). Apply is per
+automation; Description saves through `describe` (`/api/action`), never pushed. Local rows, details and
+actions are `GuiLocalAutomations`'s ([local-automations](local-automations.md)).
 
 ## Rules
 
