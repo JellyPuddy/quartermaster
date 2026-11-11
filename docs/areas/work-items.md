@@ -42,8 +42,9 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
   item's as chips and edits them in the detail sheet's Links section (⋯ → Links…).
   `set_link` (`qm link SLUG LABEL URL`) appends, or replaces the url of the link with that
   label; `remove_link` (`--remove`) refuses a label that isn't there. A url must be
-  `http(s)://`, because the GUI opens it in a tab. Any item whose description holds a GitHub
-  issue URL can refresh its links from that issue (`qm link SLUG --refresh`, or **↻ links** after
+  `http(s)://`, because the GUI opens it in a tab. Any item describing a GitHub issue (an issue
+  URL in its description, or a title ending `(#N)`: `IssueStart#issue_of`, [issues](issues.md))
+  can refresh its links from that issue (`qm link SLUG --refresh`, or **↻ links** after
   the item's chips on every surface that draws them; the `links-refresh` GuiJobs job keyed by the
   slug takes any item): `IssueStart#refresh_links` re-derives them with `IssueLinks` and
   `add_missing_links` adds only those whose label and url the item lacks — never replacing or

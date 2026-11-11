@@ -558,7 +558,57 @@ class LinksRefreshTest < Minitest::Test
       assert_equal [TRACKER, { "label" => "Notion page", "url" => NOTION_URL }], added
       Quartermaster::WorkItem.create("Loose", project: "Widget", description: "see https://github.com/acme/widget/pull/9")
       error = assert_raises(ArgumentError) { starter(epic_runner).refresh_links(Quartermaster::WorkItem.find("loose")) }
-      assert_equal "'loose' has no GitHub issue URL in its description", error.message
+      assert_equal "'loose' has no GitHub issue URL in its description or (#N) in its title", error.message
+    end
+  end
+
+  def test_an_item_titled_for_an_issue_refreshes_from_its_projects_repo
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
+      item = Quartermaster::WorkItem.create("Export MVP (#123)", project: "Widget", description: "Follow-up of #123")
+      runner = issue_runner(comments: [NOTES_BOT])
+
+      added = starter(runner).refresh_links(item)
+
+      assert_equal [TRACKER, { "label" => "Notion page", "url" => NOTION_URL }], added
+      assert_equal ["owner=acme", "name=widget", "number=123"],
+                   runner.argvs.first.grep(/\A(owner|name|number)=/)
+    end
+  end
+
+  def test_the_description_url_wins_over_the_title
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
+      item = Quartermaster::WorkItem.create("Export (#999)", project: "Widget",
+                                                             description: "https://github.com/acme/api/issues/123")
+      runner = issue_runner
+
+      starter(runner).refresh_links(item)
+
+      assert_equal ["owner=acme", "name=api", "number=123"], runner.argvs.first.grep(/\A(owner|name|number)=/)
+    end
+  end
+
+  def test_a_title_issue_needs_a_project_on_github
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do |repo|
+      local = make_repo(FileUtils.mkdir_p(File.join(File.dirname(repo), "local")).first)
+      config = YAML.load_file(Quartermaster::CONFIG_FILE)
+      config["projects"]["Local"] = { "root" => local }
+      File.write(Quartermaster::CONFIG_FILE, config.to_yaml)
+      runner = issue_runner
+
+      %w[Local Nowhere].each do |project|
+        item = Quartermaster::WorkItem.create("#{project} work (#123)", project: project)
+        error = assert_raises(ArgumentError) { starter(runner).refresh_links(item) }
+        assert_equal "'#{item.slug}' has no GitHub issue URL in its description or (#N) in its title", error.message
+      end
+      assert_empty runner.calls, "nothing read from GitHub"
+    end
+  end
+
+  def test_only_a_trailing_issue_number_in_the_title_counts
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
+      item = Quartermaster::WorkItem.create("Follow up (#123) later", project: "Widget")
+      error = assert_raises(ArgumentError) { starter(issue_runner).refresh_links(item) }
+      assert_match(/has no GitHub issue URL/, error.message)
     end
   end
 
@@ -591,7 +641,12 @@ class LinksRefreshTest < Minitest::Test
 
   def test_the_link_chips_carry_the_refresh_button_for_any_item_with_an_issue
     html = served_page(Quartermaster::Gui.new(port: 4567, runner: quiet_runner, tmux: FakeTmux.new), host)
-    assert_includes html, 'if (GITHUB_ISSUE_URL.test(it.description || "")) box.appendChild(linksRefreshButton(it));'
+    assert_includes html, "if (describesIssue(it)) box.appendChild(linksRefreshButton(it));"
+    assert_includes html,
+                    'return GITHUB_ISSUE_URL.test(it.description || "") || /\(#[1-9]\d*\)\s*$/.test(it.title || "");',
+                    "an issue URL in the description, or a title ending (#N)"
+    assert_includes html, "if (!describesIssue(epic)) return;",
+                    "an epic's sub-issues follow the same rule"
     assert_includes html, 'act("links-refresh", { slug: it.slug })'
   end
 end

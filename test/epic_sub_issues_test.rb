@@ -85,6 +85,17 @@ class EpicSubIssuesTest < Minitest::Test
     end
   end
 
+  def test_an_epic_titled_for_an_issue_lists_its_sub_issues
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
+      Quartermaster::WorkItem.create("Export epic (#123)", project: "Widget", description: "Tracks #123",
+                                                           front: { "kind" => "epic" })
+
+      subs = starter(sub_issue_runner).sub_issues("export-epic-123")
+
+      assert_equal [124, 125, 126, 127, 9], subs.map { |s| s["number"] }
+    end
+  end
+
   def test_an_item_or_an_epic_without_an_issue_has_no_sub_issues_to_list
     with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
       runner = sub_issue_runner

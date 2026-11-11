@@ -158,14 +158,14 @@ class GuiEpicTest < Minitest::Test
     assert_equal [{ "label" => "Design", "url" => "https://example.com/d" }], items["plain"]["links"]
   end
 
-  # Decision 4: every item shows the one linkChips (its ↻ for any item whose
-  # description links a GitHub issue) where an epic shows its chips, and its
+  # Decision 4: every item shows the one linkChips (its ↻ for any item that
+  # describes a GitHub issue) where an epic shows its chips, and its
   # Links editor is one ⋯ entry away.
   def test_the_page_shows_link_chips_and_the_links_editor_for_every_item
     page = served_page(server, ok_host)
 
     chips = page_function(page, "linkChips")
-    assert_includes chips, 'if (GITHUB_ISSUE_URL.test(it.description || "")) box.appendChild(linksRefreshButton(it));'
+    assert_includes chips, "if (describesIssue(it)) box.appendChild(linksRefreshButton(it));"
     refute_includes chips, "isEpic", "↻ links is not epic-only"
     {
       "card" => "top.appendChild(linkChips(it));",

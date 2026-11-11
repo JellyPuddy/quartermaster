@@ -13,6 +13,7 @@ module Quartermaster
     BRANCH_SLUG_MAX = 40
     LIST_MAX = 100
     GITHUB_ISSUE_URL = %r{https://github\.com/([\w.-]+/[\w.-]+)/issues/(\d+)(?!\d)}
+    TITLE_ISSUE = /\(#([1-9]\d*)\)\s*\z/
 
     QUERY = <<~GRAPHQL
       query($owner: String!, $name: String!, $number: Int!) {
@@ -76,15 +77,26 @@ module Quartermaster
       }
     end
 
-    # Adds to any item the links its GitHub issue (the first issue URL in its
-    # description) derives now and it lacks; never replaces or removes one.
-    # Returns the links added.
-    def refresh_links(item)
+    # The GitHub issue an item describes, as [repo, number]: the first issue
+    # URL in its description, else its title's trailing "(#N)" (as item_title
+    # writes it) in its project's GitHub repo; nil when neither.
+    def issue_of(item)
       found = item.description.match(GITHUB_ISSUE_URL)
-      raise ArgumentError, "'#{item.slug}' has no GitHub issue URL in its description" unless found
+      return [found[1], found[2].to_i] if found
 
-      repo = found[1]
-      issue = fetch_issue(@project_map.root_for(item.project), repo, found[2].to_i)
+      number = item.title[TITLE_ISSUE, 1] or return nil
+      root = @project_map.root_for(item.project)
+      repo = root && Quartermaster.github_repo(root)
+      repo && [repo, number.to_i]
+    end
+
+    # Adds to any item the links its GitHub issue (issue_of) derives now and
+    # it lacks; never replaces or removes one. Returns the links added.
+    def refresh_links(item)
+      repo, number = issue_of(item)
+      raise ArgumentError, "'#{item.slug}' has no GitHub issue URL in its description or (#N) in its title" unless repo
+
+      issue = fetch_issue(@project_map.root_for(item.project), repo, number)
       item.add_missing_links(IssueLinks.new(@project_map.settings_for(item.project).issue_links).for(issue, repo))
     end
 
@@ -127,19 +139,21 @@ module Quartermaster
       { item: WorkItem.find(item.slug), target: worktree }
     end
 
-    # An epic's GitHub sub-issues, read now from the issue its description
-    # links: {number, title, state, closed, url, item (the slug holding it, or
-    # nil), startable (in the project's own repo, where IssueStart starts)}.
-    # An epic linking no GitHub issue has none.
+    # An epic's GitHub sub-issues, read now from the issue it describes
+    # (issue_of): {number, title, state, closed, url, item (the slug holding
+    # it, or nil), startable (in the project's own repo, where IssueStart
+    # starts)}. An epic describing no GitHub issue has none.
     def sub_issues(epic_slug)
       epic = WorkItem.find(epic_slug)
       raise ArgumentError, "'#{epic.slug}' is not an epic (kind: epic)" unless epic.epic?
 
-      link = epic.description.match(GITHUB_ISSUE_URL) or return []
+      issue_repo, number = issue_of(epic)
+      return [] unless issue_repo
+
       root = @project_map.root_for(epic.project)
       repo = root && Quartermaster.github_repo(root)
       items = WorkItem.all
-      sub_issue_nodes(fetch_issue(root, link[1], link[2].to_i)).map do |sub|
+      sub_issue_nodes(fetch_issue(root, issue_repo, number)).map do |sub|
         own = repo_of(sub) == repo
         holder = existing_item(epic.project, own ? sub["number"] : nil, url: sub["url"], items: items)
         { "number" => sub["number"], "title" => sub["title"].to_s, "state" => sub["state"].to_s.downcase,

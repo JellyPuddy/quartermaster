@@ -40,8 +40,8 @@ an item, each with a Start that begins it inside the epic (`qm start-issue N --e
 CLI). Every item started from an issue, epic or not, gets the links its project's `issue_links`
 settings derive: Tracker, Notion, and e.g. Design (the first URL under the issue body's Design
 heading); later, `qm link SLUG --refresh` or ↻ links beside the item's link chips (board card, chats side panel,
-Todos) adds the links it is missing, leaving
-yours alone. A session is never linked to an epic by guesswork, only by
+Todos) adds the links it is missing, leaving yours alone — for any item whose description links its
+GitHub issue or whose title ends in `(#N)` (that issue in its project's repo). A session is never linked to an epic by guesswork, only by
 `qm attach` or a chat started from it; a child's session is told its epic, an epic's session
 its children. On the GUI board an epic is a card holding its items (which leave their columns),
 its todos, link chips and, once everything in it is done, an offer to resolve it; the New item
