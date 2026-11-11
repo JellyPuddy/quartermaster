@@ -128,7 +128,9 @@ module Quartermaster
              elsif reply["epic"] then "#{reply["slug"]}: created as an epic in the qm gui"
              else "#{reply["slug"]}: starting in the qm gui — its chat opens in the item's pane once the worktree is ready"
              end)
-      elsif (existing = preview["existing"])
+      elsif (existing = preview["existing"]) && existing["epic"]
+        puts "#{existing["slug"]}: the epic already holding ##{preview["number"]}"
+      elsif existing
         puts "#{existing["slug"]} already holds ##{preview["number"]} — continue there: qm resume #{existing["slug"]}"
       elsif preview["epic"] && !as_item
         puts "#{starter.start(preview, as_epic: true)[:item].slug}: created as an epic (no branch, worktree or chat)"
@@ -192,7 +194,7 @@ module Quartermaster
       else
         puts "  project #{preview["project"]}, branch #{preview["branch"]}#{" (existing, reused)" if preview["reuse_branch"]}"
       end
-      return unless preview["epic"]
+      return unless preview["epic"] && !existing
 
       puts "  ◆ an epic: starts as an epic item (--as-item: a normal item with branch and chat)"
       puts "  links: #{preview["links"].map { |link| "#{link["label"]} #{link["url"]}" }.join(", ")}" unless preview["links"].empty?

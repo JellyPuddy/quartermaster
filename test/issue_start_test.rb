@@ -502,6 +502,11 @@ class CliStartIssueTest < Minitest::Test
       assert_includes out, "export-breaks-on-empty-rows-123: created as an epic (no branch, worktree or chat)"
       refute_includes out, "QM_ITEM="
       refute File.exist?(File.join(repo, ".claude", "worktrees"))
+
+      again, = qm(epic_runner, "start-issue", "123", "--project", "Widget")
+      assert_includes again, "export-breaks-on-empty-rows-123: the epic already holding #123"
+      refute_includes again, "◆ an epic", "an epic already made is not offered again"
+      refute_includes again, "qm resume", "an epic has no chat to continue"
     end
   end
 
