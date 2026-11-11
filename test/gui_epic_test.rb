@@ -201,6 +201,7 @@ class GuiEpicTest < Minitest::Test
     drop = page_function(page, "epicDropAt")
     assert_includes drop, "ev.dataTransfer.types.includes(EPIC_DRAG_TYPE)", "a file or todo drag never lands in an epic"
     assert_includes drop, 'if (!it || epic === (it.epic || "")) return null;', "a drop where it already is posts nothing"
+    assert_includes drop, 'if (epic === "" && over && over.dataset.dragItem === epicDrag) return null;', "a card let go on itself keeps its epic"
     assert_includes page, "moveToEpic(d.it, d.epic);"
     assert_includes page, 'act("todo-move", { args: { id, [where]: row.dataset.id } });', "todos keep their reorder drag"
   end
