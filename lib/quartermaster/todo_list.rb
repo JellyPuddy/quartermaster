@@ -94,7 +94,7 @@ module Quartermaster
       end
     end
 
-    # The outcome stays, so a re-tick brings it back.
+    # Keeps the outcome.
     def undone(id)
       change { |list| find(list, id).delete("done_at") }
     end

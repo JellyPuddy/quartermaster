@@ -16,7 +16,7 @@ ordered array whose order is the priority (index 0 on top). A todo is `id` (8 he
 (UTC ISO-8601), `done_at` (UTC ISO-8601, absent while open), an optional `outcome` (one line,
 normalised like `text`; blank means absent, never stored as `""`), and either `item` (a work-item
 slug) or `project` (any string). A todo on an item stores no project: it shows the item's.
-No due dates, priorities, tags or body. `outcome` came later and is additive: the file stays `v: 1`. `edit(id, item:)` moves a todo onto an item (an
+No due dates, priorities, tags or body. `outcome` is additive, so the file stays `v: 1`. `edit(id, item:)` moves a todo onto an item (an
 unknown slug is refused) or, with `""`, off it: the todo then keeps the project it showed (the
 item's, none for `ProjectMap::NO_PROJECT` or a gone item). Every change (`add`, `edit`, `move`, `done`, `undone`,
 `delete`) holds an exclusive `flock` on `todos.lock`, re-reads the file and rewrites it whole
