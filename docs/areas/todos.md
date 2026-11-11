@@ -68,8 +68,9 @@ its chat), a drag handle and a ⋯ menu (Edit, → Work item, Delete). A todo wh
 picker (type, Enter takes the first match) of the epics with their open children, the other
 open items, and "nothing (just its project)"; it posts `todo-edit {id, item}`.
 **The epic outline:** one node per epic (a resolved one only while a todo hangs in it; under a
-project filter, the epics of that project): a head (EPIC chip, state dot, title, "n items · n
-open · n todos", a chip per link with its label's first letter, and "✓ all done — resolve
+project filter, the epics of that project or holding an open todo of it): a head (EPIC chip,
+state dot, title, "n items · n open · n todos", a chip per http(s) link with its label's first
+letter, and "✓ all done — resolve
 epic?" when every child is resolved and no todo is open on it or them, which posts `state`),
 the epic's own open todos, a "+ todo on <epic>" line (an inline input; Enter posts `todo-add`
 with `item` = the epic), its open child items as compact rows (state dot, title, live,
