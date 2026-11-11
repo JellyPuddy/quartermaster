@@ -282,6 +282,8 @@ class GuiTodosTest < Minitest::Test
     assert_includes drop, 'const onto = e.target.closest("[data-todo-drop]");'
     assert_includes drop, "if (row && row.dataset.group === todoGroup(t)) {", "its own group's rows reorder"
     assert_includes drop, 'row.dataset.group === "loose" ? ""', "a loose row takes it off its item"
+    assert_includes drop, 'const bare = e.target.id === "todo-body";', "so does the body's bare part, as for an item"
+    assert_includes drop, ': bare ? "" : null;'
     assert_includes drop, "if (slug === null || slug === (t.item || \"\")) return null;", "a drop where it already is posts nothing"
     assert_includes html, "e.dataTransfer.setData(TODO_DRAG_TYPE, t.id);"
     assert_includes html, "if (d.row) moveTodoNextTo(d.t, d.where, d.row.dataset.id);\n  else moveTodoTo(d.t, d.item);"

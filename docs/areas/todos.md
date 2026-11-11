@@ -69,7 +69,7 @@ picker (type, Enter takes the first match) of the epics with their open children
 open items, and "nothing (just its project)"; it posts `todo-edit {id, item}` (`moveTodoTo`).
 **A todo's drag** (`todos-drag.js`; its ⠿, its own dataTransfer type): let go on a row of its own group it reorders,
 a line before or after that row (`todo-move`); on an epic's head, an item row, the "Not in an
-epic" head or a row of another group it moves onto that epic or item ("" for the loose part:
+epic" head, the list's bare part or a row of another group it moves onto that epic or item ("" for the loose part:
 no item, keeping the project it showed), the head lit up, through `moveTodoTo` as the picker.
 Both change the page's copy first (`optimisticAct`, [gui-shell](gui-shell.md)).
 **The epic outline:** one node per epic (a resolved one only while a todo hangs in it; under a
