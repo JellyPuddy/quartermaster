@@ -28,9 +28,12 @@ Bigger work can be grouped into **epics**: an epic is a work item of its own (`q
 item (`--remove` drops it), `qm list` marks epics and children with ◆, and `qm show` on an epic
 lists its children and links. A session is never linked to an epic by guesswork, only by
 `qm attach` or a chat started from it; a child's session is told its epic, an epic's session
-its children. In `qm gui`'s Chats view the list groups chats by epic (▸ folds a block to its
-status dots), and an item's side panel opens with its epic: links, sibling chats to switch to,
-the epic's todos to tick or add, and a nudge to resolve it once everything is done.
+its children. On the GUI board an epic is a card holding its items (which leave their columns),
+its todos, link chips and, once everything in it is done, an offer to resolve it; the New item
+dialog makes epics or puts the item in one, ⋯ → **Epic…** moves an item, and an epic's detail
+sheet edits its links. In `qm gui`'s Chats view the list groups chats by epic (▸ folds a block to
+its status dots), and an item's side panel opens with its epic: links, sibling chats to switch
+to, the epic's todos to tick or add, and a nudge to resolve it once everything is done.
 
 > [!WARNING]
 > **This project is 100% vibe-coded.** Claude Code wrote essentially all of it, steered by

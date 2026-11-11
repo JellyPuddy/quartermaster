@@ -29,7 +29,8 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
   `qm show` prints it as `(missing)`. `qm new --kind epic` makes one (no session unless
   `--session`); `--kind` takes nothing else. `qm list` reads `◆ epic` on an epic and
   `◆ <epic>` on a child; `qm show` adds the child's epic, an epic's children (slug, state,
-  title) and the links. The GUI payload (`to_h`) carries `kind`, `epic` and `links`.
+  title) and the links. The GUI payload (`to_h`) carries `kind`, `epic` and `links`, from which the board nests
+  children in epic cards ([gui-shell](gui-shell.md)).
 - **Links** (`links:`, a list of `{label, url}`) hang on any item; the GUI shows an epic's.
   `set_link` (`qm link SLUG LABEL URL`) appends, or replaces the url of the link with that
   label; `remove_link` (`--remove`) refuses a label that isn't there. A url must be

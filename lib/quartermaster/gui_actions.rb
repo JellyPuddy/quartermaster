@@ -43,7 +43,6 @@ module Quartermaster
       when "distill" then gui_distill(slug, args["session"], args["force"] == true)
       when "snooze" then gui_snooze(slug, args["duration"])
       when "ack" then gui_ack(slug)
-      when "new" then gui_new(args)
       when "attach" then gui_attach(slug, args["session"])
       when "detach" then WorkItem.find(slug).detach_session(args["session"]) && ok
       when "item-from-session" then gui_item_from_session(args["session"], args["title"])
@@ -98,6 +97,7 @@ module Quartermaster
       when "errors-seen" then ok.merge("errors" => ErrorLog.new.tap(&:mark_seen).summary)
       when *GuiBenchmarkActions::COMMANDS then GuiBenchmarkActions.new(benchmarks: @state.benchmarks, jobs: @jobs).dispatch(cmd, slug, args)
       when *GuiTodoActions::COMMANDS then GuiTodoActions.new.dispatch(cmd, args)
+      when *GuiEpicActions::COMMANDS then GuiEpicActions.new.dispatch(cmd, slug, args)
       when *GuiReviewActions::COMMANDS then GuiReviewActions.new(runner: @runner, jobs: @jobs, pr_items: @pr_items).dispatch(cmd, slug, args)
       when "todo-to-item" then GuiTodoActions.new.to_item(args, tmux: @tmux)
       else GuiLooseActions.new(tmux: @tmux, jobs: @jobs).dispatch(cmd, args) || { "ok" => false, "error" => "unknown action '#{cmd}'" }
@@ -809,16 +809,6 @@ module Quartermaster
     def gui_ack(slug)
       ids = Attention.new.acknowledge_all(WorkItem.find(slug))
       { "ok" => true, "acked" => ids.size }
-    end
-
-    def gui_new(args)
-      title = args["title"].to_s.strip
-      raise ArgumentError, "title is required" if title.empty?
-
-      description = args["description"].to_s.strip
-      item = WorkItem.create(title, project: args["project"] || ProjectMap::NO_PROJECT,
-                                    description: description.empty? ? nil : description)
-      { "ok" => true, "slug" => item.slug }
     end
 
     def gui_item_from_session(session_id, title)

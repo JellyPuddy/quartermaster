@@ -1,7 +1,7 @@
 # GUI shell
 
-**Code:** `lib/quartermaster/gui.rb`, `lib/quartermaster/gui_actions.rb`, `lib/quartermaster/gui_jobs.rb`, `lib/quartermaster/gui_state.rb`, `lib/quartermaster/loopback_guard.rb`, `lib/quartermaster/command_runner.rb`, `lib/quartermaster/link_opener.rb`, `lib/quartermaster/pf.rb`, `lib/quartermaster/pf_fence.rb`, `lib/quartermaster/transcript_search.rb`, `lib/quartermaster/ask_search.rb`, `lib/quartermaster/gui/page.html`, `lib/quartermaster/gui/js/core.js`, `lib/quartermaster/gui/js/server.js`, `lib/quartermaster/gui/js/events.js`, `lib/quartermaster/gui/js/board.js`, `lib/quartermaster/gui/js/detail.js`, `lib/quartermaster/gui/js/session-sheet.js`, `lib/quartermaster/gui/js/search.js`, `lib/quartermaster/gui/js/transcript-search.js`, `lib/quartermaster/gui/js/popovers.js`, `lib/quartermaster/gui/js/modals.js`, `lib/quartermaster/gui/js/focus.js`, `lib/quartermaster/gui/js/long-actions.js`, `lib/quartermaster/gui/js/errors.js`, `lib/quartermaster/gui/js/app.js`, `lib/quartermaster/gui/sw.js`, `lib/quartermaster/gui/manifest.webmanifest`, `lib/quartermaster/gui/icons/icon-192.png`, `lib/quartermaster/gui/icons/icon-512.png`, `lib/quartermaster/gui/css/base.css`, `lib/quartermaster/gui/css/board.css`, `lib/quartermaster/gui/css/header.css`, `lib/quartermaster/gui/css/overlays.css`, `lib/quartermaster/gui/css/responsive.css`
-**Tests:** `test/gui_test.rb`, `test/link_opener_test.rb`, `test/pf_test.rb`, `test/distill_test.rb`, `test/transcript_search_test.rb`, `test/error_log_test.rb`
+**Code:** `lib/quartermaster/gui.rb`, `lib/quartermaster/gui_actions.rb`, `lib/quartermaster/gui_epic_actions.rb`, `lib/quartermaster/gui_jobs.rb`, `lib/quartermaster/gui_state.rb`, `lib/quartermaster/loopback_guard.rb`, `lib/quartermaster/command_runner.rb`, `lib/quartermaster/link_opener.rb`, `lib/quartermaster/pf.rb`, `lib/quartermaster/pf_fence.rb`, `lib/quartermaster/transcript_search.rb`, `lib/quartermaster/ask_search.rb`, `lib/quartermaster/gui/page.html`, `lib/quartermaster/gui/js/core.js`, `lib/quartermaster/gui/js/server.js`, `lib/quartermaster/gui/js/events.js`, `lib/quartermaster/gui/js/board.js`, `lib/quartermaster/gui/js/detail.js`, `lib/quartermaster/gui/js/session-sheet.js`, `lib/quartermaster/gui/js/search.js`, `lib/quartermaster/gui/js/transcript-search.js`, `lib/quartermaster/gui/js/popovers.js`, `lib/quartermaster/gui/js/modals.js`, `lib/quartermaster/gui/js/focus.js`, `lib/quartermaster/gui/js/long-actions.js`, `lib/quartermaster/gui/js/epics.js`, `lib/quartermaster/gui/js/errors.js`, `lib/quartermaster/gui/js/app.js`, `lib/quartermaster/gui/sw.js`, `lib/quartermaster/gui/manifest.webmanifest`, `lib/quartermaster/gui/icons/icon-192.png`, `lib/quartermaster/gui/icons/icon-512.png`, `lib/quartermaster/gui/css/base.css`, `lib/quartermaster/gui/css/board.css`, `lib/quartermaster/gui/css/epics.css`, `lib/quartermaster/gui/css/header.css`, `lib/quartermaster/gui/css/overlays.css`, `lib/quartermaster/gui/css/responsive.css`
+**Tests:** `test/gui_test.rb`, `test/gui_epic_test.rb`, `test/link_opener_test.rb`, `test/pf_test.rb`, `test/distill_test.rb`, `test/transcript_search_test.rb`, `test/error_log_test.rb`
 **Depends on:** [work-items](work-items.md), [attention](attention.md), [chats](chats.md), [worktrees](worktrees.md), [side-panel](side-panel.md)
 
 ## What it does
@@ -118,6 +118,16 @@ prompt, a derived tool digest (tallies + touched file basenames) and the reply's
 since Claude Code never persists its own per-turn summaries. Expired sessions degrade to
 capture metadata plus snapshots; inbox sessions resume via `resume-session` (the session's
 own cwd, no `QM_ITEM`). Esc closes the top sheet first.
+
+**Epics** (`epics.js`, derived client-side from `items` and `todos`; [work-items](work-items.md)): a card
+atop its own state's column with EPIC chip, rollup (items · open · open todos on it and its children),
+link chips (label's first letter, url in a tab), State ▾ / ⋯, the description's first line, its open
+children as rows (click: their chat), "n resolved" and its own open todos (tick: `todo-done`). The header
+folds it, remembered per browser. Its children leave their columns while its state is shown, else are
+cards tagged ◆. An epic matches a search when it or a child does. "✓ all done — resolve epic?" shows
+for children all resolved and no open todo on it or them; it runs the normal state change. Actions
+(`GuiEpicActions`): `new` with `kind`/`epic` (New item's toggle and picker), `epic-set` (⋯ → Epic…,
+empty clears), `link-set` / `link-remove` (an epic's detail sheet Links section).
 
 **Keyboard map** (board): `j`/`k` move, `h`/`l` column, `/` search, `c` new item, Enter
 chat, `r` resume, `n` new session, `o` PR, `s` state, `a` note, `.` more, Esc close;

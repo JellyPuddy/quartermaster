@@ -261,7 +261,7 @@ class GuiIssueStartTest < Minitest::Test
     html = page
     ['cmd: "issue-preview"', "function issueStartModal(number, project, { from = null } = {})",
      "renderIssueStartPreview(box, res.issue, from)", "if (openModal !== shown) return;"].each { |seam| assert_includes html, seam }
-    assert_includes html, "m.append(tf, pf, df, issueFromNewItemRow());", "＋ New item: the From issue row"
+    assert_includes html, "m.append(kindRow, tf, pf, epicField, df, issueFromNewItemRow());", "＋ New item: the From issue row"
     assert_includes html, "issueStartModal(ref.number, ref.project || row.querySelector(\"select\").value || null);"
     assert_includes html, 'else if (issueRef(query)) startFromSearch(); else runAsk();', "⏎ on #1234 starts work, not an ask"
     assert_includes html, '<button type="button" id="search-menu-issue" hidden></button>'
