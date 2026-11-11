@@ -39,6 +39,8 @@ class IssueLinksTest < Minitest::Test
            "see <https://a.example/1> and https://a.example/2\n####### Design\n## Other\nhttps://b.example/3"
     assert_equal design("https://a.example/1"), links({ "body" => body }), "any level, any case; a non-heading line is text"
     assert_empty links({ "body" => "## Design\n## Mockups\nhttps://b.example/3" }), "the first matching heading only"
+    assert_equal design("https://c.example/4"), links({ "body" => "## Design\n[https://c.example/4](https://c.example/4)" }),
+                 "a markdown link whose text is the URL"
   end
 
   def test_tracker_notion_then_headings_each_url_and_label_once

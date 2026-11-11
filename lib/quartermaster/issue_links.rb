@@ -13,7 +13,7 @@ module Quartermaster
     NOTION_URL = %r{https?://(?:[\w-]+\.)*notion\.(?:so|com)/[^\s)>\]]+}i
     HTML_COMMENT = /<!--.*?(?:-->|\z)/m
     HEADING = /^ {0,3}\#{1,6}(?:[ \t]+(.*?))?[ \t#]*$/
-    BODY_URL = %r{https?://[^\s)<>]+}i
+    BODY_URL = %r{https?://[^\s)<>\]]+}i
 
     def initialize(settings)
       @settings = settings
