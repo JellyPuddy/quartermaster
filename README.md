@@ -23,7 +23,8 @@ work item with its chat started (`w`). It shows each epic as an outline (its tod
 and theirs, a "+ todo" line, foldable) above the todos in no epic, and a todo's ⋯ menu moves it
 onto an epic or item, or off it. Ticking stays one click (`x`); `⇧X` or ⋯ → Done with outcome…
 ticks it with an outcome, which the Done section shows beside the todo and ⋯ → Outcome… changes.
-Done todos stay in the list until you delete them.
+Done todos stay in the list until you delete them; on an epic or item (the Todos outline, the
+board's epic card, the chat side panel) they fold under "✓ n done", to look back on or untick.
 
 Bigger work can be grouped into **epics**: an epic is a work item of its own (`qm new "Title"
 --kind epic`), and an item joins one with `qm new "Title" --epic EPIC` or `qm epic SLUG EPIC`

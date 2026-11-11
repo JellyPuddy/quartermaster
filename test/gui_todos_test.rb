@@ -222,6 +222,55 @@ class GuiTodosTest < Minitest::Test
     assert_equal ["open top", "open low"] + (4..23).to_a.reverse.map { |n| "done #{n}" }, texts
   end
 
+  # Plan decision 1: a done todo on an item comes through however old, so its
+  # item and epic can still show it; one on no item stops at the 20 newest.
+  def test_state_also_carries_every_done_todo_on_an_item_newest_first
+    item = Quartermaster::WorkItem.create("Fix the login", project: "WebApp")
+    clock = Time.utc(2026, 11, 10, 9, 0, 0)
+    list = Quartermaster::TodoList.new(clock: -> { clock += 60 })
+    on_item = list.add("oldest, on the item", item: item.slug)["id"]
+    loose = list.add("old, on nothing")["id"]
+    list.done(on_item)
+    list.done(loose)
+    (1..20).map { |n| list.add("done #{n}")["id"] }.each { |id| list.done(id) }
+    list.add("open top")
+
+    assert_equal ["open top"] + (1..20).to_a.reverse.map { |n| "done #{n}" } + ["oldest, on the item"], texts
+    assert_equal [item.slug, "Fix the login"], todos.last.values_at("item", "itemTitle")
+  end
+
+  # Plan decision 2: the Done section still shows the 20 newest done overall
+  # (the payload's first 20 done), filtered, not every done todo on an item.
+  def test_the_done_section_shows_only_the_twenty_newest_done
+    html = page
+
+    assert_includes html, "const todoVisibleDone = () => todos.filter(t => t.done_at).slice(0, TODO_DONE_SHOWN).filter(todoMatches);"
+    assert_includes html, "const TODO_DONE_SHOWN = 20;"
+    assert_equal 20, Quartermaster::TodoList::DONE_SHOWN
+  end
+
+  # Plan decisions 3-6, 8: one "✓ n done" fold, drawn by epics.js, under the
+  # open todos on the epic card, the chat side panel's Epic block and the
+  # Todos outline; unticking reopens the todo.
+  def test_done_todos_fold_under_the_epic_card_side_panel_and_outline
+    html = page
+    fold = page_function(html, "appendDoneTodos")
+
+    assert_includes html, "const doneTodosOn = slug => todos.filter(t => t.done_at && t.item === slug);"
+    ["`✓ ${done.length} done`", 'act("todo-done", { args: { id: t.id, done: false } })', "box.checked = true;",
+     '"done-todo-outcome", "→ " + esc(t.outcome)'].each { |seam| assert_includes fold, seam }
+    assert_includes page_function(html, "epicCard"), 'appendDoneTodos(c, "card", e.slug);'
+    assert_includes page_function(html, "epicCard"), 'ev.target.closest("a, .epic-todo, .done-todos")', "a click there neither folds the card nor opens a chat"
+    side = page_function(html, "chatEpicTodoList")
+    assert_includes side, 'appendDoneTodos(sec, "side", slug);'
+    assert_includes side, "if (onlyWhenAny && !open.length && !doneTodosOn(slug).length) return;"
+    node = page_function(html, "todoEpicNode")
+    assert_includes node, 'appendDoneTodos(node, "outline", e.slug);'
+    assert_includes node, 'appendDoneTodos(node, "outline child", c.item.slug);'
+    assert_includes html, ".done-todos.open .done-todo {"
+    assert_operator html.index("/assets/js/epics.js"), :<, html.index("/assets/js/chat-epic.js")
+  end
+
   def test_an_empty_list_is_an_empty_array
     assert_equal [], todos
   end

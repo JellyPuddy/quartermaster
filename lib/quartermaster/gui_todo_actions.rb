@@ -43,12 +43,13 @@ module Quartermaster
       ok.merge("slug" => item.slug, "mode" => plan[:mode].to_s)
     end
 
-    # The state's todos: the open ones in order, then the newest done. A
-    # todo on an item shows that item's project and title; a deleted item
+    # The state's todos: the open ones in order, then the done ones newest
+    # first (the newest few, and every one on an item, for its item and epic).
+    # A todo on an item shows that item's project and title; a deleted item
     # leaves only its slug. One read of todos.json per state build.
     def self.payload(list = TodoList.new, items: WorkItem.all.to_h { |item| [item.slug, item] })
       all = list.todos
-      (list.open(all) + list.done_recent(all)).map do |todo|
+      (list.open(all) + list.done_shown(all)).map do |todo|
         item = items[todo["item"]]
         { "id" => todo["id"], "text" => todo["text"], "created" => todo["created"], "done_at" => todo["done_at"],
           "outcome" => todo["outcome"], "item" => todo["item"], "project" => item ? item.project : todo["project"], "itemTitle" => item&.title }

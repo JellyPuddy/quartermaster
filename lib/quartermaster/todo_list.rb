@@ -25,7 +25,7 @@ module Quartermaster
       []
     end
 
-    # all: an array from #todos, so one read can feed both #open and #done_recent.
+    # all: an array from #todos, so one read can feed #open, #done_recent and #done_shown.
     def open(all = todos) = all.reject { |t| t["done_at"] }
 
     # Size and mtime of todos.json, "0" without one: the GUI's pulse moves
@@ -37,8 +37,12 @@ module Quartermaster
       "0"
     end
 
-    def done_recent(all = todos, limit: DONE_SHOWN)
-      all.select { |t| t["done_at"] }.sort_by { |t| t["done_at"].to_s }.reverse.first(limit)
+    def done_recent(all = todos, limit: DONE_SHOWN) = done_newest_first(all).first(limit)
+
+    # The done todos an item or epic still shows, newest first: the
+    # #done_recent ones plus every one on an item, however old.
+    def done_shown(all = todos)
+      done_newest_first(all).each_with_index.filter_map { |t, i| t if i < DONE_SHOWN || t["item"] }
     end
 
     # item: a work-item slug (it must exist); the todo then shows the item's
@@ -104,6 +108,8 @@ module Quartermaster
     end
 
     private
+
+    def done_newest_first(all) = all.select { |t| t["done_at"] }.sort_by { |t| t["done_at"].to_s }.reverse
 
     def read_document
       data = File.exist?(@path) ? JSON.parse(File.read(@path)) : { "v" => VERSION, "todos" => [] }

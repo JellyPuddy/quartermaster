@@ -518,8 +518,8 @@ class GuiChatPaneTest < Minitest::Test
     assert_includes side, "if (!self && desc)", "the epic's description only for a child; the epic's own shows below"
     assert_includes side, %(const open = children.filter(c => c.state !== "resolved");)
     assert_includes side, "r.onclick = () => selectChat(c.slug);"
-    assert_includes side, %(if (!self) chatEpicTodoList(sec, "Todos on this item", openTodosOn(it.slug), true);)
-    assert_includes side, %(chatEpicTodoList(sec, "Todos on the epic", openTodosOn(epic.slug), false);)
+    assert_includes side, %(if (!self) chatEpicTodoList(sec, "Todos on this item", it.slug, true);)
+    assert_includes side, %(chatEpicTodoList(sec, "Todos on the epic", epic.slug, false);)
     assert_includes side, "linkChips(epic)"
     assert_includes side, "const suggest = resolveSuggestion(epic);"
     assert_includes page_function(page, "chatEpicTodoList"), '{ box.blur(); act("todo-done", { args: { id: t.id, done: true } }); }',

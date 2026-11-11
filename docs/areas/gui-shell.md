@@ -121,8 +121,8 @@ own cwd, no `QM_ITEM`). Esc closes the top sheet first.
 **Epics** (`epics.js`, derived client-side from `items` and `todos`; [work-items](work-items.md)): a card
 atop its own state's column with EPIC chip, rollup (items · open · open todos on it and its children),
 link chips (label's first letter, http(s) url in a tab), State ▾ / ⋯, the description's first line, its
-open children as rows (click: their chat), "n resolved" and its own open todos (tick: `todo-done`). The
-header folds it, remembered per browser. Its children leave their columns while its state is shown, else
+open children as rows (click: their chat), "n resolved", its own open todos (tick: `todo-done`) and their folded "✓ n done" line
+(`appendDoneTodos`, [todos](todos.md); its clicks neither fold the card nor open a chat). The header folds it, remembered per browser. Its children leave their columns while its state is shown, else
 cards tagged ◆. An epic matches a search when it or a child does. "✓ all done — resolve epic?" shows for
 children all resolved and no open todo on it or them; it runs `changeState` (cleanup plan and all). Chats and Todos reuse these helpers (`epicOf`, `resolveSuggestion`, …) and `epics.css`'s EPIC chip.
 **Link chips on every item** (`links.js`, `links.css`): the one `linkChips(it)` sits on an epic card's head and also on a normal card's top line, an epic's child rows, the chats side panel's Item head and the Todos outline's item rows; it ends in **↻ links** for any item that `describesIssue(it)` (a GitHub issue URL in its description, or a title ending `(#N)`; the server's `IssueStart#issue_of`, minus the project's repo the client can't know, so a repo-less project's `(#N)` item gets the button and the server's error), and is empty (hidden, `:empty`) with neither links nor an issue, so a plain card stays as it was. ↻ links posts `links-refresh`. The detail sheet's Links editor (`linksEditor`, its half-typed link in `linkDraft`) lives there too.

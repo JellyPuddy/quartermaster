@@ -26,7 +26,8 @@ through `AtomicFile`, so the CLI and the GUI both write it directly; reads take 
 to a neighbour by id, so a reorder in a filtered view lands in the right place of the whole list.
 
 **Done.** Ticking sets `done_at`; the todo stays in the file, and unticking clears it.
-`open` is the open todos in order; `done_recent` the 20 newest done ones by `done_at`.
+`open` is the open todos in order; `done_recent` the 20 newest done ones by `done_at`;
+`done_shown` those plus every done todo on an item, however old, newest first.
 `done(id, item:, outcome:)` also ties the todo to the work item it became, dropping its project,
 and a non-blank `outcome` records how or why it ended (nil or blank leaves an earlier one).
 `edit(id, outcome:)` sets it, `""` clears it, on an open or a done todo. Unticking keeps the
@@ -57,7 +58,7 @@ item); it replies `{slug, mode}` like `pane-start`, for the page to switch to th
 chat. An unknown todo or a blank title is refused before anything is made. It creates an item,
 so it runs under the action mutex, not in `UNLOCKED`; it takes no GuiJobs job (nothing in it
 takes seconds). The state's `todos` is `GuiTodoActions.payload`: the open todos in order, then
-`done_recent`, each `{id, text, created, done_at, outcome, item, project, itemTitle}` where `project` is
+`done_shown` (so an item or epic still shows its done todos), each `{id, text, created, done_at, outcome, item, project, itemTitle}` where `project` is
 the item's when the todo has one (the todo's own otherwise) and `itemTitle` names that item (nil
 for a deleted one). `TodoList#signature` (todos.json's size+mtime) is part of the pulse and
 `/api/pulse`'s own `todos` field, so a CLI add reaches an open page within a second.
@@ -68,8 +69,8 @@ row (text + project picker; the picker defaults to the last project added under 
 is on, remembered per browser in `localStorage` `qm-todo-project`, and to the filtered project
 while a project filter is), a filter row (All / no project / one chip per project with open
 todos), the epic outline (`todos-outline.js`), the todos in no epic in order (under a "Not in an
-epic" head while an epic shows), then a collapsed Done section (the 20 newest; unticking
-reopens one). A row: checkbox, text, project tag, an item chip (the item's title; a click opens
+epic" head while an epic shows), then a collapsed Done section (the 20 newest done overall,
+the state's first 20 done, that the filter matches; unticking reopens one). A row: checkbox, text, project tag, an item chip (the item's title; a click opens
 its chat), a drag handle and a ⋯ menu (Edit, Done with outcome… or, once done, Outcome…, → Work
 item, Delete). A todo whose item has gone shows the slug. A done row with an outcome shows it
 after the struck-through text as `→ outcome`, muted and not struck. **The outcome input**
@@ -91,12 +92,17 @@ state dot, title, "n items · n open · n todos", a chip per http(s) link with i
 letter, and "✓ all done — resolve
 epic?" when every child is resolved and no todo is open on it or them; chips are `links.js`'s and the suggestion
 `epics.js`'s, so resolving opens the cleanup plan as on the board),
-the epic's own open todos, a "+ todo on <epic>" line (an inline input; Enter posts `todo-add`
+the epic's own open todos, then its **done line** (below), a "+ todo on <epic>" line (an inline input; Enter posts `todo-add`
 with `item` = the epic), its open child items as compact rows (state dot, title, live, their link chips,
 sessions, open-todo count; a click opens the chat; dragged onto another epic's node it moves
 there, onto the outline outside every node it leaves its epic, `epic-set` via `epic-drop.js`, a
-separate drag from a todo's) each followed by its todos, a resolved child
-only while it has an open todo, then "n resolved items". A todo in the outline shows no project
+separate drag from a todo's) each followed by its todos and done line, a resolved child
+only while it has an open todo, then "n resolved items". **The done line**
+(`appendDoneTodos` in `epics.js`, also under the board's epic card and the chat side panel's
+Epic block): with n > 0 done todos on that item, "✓ n done", folded; a click unfolds them,
+newest first, ticked and struck, `→ outcome` muted, and unticking posts `todo-done {id, done:
+false}`. Unfolded per surface and slug for the page's life. Rollups, counts, the resolve
+suggestion and `j`/`k` count open todos only. A todo in the outline shows no project
 tag or item chip: its place says both. A click on the head folds the node, remembered per
 browser (`qm-todo-epics-collapsed`). A todo is in an epic when its item is the epic or a child of
 it; a dangling `epic:` is none. Keys
@@ -128,7 +134,7 @@ when the user asks, or something needs their own hands outside the session, `qm 
   `FailureLog::SUCCESS_REPORTING` and `LASTING` ([capture](capture.md)), every good read (a
   missing file is one) calls `log_success("todos")`, so the fix writes one `recovered` line.
 - A state build reads `todos.json` once: `GuiTodoActions.payload` passes one `todos` array to
-  `open(all)` and `done_recent(all)`.
+  `open(all)` and `done_shown(all)`.
 - Writes always go through `TodoList`'s flock; never write `todos.json` another way.
 
 ## Data
