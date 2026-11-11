@@ -1,6 +1,6 @@
 # Work items
 
-**Code:** `lib/quartermaster/work_item.rb`, `lib/quartermaster/work_item_epic.rb`, `lib/quartermaster/work_item_links.rb`, `lib/quartermaster/atomic_file.rb`, `lib/quartermaster/note.rb`, `lib/quartermaster/attention.rb`, `lib/quartermaster/item_deletion.rb`
+**Code:** `lib/quartermaster/work_item.rb`, `lib/quartermaster/work_item_epic.rb`, `lib/quartermaster/work_item_links.rb`, `lib/quartermaster/work_item_file.rb`, `lib/quartermaster/atomic_file.rb`, `lib/quartermaster/note.rb`, `lib/quartermaster/attention.rb`, `lib/quartermaster/item_deletion.rb`
 **Tests:** `test/work_item_test.rb`, `test/automation_items_test.rb`, `test/item_deletion_test.rb`, `test/attention_test.rb`, `test/distill_test.rb`, `test/history_rotation_test.rb`
 **Depends on:** [capture](capture.md)
 
@@ -129,6 +129,9 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
   it, keeping the file's mode), so readers that take no lock — the GUI, the viewer, `qm list`,
   every mutator's first `find` — see the old or the new item, never a truncated one. A plain
   `File.write` let concurrent `qm note`s fail with "malformed work item file".
+- **An item file is parsed once per version** (`WorkItemFile`, keyed on its mtime, ctime, size,
+  inode), so any write shows on the next read. Readers get a deep-copied front and the frozen
+  body; sections and notes derived from it live and die with that version.
 - **The stored note format is parsed and written only by `Note`** (`NOTE_LINE`). The kind
   marker is omitted for the default, so pre-kind notes and ordinary notes read identically —
   no migration was needed.

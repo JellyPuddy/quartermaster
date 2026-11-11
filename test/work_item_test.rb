@@ -573,3 +573,85 @@ class EpicTest < Minitest::Test
                  find("child-one").to_h.slice("kind", "epic", "links"))
   end
 end
+
+# Item files are parsed once per version of the file (WorkItemFile): a GUI
+# state build reads every item several times, and a qm write must still show
+# on the very next read.
+class WorkItemFileTest < Minitest::Test
+  include QmTestHelpers
+
+  def path = Quartermaster::WorkItem.path_for("cached")
+
+  def reads_of(path)
+    reads = 0
+    File.define_singleton_method(:read) do |*args, **opts|
+      reads += 1 if args.first == path
+      IO.read(*args, **opts)
+    end
+    yield
+    reads
+  ensure
+    File.singleton_class.send(:remove_method, :read)
+  end
+
+  def test_an_unchanged_item_file_is_parsed_once
+    Quartermaster::WorkItem.create("Cached", project: "Nowhere")
+    Quartermaster::WorkItem.find("cached")
+
+    assert_equal 0, reads_of(path) { Quartermaster::WorkItem.find("cached") && Quartermaster::WorkItem.all }
+  end
+
+  def test_a_qm_write_shows_on_the_next_read
+    Quartermaster::WorkItem.create("Cached", project: "Nowhere")
+    Quartermaster::WorkItem.all
+    Quartermaster::WorkItem.find("cached").add_note("later")
+    Quartermaster::WorkItem.find("cached").update_state("fridge")
+
+    item = Quartermaster::WorkItem.all.find { |i| i.slug == "cached" }
+    assert_equal ["later"], item.notes.map(&:text)
+    assert_equal "fridge", item.state
+  end
+
+  def test_a_same_size_edit_by_hand_shows_on_the_next_read
+    Quartermaster::WorkItem.create("Cached", project: "Nowhere")
+    Quartermaster::WorkItem.find("cached")
+    File.write(path, File.read(path).sub("state: in_progress", "state: resolved_xx"))
+
+    assert_equal "resolved_xx", Quartermaster::WorkItem.find("cached").state
+  end
+
+  def test_changing_a_found_item_in_memory_leaves_the_next_read_alone
+    Quartermaster::WorkItem.create("Cached", project: "Nowhere", session_id: "s1")
+    item = Quartermaster::WorkItem.find("cached")
+    item.front["state"] = "resolved"
+    item.sessions << { "id" => "s2" }
+    assert_raises(FrozenError) { item.body << "scribble" }
+    item.notes << :scribble
+
+    fresh = Quartermaster::WorkItem.find("cached")
+    assert_equal "in_progress", fresh.state
+    assert_equal [{ "id" => "s1" }], fresh.sessions
+    assert_empty fresh.notes
+  end
+
+  def test_a_deleted_item_file_is_gone_on_the_next_read
+    Quartermaster::WorkItem.create("Cached", project: "Nowhere")
+    Quartermaster::WorkItem.all
+    File.delete(path)
+
+    assert_empty Quartermaster::WorkItem.all
+    assert_raises(ArgumentError) { Quartermaster::WorkItem.find("cached") }
+  end
+
+  def test_notes_follow_every_change_to_the_same_item
+    item = Quartermaster::WorkItem.create("Cached", project: "Nowhere")
+    item.add_note("first")
+    assert_equal ["first"], item.notes.map(&:text)
+
+    item.add_note("second", kind: "open")
+    assert_equal %w[second first], item.notes.map(&:text)
+    item.update_note_kind(1, "history")
+    assert_equal %w[open history], item.notes.map(&:kind)
+    assert_equal "second", item.headline_note.text
+  end
+end

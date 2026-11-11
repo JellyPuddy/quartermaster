@@ -37,8 +37,11 @@ module Quartermaster
       end
     end
 
+    # Indexed per read of the log: a state build asks for every item's sessions.
     def session_for(session_id)
-      sessions.find { |s| s.id == session_id }
+      list = sessions
+      @by_id = [list, list.to_h { |s| [s.id, s] }] unless @by_id&.first.equal?(list)
+      @by_id.last[session_id]
     end
 
     def dismiss(session_id)

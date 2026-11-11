@@ -165,6 +165,17 @@ class GuiTest < Minitest::Test
     end
   end
 
+  def test_a_qm_write_to_an_item_shows_on_the_next_state
+    Quartermaster::WorkItem.create("Echo", project: "Nowhere")
+    server = gui
+    server.respond("GET", "/api/state", ok_host, "")
+    Quartermaster::WorkItem.find("echo").add_note("fresh note")
+    Quartermaster::WorkItem.find("echo").update_state("resolved")
+
+    echo = JSON.parse(server.respond("GET", "/api/state", ok_host, "")[2])["items"].find { |i| i["slug"] == "echo" }
+    assert_equal ["resolved", "fresh note"], [echo["state"], echo["note"]["text"]]
+  end
+
   def test_state_asks_pr_states_through_the_guis_pr_fetcher
     configure_projects({ "Repo" => Dir.pwd })
     Quartermaster::WorkItem.create("Echo", project: "Repo", branch: "issue/4-echo")

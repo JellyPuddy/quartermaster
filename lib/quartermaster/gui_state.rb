@@ -62,7 +62,7 @@ module Quartermaster
       bench_runs = BenchmarkRun.all
       context = { log: log, attention: attention, live_ids: live_ids, project_map: project_map, bench_runs: bench_runs,
                   worktrees: worktrees, pr_status: pr_status, pf: pf, panes: panes, prices: PriceTable.load,
-                  aside_counts: log.sessions.filter_map(&:aside_for).tally }
+                  asides: log.sessions.select(&:aside_for).group_by(&:aside_for) }
       work_items = WorkItem.all
       items = work_items.map { |item| item_payload(item, context) }
       building = active_build_agents(work_items, log)
@@ -279,7 +279,7 @@ module Quartermaster
       benchmarkable = BenchmarkRun.enabled?(item)
       item.to_h.merge(
         "updated" => attention.activity_at(item).to_date.to_s,
-        "live" => (item.to_h["session_ids"] & context[:live_ids]).any?,
+        "live" => (item.sessions.map { |s| s["id"] } & context[:live_ids]).any?,
         "badges" => attention.entries_for(item).map { |e| { "type" => e.badge, "label" => e.message } },
         # The card's one-liner should say where the item stands, so prefer an open
         # item, then the newest note that isn't pure mechanics.
@@ -298,7 +298,7 @@ module Quartermaster
         "pane" => context[:panes].include?(item.slug),
         "aside" => context[:panes].include?(Aside.session_name(item.slug)),
         # The Aside button's count; the asides themselves load with the drawer.
-        "asideCount" => context[:aside_counts].fetch(item.slug, 0),
+        "asideCount" => context[:asides].fetch(item.slug, []).size,
         "boardRows" => item.board ? BoardMirror.shared.rows_for(item) : [],
         # The chat history reloads when this or the earlier sessions change.
         "rotations" => item.rotations.size,
@@ -338,7 +338,8 @@ module Quartermaster
     # Tokens and API-equivalent cost (docs/areas/side-panel.md); nil for an item without
     # sessions. A failure here must never cost the whole state build.
     def usage_payload(item, context)
-      usage = ItemUsage.for(item, session_log: context[:log], ledger: @usage_ledger, prices: context[:prices])
+      usage = ItemUsage.for(item, session_log: context[:log], ledger: @usage_ledger, prices: context[:prices],
+                                  asides: context[:asides].fetch(item.slug, []))
       return nil if usage.empty?
 
       payload = usage.to_h

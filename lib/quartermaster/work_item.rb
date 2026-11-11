@@ -81,19 +81,12 @@ module Quartermaster
       ProjectConfig.current.settings(project).dev_server!.check_mode!(mode)
     end
 
-    def self.find(slug)
-      path = path_for(slug)
-      raise ArgumentError, "no work item '#{slug}'" unless File.exist?(path)
-
-      match = File.read(path).match(/\A---\n(.*?)\n---\n(.*)\z/m)
-      raise ArgumentError, "malformed work item file #{path}" unless match
-
-      front = YAML.safe_load(match[1], permitted_classes: [Date]) || {}
-      new(slug, front, match[2])
-    end
+    def self.find(slug) = new(slug, *WorkItemFile.read(path_for(slug), slug))
 
     def self.all
-      Dir[File.join(WORK_ITEMS_DIR, "*.md")].sort.map { |path| find(File.basename(path, ".md")) }
+      paths = Dir[File.join(WORK_ITEMS_DIR, "*.md")].sort
+      WorkItemFile.forget_all_but(paths)
+      paths.map { |path| find(File.basename(path, ".md")) }
     end
 
     # The work item a session is linked to, or nil. A session normally belongs to
@@ -447,13 +440,16 @@ module Quartermaster
 
     # Newest first, the order the GUI's timeline and card preview expect. 'position' is the note's 1-based place in the file — the
     # handle `qm retag` takes, stable regardless of which end a reader counts from.
+    # Parsed once per body (WorkItemFile.derived): a state build asks for them several times per item.
     def notes
-      stored = []
-      section_body("## Notes").lines.each do |line|
-        note = Note.parse(line, position: stored.size + 1)
-        stored << note if note
-      end
-      stored.reverse
+      WorkItemFile.derived(body, :notes) do
+        stored = []
+        section_body("## Notes").lines.each do |line|
+          note = Note.parse(line, position: stored.size + 1)
+          stored << note if note
+        end
+        stored.reverse.freeze
+      end.dup
     end
 
     # The one note a surface shows when it can show only one: the newest open
@@ -545,11 +541,11 @@ module Quartermaster
     end
 
     def section_body(heading)
-      lines = body.lines
-      idx = lines.index { |l| l.start_with?(heading) }
-      return "" unless idx
-
-      lines[(idx + 1)...section_end(lines, idx)].join
+      WorkItemFile.derived(body, heading) do
+        lines = body.lines
+        idx = lines.index { |l| l.start_with?(heading) }
+        idx ? lines[(idx + 1)...section_end(lines, idx)].join.freeze : ""
+      end
     end
 
     def store_branches(list)

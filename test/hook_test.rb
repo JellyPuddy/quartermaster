@@ -128,6 +128,16 @@ class HookTest < Minitest::Test
     assert_operator event["duration_s"], :>=, 0
   end
 
+  def test_a_session_log_finds_a_session_its_own_write_added_after_a_lookup
+    log = Quartermaster::SessionLog.new
+    log.append("event" => "start", "session_id" => "s-a", "ts" => "2026-11-01T10:00:00Z", "pid" => 0)
+    assert_equal "s-a", log.session_for("s-a").id
+    assert_nil log.session_for("s-b")
+
+    log.append("event" => "start", "session_id" => "s-b", "ts" => "2026-11-01T11:00:00Z", "pid" => 0)
+    assert_equal "s-b", log.session_for("s-b").id
+  end
+
   def test_hooks_swallow_malformed_input_instead_of_blocking_the_session
     stdout, stderr, status = run_hook("hook-session-start", "not json at all")
 

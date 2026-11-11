@@ -66,6 +66,7 @@ module QmTestHelpers
     Quartermaster::FailureLog.reset
     # Each test's transcripts dir starts empty, so what a prior test found or missed is void.
     Quartermaster::TranscriptMemo.clear
+    Quartermaster::WorkItemFile.clear
   end
 
   def run_hook(command, stdin, env = {})

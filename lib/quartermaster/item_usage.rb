@@ -9,9 +9,11 @@ module Quartermaster
   class ItemUsage
     attr_reader :rows
 
-    def self.for(item, session_log: SessionLog.new, ledger: UsageLedger.new, prices: PriceTable.load)
+    # `asides`: the item's aside sessions in log order, when the caller already grouped them.
+    def self.for(item, session_log: SessionLog.new, ledger: UsageLedger.new, prices: PriceTable.load,
+                 asides: session_log.sessions.select { |s| s.aside_for == item.slug })
       sessions = Quartermaster.item_sessions(item, session_log: session_log)
-      asides = session_log.sessions.select { |s| s.aside_for == item.slug }.sort_by { |s| s.started_ts.to_s }.reverse
+      asides = asides.sort_by { |s| s.started_ts.to_s }.reverse
       rows = sessions.map { |s| row(s, false, ledger, prices) } + asides.map { |s| row(s, true, ledger, prices) }
       new(rows)
     end
