@@ -15,6 +15,22 @@
 .is-state { font-family: var(--mono); font-size: 11.5px; border-radius: 20px; padding: 1px 8px; }
 .is-state.open { color: var(--good); background: var(--good-bg); }
 .is-state.closed { color: var(--warn); background: var(--warn-bg); }
+.issue-start-modal .is-epic-badge { margin-right: 7px; vertical-align: 1px; }
+.is-epic-switch { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--ink); margin: -2px 0 12px; cursor: pointer; }
+.is-epic-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.is-switch-track {
+  flex: none; position: relative; width: 28px; height: 16px; border-radius: 10px;
+  background: var(--border-strong); transition: background .15s;
+}
+.is-switch-track::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--surface); transition: transform .15s;
+}
+.is-epic-switch input:checked + .is-switch-track { background: var(--accent); }
+.is-epic-switch input:checked + .is-switch-track::after { transform: translateX(12px); }
+.is-epic-switch input:focus-visible + .is-switch-track { outline: 2px solid var(--accent-line); outline-offset: 2px; }
+.is-switch-hint { color: var(--faint); font-size: 11.5px; }
+.is-none { color: var(--faint); margin-right: 6px; }
 .is-warn, .is-note, .is-error { font-size: 12.5px; line-height: 1.5; border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 10px; }
 .is-warn { color: var(--warn); background: var(--warn-bg); }
 .is-note { color: var(--muted); background: var(--surface-2); }

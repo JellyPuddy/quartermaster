@@ -408,21 +408,35 @@ class GuiIssueStartTest < Minitest::Test
   def test_the_confirmation_shows_state_branch_project_and_the_held_item
     html = page
     ['iss.closed ? "closed" : "open"', "This issue is closed on GitHub. You can still start work on it.",
-     'fact("Branch"', 'fact("Project", esc(iss.project));', 'iss.existing ? "Open its chat" : "Start"',
+     'fact("Branch"', 'fact("Project", esc(iss.project));', 'iss.existing ? (iss.existing.epic ? "Open the epic" : "Open its chat")',
      'act("issue-start"'].each { |seam| assert_includes html, seam }
   end
 
   def test_start_follows_the_job_into_the_new_items_chat_or_opens_the_held_one
     html = page
-    assert_includes html, 'act("issue-start", { args: { number: iss.number, project: iss.project, from } })'
+    assert_includes html, 'act("issue-start", { args: { number: iss.number, project: iss.project, from, as_epic: asEpic } })'
     assert_includes html, 'toast(`#${iss.number} is already ${r.slug}: opened its chat`);', "A4 says so"
-    assert_includes html, "if (!iss.existing) issueStarting.add(iss.slug);", "marked before act's refresh can carry the finish"
+    assert_includes html, "if (!iss.existing && !asEpic) issueStarting.add(iss.slug);", "marked before act's refresh can carry the finish"
     assert_includes html, "issueStartFinished(r);\n}", "jobFinished hands every finish over"
     assert_includes html, "if (r.ok) setTimeout(() => openItemChat(r.slug || r.key), 0);"
     assert_match(/if \(!issueStarting\.has\(r\.slug\)\) \{[^}]*if \(openModal === shown\) closeModal\(\);/, html,
                  "a job finished within act's own refresh still closes the confirmation")
     assert_includes html, "line.querySelector(\".is-label\").textContent = job ? job.label", "progress from the job's label"
     assert_includes html, "openModal.onClose = () => clearInterval(timer);"
+  end
+
+  def test_an_epic_issue_previews_with_the_badge_and_an_on_switch_and_starting_it_opens_the_epic
+    html = page
+    assert_includes html, 'if (iss.epic) m.querySelector(".sub").prepend(el("span", "epic-kind is-epic-badge", "◆ Epic"));'
+    assert_includes html, "const asEpicSwitch = iss.epic && !iss.existing ? issueEpicSwitch() : null;",
+                    "every entry point: the switch lives in the one preview they all end in"
+    assert_includes html, '<input type="checkbox" role="switch" checked>', "on by default"
+    assert_includes html, "startIssue(m, iss, from, asEpic())", "Start sends the switch"
+    assert_includes html, 'dd.appendChild(linkChips({ links: iss.links || [] }));', "the would-be links, as epics.js draws them"
+    assert_match(/if \(r\.epic\) \{\n\s*if \(openModal === shown\) closeModal\(\);\n.*\n\s*openItemChat\(r\.slug\);/, html,
+                 "an epic opens at once, no job")
+    assert_includes html, "if (isEpic(it)) { chatSlug = it.slug; setMode(\"chat\"); selectChat(it.slug); } else openChat(it);",
+                    "an epic opens on its Epic block, the terminal unfocused"
   end
 
   def test_created_drafts_offer_start_work_or_link_the_item_they_became
