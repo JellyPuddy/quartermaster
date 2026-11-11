@@ -1,6 +1,6 @@
 # Todos
 
-**Code:** `lib/quartermaster/todo_list.rb`, `lib/quartermaster/cli_todo.rb`, `lib/quartermaster/gui_todo_actions.rb`, `lib/quartermaster/gui/js/todos.js`, `lib/quartermaster/gui/css/todos.css`
+**Code:** `lib/quartermaster/todo_list.rb`, `lib/quartermaster/cli_todo.rb`, `lib/quartermaster/gui_todo_actions.rb`, `lib/quartermaster/gui/js/todos.js`, `lib/quartermaster/gui/js/todos-outline.js`, `lib/quartermaster/gui/css/todos.css`
 **Tests:** `test/todo_list_test.rb`, `test/gui_todos_test.rb`
 **Depends on:** [work-items](work-items.md), [linking](linking.md), [cli](cli.md), [gui-shell](gui-shell.md)
 
@@ -15,7 +15,9 @@ ordered array whose order is the priority (index 0 on top). A todo is `id` (8 he
 `text` (one line: whitespace runs, newlines included, become one space; required), `created`
 (UTC ISO-8601), `done_at` (UTC ISO-8601, absent while open), and either `item` (a work-item
 slug) or `project` (any string). A todo on an item stores no project: it shows the item's.
-No due dates, priorities, tags or body. Every change (`add`, `edit`, `move`, `done`, `undone`,
+No due dates, priorities, tags or body. `edit(id, item:)` moves a todo onto an item (an
+unknown slug is refused) or, with `""`, off it: the todo then keeps the project it showed (the
+item's, none for `ProjectMap::NO_PROJECT` or a gone item). Every change (`add`, `edit`, `move`, `done`, `undone`,
 `delete`) holds an exclusive `flock` on `todos.lock`, re-reads the file and rewrites it whole
 through `AtomicFile`, so the CLI and the GUI both write it directly; reads take no lock.
 
@@ -34,12 +36,14 @@ edit, move or delete.
 
 **GUI** (`GuiTodoActions`, through the normal action router and its Origin checks, not
 `LOCAL_ACTIONS`). `todo-add {text, project?, item?}` replies with the new todo;
-`todo-edit {id, text?, project?}` (an absent field stays, `project: ""` clears it);
+`todo-edit {id, text?, project?, item?}` (an absent field stays, `project: ""` clears it, `item`
+moves the todo as `TodoList#edit` does);
 `todo-move {id, before|after}` (a neighbour's id); `todo-done {id, done}` (`done: false`
 unticks); `todo-delete {id}`. They are in `GuiActions::UNLOCKED`: TodoList's flock already
 serialises them. `todo-to-item {id, title, project?, prompt?}` (`GuiTodoActions#to_item`) is
 the → Work item: it makes the item the way the board's new item does (`WorkItem.create`, no
-project → `ProjectMap::NO_PROJECT`), starts its chat the way the chat pane's Start does
+project → `ProjectMap::NO_PROJECT`; when the todo's item is an epic or a child of one, the new
+item gets `epic:` = that epic, so it lands inside it), starts its chat the way the chat pane's Start does
 (`Launcher#chat_plan` fresh, so in the project's main checkout, with a non-blank `prompt` as
 claude's argument, then `Tmux#open`), and marks the todo done with `item` = the new slug, its
 project dropped, before the chat starts (a failed start leaves the item's Start, not a second
@@ -57,11 +61,26 @@ the open count (never part of the tab title's count). One centred column: an alw
 row (text + project picker; the picker defaults to the last project added under while no filter
 is on, remembered per browser in `localStorage` `qm-todo-project`, and to the filtered project
 while a project filter is), a filter row (All / no project / one chip per project with open
-todos), the open todos in order, then a collapsed Done section (the 20 newest; unticking
+todos), the epic outline (`todos-outline.js`), the todos in no epic in order (under a "Not in an
+epic" head while an epic shows), then a collapsed Done section (the 20 newest; unticking
 reopens one). A row: checkbox, text, project tag, an item chip (the item's title; a click opens
-its chat), a drag handle and a ⋯ menu (Edit, → Work item, Delete). A todo whose item has gone shows the slug. Keys
-in the tab: `j`/`k` select, `⇧J`/`⇧K` move the todo past its neighbour *in the filtered list*
-(`todo-move` before/after that neighbour), `x` tick/untick, `e` edit inline (text, and the project
+its chat), a drag handle and a ⋯ menu (Edit, → Work item, Delete). A todo whose item has gone shows the slug. The ⋯ menu's "Move to epic / item…" is a filterable
+picker (type, Enter takes the first match) of the epics with their open children, the other
+open items, and "nothing (just its project)"; it posts `todo-edit {id, item}`.
+**The epic outline:** one node per epic (a resolved one only while a todo hangs in it; under a
+project filter, the epics of that project): a head (EPIC chip, state dot, title, "n items · n
+open · n todos", a chip per link with its label's first letter, and "✓ all done — resolve
+epic?" when every child is resolved and no todo is open on it or them, which posts `state`),
+the epic's own open todos, a "+ todo on <epic>" line (an inline input; Enter posts `todo-add`
+with `item` = the epic), its open child items as compact rows (state dot, title, live,
+sessions, open-todo count; a click opens the chat) each followed by its todos, a resolved child
+only while it has an open todo, then "n resolved items". A todo in the outline shows no project
+tag or item chip: its place says both. A click on the head folds the node, remembered per
+browser (`qm-todo-epics-collapsed`). A todo is in an epic when its item is the epic or a child of
+it; a dangling `epic:` is none. Keys
+in the tab: `j`/`k` select over the visible rows in drawn order, `⇧J`/`⇧K` move the todo past
+its neighbour *in its own group* (one item's todos, or the todos in no epic; `todo-move`
+before/after that neighbour, so the order is still the one priority list; drag likewise), `x` tick/untick, `e` edit inline (text, and the project
 unless the todo is on an item; Enter saves, Esc cancels), `w` → Work item, `⌫` delete (no
 confirm), `n` or `/` focus the add input, `c` new item. Neither key clashes: the board takes
 `/` only in its own mode. → Work item opens a dialog like the loose chat's: title and first

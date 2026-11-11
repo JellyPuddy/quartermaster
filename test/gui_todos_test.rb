@@ -67,6 +67,18 @@ class GuiTodosTest < Minitest::Test
     assert_nil todos.first["project"]
   end
 
+  def test_edit_moves_a_todo_to_an_epic_or_item_and_back_and_refuses_an_unknown_slug
+    epic = Quartermaster::WorkItem.create("Epic Alpha", project: "WebApp", front: { "kind" => "epic" })
+    id = act("todo-add", text: "write the brief", project: "Home")["todo"]["id"]
+
+    assert act("todo-edit", id: id, item: epic.slug)["ok"]
+    assert_equal [epic.slug, "WebApp", "Epic Alpha"], todos.first.values_at("item", "project", "itemTitle")
+    refute act("todo-edit", id: id, item: "no-such-item")["ok"]
+    assert_equal epic.slug, stored.first["item"]
+    assert act("todo-edit", id: id, item: "")["ok"]
+    assert_equal [nil, "WebApp"], stored.first.values_at("item", "project")
+  end
+
   def test_move_places_a_todo_before_or_after_a_neighbour
     c, b, a = %w[c b a].map { |t| act("todo-add", text: t)["todo"]["id"] }
     assert_equal %w[a b c], texts
@@ -130,6 +142,20 @@ class GuiTodosTest < Minitest::Test
     assert_match(/\A\d{4}-\d\d-\d\dT/, todo["done_at"])
   ensure
     FileUtils.rm_rf(root) if root
+  end
+
+  def test_to_item_on_an_epics_todo_or_a_childs_puts_the_new_item_in_that_epic
+    epic = Quartermaster::WorkItem.create("Epic Alpha", project: "WebApp", front: { "kind" => "epic" })
+    child = Quartermaster::WorkItem.create("First slice", project: "WebApp", front: { "epic" => epic.slug })
+    plain = Quartermaster::WorkItem.create("Lone item", project: "WebApp")
+    on_epic, on_child, on_plain = [epic, child, plain].map { |it| act("todo-add", text: "x", item: it.slug)["todo"]["id"] }
+
+    act("todo-to-item", id: on_epic, title: "From the epic", project: "WebApp")
+    act("todo-to-item", id: on_child, title: "From the child", project: "WebApp")
+    act("todo-to-item", id: on_plain, title: "From the lone item", project: "WebApp")
+
+    assert_equal [epic.slug, epic.slug, nil],
+                 %w[from-the-epic from-the-child from-the-lone-item].map { |slug| Quartermaster::WorkItem.find(slug).epic }
   end
 
   def test_to_item_without_a_prompt_starts_a_bare_chat
@@ -219,6 +245,18 @@ class GuiTodosTest < Minitest::Test
      "const open = todoVisibleOpen();",
      'act("todo-to-item", { args: { id: t.id, title, project, prompt: ta.value.trim() } })',
      "if (it) openChat(it);", 'localStorage.setItem("qm-todo-project", project)'].each { |seam| assert_includes html, seam }
+  end
+
+  def test_the_todos_tab_draws_the_epic_outline_and_moves_a_todo_with_todo_edit
+    html = page
+
+    ["renderTodoOutline(body);", "const todoVisibleOpen = () => todoOutlineRows();",
+     "const open = todoVisibleOpen().filter(r => todoGroup(r) === todoGroup(t));",
+     'act("todo-add", { args: { text, item: e.slug } })', 'act("todo-edit", { args: { id: t.id, item: o.slug } })',
+     'add("Move to epic / item…", () => todoMovePicker(anchor, t));', 'localStorage.setItem("qm-todo-epics-collapsed"',
+     '{ slug: "", label: "— nothing (just its project)", cls: "none" }', ".tde-node {"].each { |seam| assert_includes html, seam }
+    assert_operator html.index("/assets/js/todos.js"), :<, html.index("/assets/js/todos-outline.js")
+    assert_operator html.index("/assets/js/todos-outline.js"), :<, html.index("/assets/js/events.js")
   end
 
   def test_the_todos_badge_is_not_in_the_tab_title

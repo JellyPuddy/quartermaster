@@ -51,12 +51,18 @@ module Quartermaster
       todo
     end
 
-    # project: "" clears it; a todo on an item keeps none.
-    def edit(id, text: nil, project: nil)
+    # project: "" clears it; a todo on an item keeps none. item: a slug (it
+    # must exist) moves the todo onto that item; "" takes it off, keeping
+    # the project it showed.
+    def edit(id, text: nil, project: nil, item: nil)
+      target = item.to_s.empty? ? nil : WorkItem.find(item)
       change do |list|
         todo = find(list, id)
         todo["text"] = one_line(text) if text
-        attach(todo, item: todo["item"], project: project) unless project.nil?
+        if target then attach(todo, item: target.slug)
+        elsif item == "" && todo["item"] then attach(todo, project: project.nil? ? former_project(todo.delete("item")) : project)
+        elsif !project.nil? then attach(todo, item: todo["item"], project: project)
+        end
       end
     end
 
@@ -126,6 +132,13 @@ module Quartermaster
       else
         todo["project"] = project.strip
       end
+    end
+
+    def former_project(slug)
+      project = WorkItem.find(slug).project
+      project == ProjectMap::NO_PROJECT ? nil : project
+    rescue ArgumentError
+      nil
     end
 
     def find(list, id)

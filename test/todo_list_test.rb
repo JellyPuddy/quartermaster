@@ -168,6 +168,26 @@ class TodoListTest < Minitest::Test
     assert_raises(ArgumentError) { list.add("x", item: "no-such-item") }
   end
 
+  def test_edit_moves_a_todo_onto_an_item_and_off_it_keeping_the_items_project
+    Quartermaster::WorkItem.create("Ship it", project: "App")
+    todo = list.add("check the deploy", project: "Home")
+
+    list.edit(todo["id"], item: "ship-it")
+    assert_equal({ "item" => "ship-it" }, list.todos.first.slice("item", "project"))
+    list.edit(todo["id"], item: "")
+    assert_equal({ "project" => "App" }, list.todos.first.slice("item", "project"))
+  end
+
+  def test_edit_off_an_item_without_a_project_leaves_none_and_an_unknown_item_is_refused
+    Quartermaster::WorkItem.create("Loose thing", project: Quartermaster::ProjectMap::NO_PROJECT)
+    todo = list.add("think", item: "loose-thing")
+
+    assert_raises(ArgumentError) { list.edit(todo["id"], item: "no-such-item") }
+    assert_equal "loose-thing", list.todos.first["item"]
+    list.edit(todo["id"], item: "")
+    assert_equal({}, list.todos.first.slice("item", "project"))
+  end
+
   def qm(*argv)
     Open3.capture3({ "QM_ROOT" => Quartermaster::ROOT, "QM_ITEM" => "ship-it", "QM_ASIDE" => nil, "QM_LOOSE" => nil },
                    RbConfig.ruby, QM_BIN, "todo", *argv)

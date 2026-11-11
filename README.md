@@ -18,7 +18,9 @@ qm also keeps **your own to-do list**: things you must do yourself, often outsid
 session. `qm todo add "renew the passport" [--item SLUG | --project NAME]` puts one on top,
 `qm todo list` numbers the open ones in priority order, and `qm todo done N` ticks one off;
 the GUI's Todos tab (`t`) lists, filters by project, reorders and ticks them, and turns one into a
-work item with its chat started (`w`). Done todos stay in the list until you delete them.
+work item with its chat started (`w`). It shows each epic as an outline (its todos, its open items
+and theirs, a "+ todo" line, foldable) above the todos in no epic, and a todo's ⋯ menu moves it
+onto an epic or item, or off it. Done todos stay in the list until you delete them.
 
 Bigger work can be grouped into **epics**: an epic is a work item of its own (`qm new "Title"
 --kind epic`), and an item joins one with `qm new "Title" --epic EPIC` or `qm epic SLUG EPIC`

@@ -15,7 +15,7 @@ module Quartermaster
       return ok.merge("todo" => @list.add(args["text"], item: presence(args["item"]), project: args["project"])) if cmd == "todo-add"
 
       case cmd
-      when "todo-edit" then @list.edit(id(args), text: args["text"], project: args["project"])
+      when "todo-edit" then @list.edit(id(args), text: args["text"], project: args["project"], item: args["item"]&.to_s)
       when "todo-move" then @list.move(id(args), before: presence(args["before"]), after: presence(args["after"]))
       when "todo-done" then args["done"] == false ? @list.undone(id(args)) : @list.done(id(args))
       when "todo-delete" then @list.delete(id(args))
@@ -30,11 +30,12 @@ module Quartermaster
     # the action mutex like `new` and `pane-start`: it creates an item.
     def to_item(args, tmux:)
       todo_id = id(args)
-      @list.todos.find { |t| t["id"] == todo_id } or raise ArgumentError, "no todo '#{todo_id}'"
+      todo = @list.todos.find { |t| t["id"] == todo_id } or raise ArgumentError, "no todo '#{todo_id}'"
       title = args["title"].to_s.strip
       raise ArgumentError, "title is required" if title.empty?
 
-      item = WorkItem.create(title, project: presence(args["project"]) || ProjectMap::NO_PROJECT)
+      epic = epic_of(todo["item"])
+      item = WorkItem.create(title, project: presence(args["project"]) || ProjectMap::NO_PROJECT, front: epic ? { "epic" => epic } : {})
       @list.done(todo_id, item: item.slug)
       plan = Launcher.new.chat_plan(item, fresh: true, prompt: presence(args["prompt"].to_s.strip))
       tmux.open(item.slug, cwd: plan[:cwd], argv: plan[:argv], env: plan[:env])
@@ -56,6 +57,14 @@ module Quartermaster
     private
 
     def ok = { "ok" => true }
+
+    # The epic a todo's item is or sits in; nil for none, a gone item or a dangling epic.
+    def epic_of(slug)
+      return nil unless slug && File.exist?(WorkItem.path_for(slug))
+
+      item = WorkItem.find(slug)
+      item.epic? ? item.slug : item.epic_item&.slug
+    end
 
     def id(args) = args["id"].to_s
 
