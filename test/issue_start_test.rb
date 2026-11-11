@@ -373,7 +373,7 @@ class GuiIssueStartTest < Minitest::Test
                     "every entry point: the switch lives in the one preview they all end in"
     assert_includes html, '<input type="checkbox" role="switch" checked>', "on by default"
     assert_includes html, "startIssue(m, iss, from, asEpic())", "Start sends the switch"
-    assert_includes html, 'dd.appendChild(linkChips({ links: iss.links || [] }));', "the would-be links, as epics.js draws them"
+    assert_includes html, 'dd.appendChild(linkChips({ links: iss.links || [] }));', "the would-be links, as links.js draws them"
     assert_match(/if \(r\.epic\) \{\n\s*if \(openModal === shown\) closeModal\(\);\n.*\n\s*openItemChat\(r\.slug\);/, html,
                  "an epic opens at once, no job")
     assert_includes html, "if (isEpic(it)) { chatSlug = it.slug; setMode(\"chat\"); selectChat(it.slug); } else openChat(it);",
@@ -515,7 +515,7 @@ end
 # ↻ links on any item started from (or describing) a GitHub issue: the
 # links IssueLinks derives are added when missing, never replacing or
 # removing one the user set; from IssueStart, the GUI job and qm link --refresh.
-class EpicLinksRefreshTest < Minitest::Test
+class LinksRefreshTest < Minitest::Test
   include QmTestHelpers
   include IssueStartHelpers
 
@@ -569,7 +569,7 @@ class EpicLinksRefreshTest < Minitest::Test
       epic!(kind: nil)
       server = Quartermaster::Gui.new(port: 4567, runner: epic_runner, tmux: FakeTmux.new)
       reply = JSON.parse(server.respond("POST", "/api/action", host,
-                                        JSON.generate("cmd" => "epic-links-refresh", "slug" => "export"))[2])
+                                        JSON.generate("cmd" => "links-refresh", "slug" => "export"))[2])
       assert_equal [true, true], reply.values_at("ok", "background")
       Timeout.timeout(10) { sleep 0.05 until server.jobs.running.empty? }
       job = server.jobs.take_finished.last
@@ -592,6 +592,6 @@ class EpicLinksRefreshTest < Minitest::Test
   def test_the_link_chips_carry_the_refresh_button_for_any_item_with_an_issue
     html = served_page(Quartermaster::Gui.new(port: 4567, runner: quiet_runner, tmux: FakeTmux.new), host)
     assert_includes html, 'if (GITHUB_ISSUE_URL.test(it.description || "")) box.appendChild(linksRefreshButton(it));'
-    assert_includes html, 'act("epic-links-refresh", { slug: it.slug })'
+    assert_includes html, 'act("links-refresh", { slug: it.slug })'
   end
 end

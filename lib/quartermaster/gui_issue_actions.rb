@@ -3,11 +3,11 @@
 module Quartermaster
   # The GUI's issue start (IssueStart, docs/areas/issues.md): issue-preview
   # only reads GitHub, so Gui runs it off the action mutex; issue-start makes
-  # the item; epic-links-refresh reads any item's issue again for its missing
+  # the item; links-refresh reads any item's issue again for its missing
   # links; epic-sub-issues reads its sub-issues. GuiActions hands them here, with its pane opener for the chat of
   # an item that already holds the issue.
   class GuiIssueActions
-    COMMANDS = %w[issue-preview issue-start epic-links-refresh epic-sub-issues].freeze
+    COMMANDS = %w[issue-preview issue-start links-refresh epic-sub-issues].freeze
 
     def initialize(runner:, jobs:, tmux:, pane:)
       @runner = runner
@@ -20,7 +20,7 @@ module Quartermaster
       case cmd
       when "issue-preview" then ok.merge("issue" => issue_start.preview(args["number"], project(args)))
       when "issue-start" then start(args)
-      when "epic-links-refresh" then refresh_links(slug)
+      when "links-refresh" then refresh_links(slug)
       when "epic-sub-issues" then ok.merge("sub_issues" => issue_start.sub_issues(args["epic"].to_s))
       end
     end

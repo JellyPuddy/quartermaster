@@ -3,6 +3,7 @@
 module Quartermaster
   class WorkItem
     include WorkItemEpic
+    include WorkItemLinks
     attr_reader :slug, :front, :body
 
     def self.slugify(title)

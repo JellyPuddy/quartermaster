@@ -22,7 +22,7 @@ module Quartermaster
     # [{"label", "url"}] for the issue in repo ("owner/name").
     def for(issue, repo)
       candidates = [tracker(issue, repo), notion(issue), *headings(issue)].compact
-      candidates.select { |link| link["url"].match?(WorkItemEpic::LINK_URL) }.each_with_object([]) do |link, kept|
+      candidates.select { |link| link["url"].match?(WorkItemLinks::LINK_URL) }.each_with_object([]) do |link, kept|
         kept << link unless kept.any? { |own| own["label"] == link["label"] || own["url"] == link["url"] }
       end
     end

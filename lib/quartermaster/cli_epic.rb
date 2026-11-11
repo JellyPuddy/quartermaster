@@ -2,7 +2,7 @@
 
 module Quartermaster
   # `qm epic` and `qm link`, and the epic parts of `qm show`: an item's place in
-  # an epic, an epic's children and any item's links (WorkItemEpic).
+  # an epic, an epic's children and any item's links (WorkItemEpic, WorkItemLinks).
   module CliEpic
     COMMANDS = { "epic" => :cmd_epic, "link" => :cmd_link }.freeze
 
