@@ -29,12 +29,14 @@ epic (keeping its sessions, notes and chat; new sessions on its branch then stop
 their own) and `--unmake` turns it back once no item is in it; the GUI's ⋯ menu offers the
 same. `qm link SLUG "Label" https://…` hangs a link on an item (`--remove` drops it), `qm list` marks epics and children with ◆, and `qm show` on an epic
 lists its children and links. A GitHub issue whose type a project lists under `epics.issue_types`
-starts (`qm start-issue N`, or the GUI) as an epic with its Tracker and Notion links, without a
+starts (`qm start-issue N`, or the GUI) as an epic, without a
 branch, worktree or chat (`--as-item`, or switching off the GUI preview's **Start as epic**, starts
 it as a normal item); items already holding its GitHub sub-issues join it (not epics, automations
 or items in another epic), and its Epic block in the chats side panel lists the sub-issues without
 an item, each with a Start that begins it inside the epic (`qm start-issue N --epic SLUG` from the
-CLI); later, `qm link SLUG --refresh` or the epic's ↻ links adds the links it is missing, leaving
+CLI). Every item started from an issue, epic or not, gets the links its project's `issue_links`
+settings derive: Tracker, Notion, and e.g. Design (the first URL under the issue body's Design
+heading); later, `qm link SLUG --refresh` or the epic's ↻ links adds the links it is missing, leaving
 yours alone. A session is never linked to an epic by guesswork, only by
 `qm attach` or a chat started from it; a child's session is told its epic, an epic's session
 its children. On the GUI board an epic is a card holding its items (which leave their columns),
@@ -303,7 +305,9 @@ projects:
     pr_prerequisites: true        # PRs ship by release: sessions learn `qm pr-requires`
     epics:                        # GitHub issues of these types start as an epic work item
       issue_types: [Project, Epic]
+    issue_links:                  # links every item started from a GitHub issue gets
       tracker_url: https://tracker.example/workspace/{repo}/{number}   # its Tracker link ({repo} = owner/name)
+      heading_links: [Design]     # first URL under the body heading holding the word ("Heading=Label" relabels)
       notion_author: notes-bot    # its Notion link: the first Notion URL in this login's issue comment
       notion_label: Notion        # that link's label (default Notion)
     benchmark:                    # 🏁 branch benchmarks (a Rails app on Postgres)
@@ -358,9 +362,10 @@ Know this before you install it:
   assigns the PR to its author and unassigns you), and whatever dev-server, test-database and
   IDE commands you configure.
 - **Starting work on an issue reads it with one `gh api graphql` call**: its title, state,
-  issue type, sub-issues and comments; opening an epic in the chats side panel (or its ↻) reads
-  its issue the same way to list the sub-issues. A comment's text is only searched for the Notion link of
-  the configured `epics.notion_author`; nothing on GitHub is changed.
+  body, issue type, sub-issues and comments; opening an epic in the chats side panel (or its ↻) reads
+  its issue the same way to list the sub-issues. The body is only searched for the URLs under the configured
+  `issue_links.heading_links` headings, a comment's text only for the Notion link of the configured
+  `issue_links.notion_author`; nothing on GitHub is changed.
 - **The `qm gui` page registers a service worker in your browser** for `127.0.0.1:<port>`. It
   stores one offline page in the browser's cache and answers only page loads that fail because
   `qm gui` isn't running; it caches nothing else and sends nothing anywhere. Chrome's site data

@@ -5,9 +5,9 @@ module Quartermaster
   # (read-only — one gh api graphql call), then start it: an
   # `issue/<n>-<title>` branch off freshly fetched origin, its worktree, the
   # item linked to it. The chat itself is the caller's (the GUI's pane, or
-  # the CLI's instructions), with #kickoff as its first prompt. An issue whose
-  # type the project lists as an epic type starts as an epic item instead: no
-  # branch, worktree or chat, its IssueLinks set. qm only reads GitHub:
+  # the CLI's instructions), with #kickoff as its first prompt. Every item it
+  # starts carries its IssueLinks. An issue whose type the project lists as an
+  # epic type starts as an epic item instead: no branch, worktree or chat. qm only reads GitHub:
   # nothing is assigned, labelled or moved.
   class IssueStart
     BRANCH_SLUG_MAX = 40
@@ -18,7 +18,7 @@ module Quartermaster
       query($owner: String!, $name: String!, $number: Int!) {
         repository(owner: $owner, name: $name) {
           issue(number: $number) {
-            number title state url
+            number title state url body
             issueType { name }
             subIssues(first: #{LIST_MAX}) { nodes { number title state url } }
             comments(first: #{LIST_MAX}) { nodes { author { login } body } }
@@ -60,7 +60,7 @@ module Quartermaster
       issue = fetch_issue(root, repo, number)
       existing = existing_item(project, number, url: issue["url"])
       reuse = existing ? nil : reusable_branch(root, number)
-      settings = @project_map.settings_for(project).epics
+      settings = @project_map.settings_for(project)
       {
         "number" => number, "title" => issue["title"].to_s, "state" => issue["state"].to_s.downcase,
         "closed" => issue["state"].to_s.casecmp?("closed"), "url" => issue["url"].to_s,
@@ -70,24 +70,22 @@ module Quartermaster
         "slug" => existing ? existing.slug : WorkItem.slugify(item_title(number, issue["title"].to_s)),
         "existing" => existing && { "slug" => existing.slug, "title" => existing.title, "state" => existing.state,
                                     "epic" => existing.epic? },
-        "epic" => settings.epic_type?(issue.dig("issueType", "name")),
-        "links" => IssueLinks.new(settings).for(issue, repo),
+        "epic" => settings.epics.epic_type?(issue.dig("issueType", "name")),
+        "links" => IssueLinks.new(settings.issue_links).for(issue, repo),
         "sub_issues" => sub_issue_nodes(issue)
       }
     end
 
-    # Adds to an epic the links its GitHub issue (the first issue URL in its
+    # Adds to any item the links its GitHub issue (the first issue URL in its
     # description) derives now and it lacks; never replaces or removes one.
     # Returns the links added.
     def refresh_links(item)
-      raise ArgumentError, "'#{item.slug}' is not an epic" unless item.epic?
-
       found = item.description.match(GITHUB_ISSUE_URL)
       raise ArgumentError, "'#{item.slug}' has no GitHub issue URL in its description" unless found
 
       repo = found[1]
       issue = fetch_issue(@project_map.root_for(item.project), repo, found[2].to_i)
-      item.add_missing_links(IssueLinks.new(@project_map.settings_for(item.project).epics).for(issue, repo))
+      item.add_missing_links(IssueLinks.new(@project_map.settings_for(item.project).issue_links).for(issue, repo))
     end
 
     # Creates the worktree first, then the item: a retry after a failed item
@@ -123,7 +121,7 @@ module Quartermaster
                    target.materialize_branch(project, preview["branch"], base: "origin/#{default}")
                  end
 
-      item = WorkItem.create(title, project: project, description: description(preview), front: epic ? { "epic" => epic } : {})
+      item = WorkItem.create(title, project: project, description: description(preview), front: links_front(preview, epic: epic))
       item.link_branch(preview["branch"])
       note_started(from, preview, item)
       { item: WorkItem.find(item.slug), target: worktree }
@@ -170,9 +168,16 @@ module Quartermaster
 
     def description(preview) = "#{preview["url"]}\n\n#{preview["title"]}"
 
-    def start_epic(preview, title, from)
-      front = { "kind" => WorkItemEpic::EPIC_KIND }
+    # The new item's frontmatter: the preview's links when it has any, and
+    # the epic it sits in.
+    def links_front(preview, **front)
+      front = front.compact.transform_keys(&:to_s)
       front["links"] = preview["links"] unless Array(preview["links"]).empty?
+      front
+    end
+
+    def start_epic(preview, title, from)
+      front = links_front(preview, kind: WorkItemEpic::EPIC_KIND)
       item = WorkItem.create(title, project: preview["project"], description: description(preview), front: front)
       note_started(from, preview, item)
       { item: item, target: nil }.merge(attach_sub_issue_holders(item, preview))

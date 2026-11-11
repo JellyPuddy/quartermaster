@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # Loaded by quartermaster_test.rb; also runs alone (`ruby test/epic_sub_issues_test.rb`).
-require_relative "issue_start_test"
+require_relative "issue_start_helpers"
 
 # An epic issue's GitHub sub-issues: the items already holding them join the
 # epic it starts as, and the epic's view lists the rest to start inside it.
@@ -53,7 +53,7 @@ class EpicSubIssuesTest < Minitest::Test
   include EpicSubIssueHelpers
 
   def test_start_as_epic_attaches_the_items_holding_its_sub_issues_and_says_what_it_left
-    with_widget_repo(epics: EPIC_SETTINGS) do
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
       holders
       start = starter(sub_issue_runner)
 
@@ -70,7 +70,7 @@ class EpicSubIssuesTest < Minitest::Test
   end
 
   def test_the_sub_issues_of_an_epic_name_their_items_and_which_can_start_here
-    with_widget_repo(epics: EPIC_SETTINGS) do
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
       holders
       start = starter(sub_issue_runner)
       epic = start.start(start.preview(123, "Widget"))[:item].slug
@@ -86,7 +86,7 @@ class EpicSubIssuesTest < Minitest::Test
   end
 
   def test_an_item_or_an_epic_without_an_issue_has_no_sub_issues_to_list
-    with_widget_repo(epics: EPIC_SETTINGS) do
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
       runner = sub_issue_runner
       Quartermaster::WorkItem.create("Plain epic", project: "Widget", front: { "kind" => "epic" })
       Quartermaster::WorkItem.create("Plain", project: "Widget", description: "#{WIDGET}123")
@@ -99,7 +99,7 @@ class EpicSubIssuesTest < Minitest::Test
   end
 
   def test_a_sub_issue_starts_as_a_normal_item_inside_the_epic
-    with_widget_repo(epics: EPIC_SETTINGS) do |repo|
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do |repo|
       start = starter(sub_issue_runner)
       epic = start.start(start.preview(123, "Widget"))[:item].slug
 
@@ -112,7 +112,7 @@ class EpicSubIssuesTest < Minitest::Test
   end
 
   def test_starting_inside_something_not_an_epic_is_refused_before_any_worktree
-    with_widget_repo(epics: EPIC_SETTINGS) do |repo|
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do |repo|
       Quartermaster::WorkItem.create("Plain", project: "Widget")
       runner = sub_issue_runner
       start = starter(runner)
@@ -129,7 +129,7 @@ class EpicSubIssuesTest < Minitest::Test
   end
 
   def test_an_epic_issue_started_inside_an_epic_starts_as_a_normal_item
-    with_widget_repo(epics: EPIC_SETTINGS) do
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
       Quartermaster::WorkItem.create("Big epic", project: "Widget", front: { "kind" => "epic" })
       start = starter(sub_issue_runner)
 
@@ -151,7 +151,7 @@ class GuiEpicSubIssuesTest < Minitest::Test
   def post(server, payload) = JSON.parse(server.respond("POST", "/api/action", host, JSON.generate(payload))[2])
 
   def test_the_epic_start_reply_names_the_items_that_joined_and_those_left_out
-    with_widget_repo(epics: EPIC_SETTINGS) do
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
       holders
       server = Quartermaster::Gui.new(port: 4567, runner: sub_issue_runner, tmux: FakeTmux.new)
 
@@ -165,7 +165,7 @@ class GuiEpicSubIssuesTest < Minitest::Test
   end
 
   def test_sub_issues_are_read_off_the_action_mutex
-    with_widget_repo(epics: EPIC_SETTINGS) do
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
       server = Quartermaster::Gui.new(port: 4567, runner: sub_issue_runner, tmux: FakeTmux.new)
       post(server, "cmd" => "issue-start", "args" => { "number" => 123, "project" => "Widget" })
 
@@ -179,7 +179,7 @@ class GuiEpicSubIssuesTest < Minitest::Test
   end
 
   def test_a_sub_issue_started_with_an_epic_is_made_inside_it_with_its_chat
-    with_widget_repo(epics: EPIC_SETTINGS) do
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
       tmux = FakeTmux.new
       server = Quartermaster::Gui.new(port: 4567, runner: sub_issue_runner, tmux: tmux)
       epic = post(server, "cmd" => "issue-start", "args" => { "number" => 123, "project" => "Widget" })["slug"]
@@ -238,7 +238,7 @@ class CliEpicSubIssuesTest < Minitest::Test
   end
 
   def test_an_epic_start_names_what_joined_and_epic_starts_a_sub_issue_inside_it
-    with_widget_repo(epics: EPIC_SETTINGS) do
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
       holders
       out, err, exited = qm(sub_issue_runner, "start-issue", "123", "--project", "Widget")
       assert_nil exited, err

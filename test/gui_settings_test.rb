@@ -178,6 +178,7 @@ class GuiSettingsTest < Minitest::Test
     used = Quartermaster::ConfigSchema::KEYS.select { |k| k.path.start_with?("projects.*.") }.map(&:section).uniq
 
     assert_includes listed, "epics"
+    assert_includes listed, "issue_links"
     assert_empty used - listed
   end
 

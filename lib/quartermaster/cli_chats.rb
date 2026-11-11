@@ -208,9 +208,9 @@ module Quartermaster
       else
         puts "  project #{preview["project"]}, branch #{preview["branch"]}#{" (existing, reused)" if preview["reuse_branch"]}"
       end
-      return unless preview["epic"] && !existing
+      return if existing
 
-      puts "  ◆ an epic: starts as an epic item (--as-item: a normal item with branch and chat)"
+      puts "  ◆ an epic: starts as an epic item (--as-item: a normal item with branch and chat)" if preview["epic"]
       puts "  links: #{preview["links"].map { |link| "#{link["label"]} #{link["url"]}" }.join(", ")}" unless preview["links"].empty?
     end
 

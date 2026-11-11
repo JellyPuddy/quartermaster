@@ -1,71 +1,7 @@
 # frozen_string_literal: true
 
 # Loaded by quartermaster_test.rb; also runs alone (`ruby test/issue_start_test.rb`).
-require_relative "test_helper"
-
-# gh is scripted and `git fetch` stubbed; only `git worktree add` runs for
-# real, against a throwaway repo whose origin/main is a local ref.
-class IssueRunner < FakeRunner
-  def call(argv, chdir: nil)
-    return super unless argv.first(2) == %w[git worktree]
-
-    @calls << { argv: argv, chdir: chdir }
-    Quartermaster::CommandRunner.new.call(argv, chdir: chdir)
-  end
-end
-
-module IssueStartHelpers
-  include StackRepoHelpers
-
-  ISSUE_URL = "https://github.com/acme/widget/issues/123"
-
-  NOTION_URL = "https://app.notion.com/p/Export-epic-3e6b2d0ad7f681a2"
-  NOTES_BOT = { "author" => { "login" => "notes-bot" }, "body" => "Epic created in Notion: #{NOTION_URL}" }.freeze
-  SUB_ISSUES = [{ "number" => 124, "title" => "Empty rows", "state" => "OPEN", "url" => "#{ISSUE_URL.chomp("123")}124" },
-                { "number" => 125, "title" => "Frozen header", "state" => "CLOSED",
-                  "url" => "#{ISSUE_URL.chomp("123")}125" }].freeze
-
-  # Widget's issue settings for epics: which GitHub issue types are epics,
-  # the tracker link's template, whose comment carries the Notion link.
-  EPIC_SETTINGS = { "issue_types" => %w[Project Epic], "tracker_url" => "https://tracker.example/ws/{repo}/{number}",
-                    "notion_author" => "notes-bot", "notion_label" => "Notion page" }.freeze
-
-  # gh api graphql's answer, shaped like GitHub's (issueType null when unset).
-  def issue_runner(state: "OPEN", title: "Export breaks on empty rows", known: true, type: nil, sub_issues: [], comments: [])
-    issue = { "number" => 123, "title" => title, "state" => state, "url" => ISSUE_URL,
-              "issueType" => type && { "name" => type }, "subIssues" => { "nodes" => sub_issues },
-              "comments" => { "nodes" => comments } }
-    view = if known
-             [JSON.generate("data" => { "repository" => { "issue" => issue } }), "", true]
-           else
-             ["", "GraphQL: Could not resolve to an issue with the number of 123. (repository.issue)", false]
-           end
-    IssueRunner.new(%w[gh api graphql] => view, %w[gh repo view] => ["main\n", "", true],
-                    ["curl"] => ["", "", false], %w[pf status] => ["", "", false])
-  end
-
-  def epic_runner(**rest) = issue_runner(type: "Project", sub_issues: SUB_ISSUES,
-                                         comments: [{ "author" => { "login" => "someone" }, "body" => "https://notion.so/not-this" },
-                                                    NOTES_BOT], **rest)
-
-  # A repo whose origin is acme/widget on GitHub, configured as project
-  # "Widget" (and "WebApp", configured with a test-DB command). epics:
-  # Widget's epic settings.
-  def with_widget_repo(epics: nil)
-    Dir.mktmpdir do |dir|
-      FileUtils.mkdir_p(File.join(dir, "repo"))
-      repo = make_repo(File.join(dir, "repo"))
-      system("git", "-C", repo, "remote", "add", "origin", "git@github.com:acme/widget.git")
-      system("git", "-C", repo, "update-ref", "refs/remotes/origin/main", "HEAD")
-      Quartermaster.ensure_setup
-      widget = epics ? { "root" => repo, "epics" => epics } : repo
-      File.write(Quartermaster::CONFIG_FILE, { "projects" => { "Widget" => widget, "WebApp" => featured_project(repo) } }.to_yaml)
-      yield repo
-    end
-  end
-
-  def starter(runner) = Quartermaster::IssueStart.new(runner: runner)
-end
+require_relative "issue_start_helpers"
 
 class IssueStartTest < Minitest::Test
   include QmTestHelpers
@@ -88,13 +24,13 @@ class IssueStartTest < Minitest::Test
       assert_equal %w[gh api graphql], call[:argv].first(3)
       assert_equal [%w[-f owner=acme], %w[-f name=widget], %w[-F number=123]],
                    call[:argv].drop(3).each_slice(2).select { |flag, value| %w[-f -F].include?(flag) && !value.start_with?("query=") }
-      assert_match(/issue\(number: \$number\).*issueType \{ name \}.*subIssues\(first: \d+\).*comments\(first: \d+\)/m,
+      assert_match(/issue\(number: \$number\).*\bbody\b.*issueType \{ name \}.*subIssues\(first: \d+\).*comments\(first: \d+\)/m,
                    call[:argv].last)
     end
   end
 
   def test_an_issue_whose_type_the_project_lists_is_an_epic_with_its_links
-    with_widget_repo(epics: EPIC_SETTINGS) do
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
       preview = starter(epic_runner).preview(123, "Widget")
 
       assert_equal true, preview["epic"]
@@ -106,15 +42,18 @@ class IssueStartTest < Minitest::Test
   end
 
   def test_no_listed_type_or_no_settings_is_never_an_epic_and_missing_links_are_skipped
-    with_widget_repo(epics: EPIC_SETTINGS.merge("issue_types" => ["Epic"])) do
+    with_widget_repo(epics: { "issue_types" => ["Epic"] }, links: LINK_SETTINGS) do
       assert_equal false, starter(epic_runner).preview(123, "Widget")["epic"]
-      assert_equal false, starter(epic_runner(type: nil)).preview(123, "Widget")["epic"]
+      preview = starter(epic_runner(type: nil)).preview(123, "Widget")
+      assert_equal false, preview["epic"]
+      assert_equal [TRACKER, { "label" => "Notion page", "url" => NOTION_URL }], preview["links"],
+                   "a normal item gets the same links"
     end
     with_widget_repo do
       preview = starter(epic_runner).preview(123, "Widget")
       assert_equal [false, []], preview.values_at("epic", "links"), "no settings: no epic, no links"
     end
-    with_widget_repo(epics: { "issue_types" => ["project"], "notion_author" => "notes-bot" }) do
+    with_widget_repo(epics: { "issue_types" => ["project"] }, links: { "notion_author" => "notes-bot" }) do
       preview = starter(epic_runner(comments: [])).preview(123, "Widget")
       assert_equal [true, []], preview.values_at("epic", "links"), "type names match case-insensitively; no comment, no template"
       notion = starter(epic_runner).preview(123, "Widget")["links"]
@@ -123,7 +62,7 @@ class IssueStartTest < Minitest::Test
   end
 
   def test_start_as_epic_makes_an_epic_item_with_its_links_and_no_branch_worktree_or_fetch
-    with_widget_repo(epics: EPIC_SETTINGS) do |repo|
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do |repo|
       Quartermaster::WorkItem.create("Drafting", project: "Widget")
       runner = epic_runner
       start = starter(runner)
@@ -148,13 +87,14 @@ class IssueStartTest < Minitest::Test
     end
   end
 
-  def test_an_epic_issue_can_still_start_as_a_normal_item
-    with_widget_repo(epics: EPIC_SETTINGS) do |repo|
+  def test_an_epic_issue_can_still_start_as_a_normal_item_with_its_links
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do |repo|
       start = starter(epic_runner)
       item = start.start(start.preview(123, "Widget"), as_epic: false)[:item]
       refute item.epic?
       assert_equal ["issue/123-export-breaks-on-empty-rows"], item.branches
       assert File.directory?(File.join(repo, ".claude", "worktrees", "issue-123-export-breaks-on-empty-rows"))
+      assert_equal [TRACKER, { "label" => "Notion page", "url" => NOTION_URL }], item.links
     end
   end
 
@@ -340,7 +280,7 @@ class GuiIssueStartTest < Minitest::Test
   end
 
   def test_an_epic_issue_starts_as_an_epic_at_once_and_opens_no_chat_then_or_later
-    with_widget_repo(epics: EPIC_SETTINGS) do
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
       tmux = FakeTmux.new
       server = Quartermaster::Gui.new(port: 4567, runner: epic_runner, tmux: tmux)
 
@@ -359,7 +299,7 @@ class GuiIssueStartTest < Minitest::Test
   end
 
   def test_as_epic_false_starts_an_epic_issue_as_a_normal_item_with_its_chat
-    with_widget_repo(epics: EPIC_SETTINGS) do
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
       tmux = FakeTmux.new
       server = Quartermaster::Gui.new(port: 4567, runner: epic_runner, tmux: tmux)
 
@@ -507,7 +447,7 @@ class CliStartIssueTest < Minitest::Test
   end
 
   def test_an_epic_issue_starts_as_an_epic_here
-    with_widget_repo(epics: EPIC_SETTINGS) do |repo|
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do |repo|
       without_gui
       out, err, exited = qm(epic_runner, "start-issue", "123", "--project", "Widget")
 
@@ -526,13 +466,24 @@ class CliStartIssueTest < Minitest::Test
   end
 
   def test_as_item_starts_an_epic_issue_as_a_normal_item
-    with_widget_repo(epics: EPIC_SETTINGS) do |repo|
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do |repo|
       without_gui
       out, err, exited = qm(epic_runner, "start-issue", "123", "--project", "Widget", "--as-item")
 
       assert_nil exited, err
       assert_includes out, "QM_ITEM=export-breaks-on-empty-rows-123 claude"
       assert File.directory?(File.join(repo, ".claude", "worktrees", "issue-123-export-breaks-on-empty-rows"))
+    end
+  end
+
+  def test_a_normal_issue_says_its_links_too
+    with_widget_repo(links: LINK_SETTINGS) do
+      without_gui
+      out, err, exited = qm(issue_runner, "start-issue", "123", "--project", "Widget")
+
+      assert_nil exited, err
+      refute_includes out, "◆ an epic"
+      assert_includes out, "  links: Tracker https://tracker.example/ws/acme/widget/123\n"
     end
   end
 
@@ -561,7 +512,7 @@ class CliStartIssueTest < Minitest::Test
   end
 end
 
-# ↻ links on an epic started from (or describing) a GitHub issue: the
+# ↻ links on any item started from (or describing) a GitHub issue: the
 # links IssueLinks derives are added when missing, never replacing or
 # removing one the user set; from IssueStart, the GUI job and qm link --refresh.
 class EpicLinksRefreshTest < Minitest::Test
@@ -576,7 +527,7 @@ class EpicLinksRefreshTest < Minitest::Test
   end
 
   def test_refresh_adds_only_the_missing_links_and_keeps_the_users
-    with_widget_repo(epics: EPIC_SETTINGS) do
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
       epic!(links: [MINE, { "label" => "Docs", "url" => "https://docs.example/x" }])
       runner = epic_runner
       added = starter(runner).refresh_links(Quartermaster::WorkItem.find("export"))
@@ -593,20 +544,19 @@ class EpicLinksRefreshTest < Minitest::Test
   end
 
   def test_a_link_already_carried_under_another_label_is_not_added_again
-    with_widget_repo(epics: EPIC_SETTINGS) do
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
       epic!(links: [{ "label" => "Board", "url" => "https://tracker.example/ws/acme/widget/123" }])
       added = starter(epic_runner).refresh_links(Quartermaster::WorkItem.find("export"))
       assert_equal ["Notion page"], added.map { |link| link["label"] }
     end
   end
 
-  def test_refresh_is_refused_for_a_plain_item_or_an_epic_without_an_issue_url
-    with_widget_repo(epics: EPIC_SETTINGS) do
-      epic!(kind: nil)
-      error = assert_raises(ArgumentError) { starter(epic_runner).refresh_links(Quartermaster::WorkItem.find("export")) }
-      assert_equal "'export' is not an epic", error.message
-      Quartermaster::WorkItem.create("Loose", project: "Widget", description: "see https://github.com/acme/widget/pull/9",
-                                              front: { "kind" => "epic" })
+  def test_a_plain_item_refreshes_too_and_only_an_item_without_an_issue_url_is_refused
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
+      epic!(kind: nil, links: [])
+      added = starter(issue_runner(comments: [NOTES_BOT])).refresh_links(Quartermaster::WorkItem.find("export"))
+      assert_equal [TRACKER, { "label" => "Notion page", "url" => NOTION_URL }], added
+      Quartermaster::WorkItem.create("Loose", project: "Widget", description: "see https://github.com/acme/widget/pull/9")
       error = assert_raises(ArgumentError) { starter(epic_runner).refresh_links(Quartermaster::WorkItem.find("loose")) }
       assert_equal "'loose' has no GitHub issue URL in its description", error.message
     end
@@ -614,9 +564,9 @@ class EpicLinksRefreshTest < Minitest::Test
 
   def host = { "host" => "127.0.0.1:4567", "origin" => "http://127.0.0.1:4567" }
 
-  def test_the_gui_refreshes_on_a_job_keyed_by_the_epic
-    with_widget_repo(epics: EPIC_SETTINGS) do
-      epic!
+  def test_the_gui_refreshes_any_item_on_a_job_keyed_by_it
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
+      epic!(kind: nil)
       server = Quartermaster::Gui.new(port: 4567, runner: epic_runner, tmux: FakeTmux.new)
       reply = JSON.parse(server.respond("POST", "/api/action", host,
                                         JSON.generate("cmd" => "epic-links-refresh", "slug" => "export"))[2])
@@ -629,9 +579,9 @@ class EpicLinksRefreshTest < Minitest::Test
     end
   end
 
-  def test_qm_link_refresh_says_what_it_added
-    with_widget_repo(epics: EPIC_SETTINGS) do
-      epic!
+  def test_qm_link_refresh_says_what_it_added_for_any_item
+    with_widget_repo(epics: EPIC_SETTINGS, links: LINK_SETTINGS) do
+      epic!(kind: nil)
       out, = capture_io { Quartermaster::CLI.new(runner: epic_runner, cwd: Dir.home).run(%w[link export --refresh]) }
       assert_equal "export: added Notion page → Tracker, Notion page\n", out
       again, = capture_io { Quartermaster::CLI.new(runner: epic_runner, cwd: Dir.home).run(%w[link export --refresh]) }

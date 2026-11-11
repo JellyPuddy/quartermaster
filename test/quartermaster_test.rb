@@ -78,6 +78,7 @@ SUITE_FILES = %w[
   issue_drafts_test
   issue_start_test
   epic_sub_issues_test
+  issue_links_test
   issue_comments_test
   issue_cleanup_test
   prompt_snapshots_test

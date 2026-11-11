@@ -60,26 +60,51 @@ class ProjectConfigTest < Minitest::Test
     assert_equal %w[devserver other-server], c.dev_server_commands
   end
 
-  def test_epic_settings_read_with_their_defaults
+  def test_epic_and_issue_link_settings_read_with_their_defaults
     c = config(<<~YAML)
       projects:
         App:
           root: /code/app
           epics:
             issue_types: [Project, " Epic ", ""]
+          issue_links:
             tracker_url: "https://tracker.example/ws/{repo}/{number}"
             notion_author: notes-bot
+            heading_links: [Design, " Test plan = QA ", "=Nothing", ""]
         Plain: /code/plain
     YAML
 
     epics = c.settings("App").epics
-    assert_equal [%w[Project Epic], "https://tracker.example/ws/{repo}/{number}", "notes-bot", "Notion"],
-                 [epics.issue_types, epics.tracker_url, epics.notion_author, epics.notion_label]
+    assert_equal %w[Project Epic], epics.issue_types
     assert epics.epic_type?("epic")
     refute epics.epic_type?(nil)
-    plain = c.settings("Plain").epics
-    assert_equal [[], nil, nil], [plain.issue_types, plain.tracker_url, plain.notion_author]
-    refute plain.epic_type?("Project")
+    links = c.settings("App").issue_links
+    assert_equal ["https://tracker.example/ws/{repo}/{number}", "notes-bot", "Notion"],
+                 [links.tracker_url, links.notion_author, links.notion_label]
+    assert_equal [%w[Design Design], ["Test plan", "QA"]], links.headings, "a bare heading is its own label"
+    plain = c.settings("Plain")
+    assert_equal [[], nil, nil, []],
+                 [plain.epics.issue_types, plain.issue_links.tracker_url, plain.issue_links.notion_author,
+                  plain.issue_links.headings]
+    refute plain.epics.epic_type?("Project")
+  end
+
+  def test_the_link_keys_set_under_epics_still_read_until_set_under_issue_links
+    c = config(<<~YAML)
+      projects:
+        Old:
+          root: /code/old
+          epics: { tracker_url: "https://old.example/{number}", notion_author: old-bot, notion_label: Page }
+        Both:
+          root: /code/both
+          epics: { tracker_url: "https://old.example/{number}", notion_author: old-bot }
+          issue_links: { tracker_url: "https://new.example/{number}" }
+    YAML
+
+    old = c.settings("Old").issue_links
+    assert_equal ["https://old.example/{number}", "old-bot", "Page"], [old.tracker_url, old.notion_author, old.notion_label]
+    both = c.settings("Both").issue_links
+    assert_equal ["https://new.example/{number}", "old-bot"], [both.tracker_url, both.notion_author], "per key"
   end
 
   def test_malformed_values_leave_the_feature_off

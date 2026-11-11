@@ -28,6 +28,7 @@ module Quartermaster
       "projects.*.dev_server" => { kind: :object, shorthand: "command" },
       "projects.*.benchmark" => { kind: :object },
       "projects.*.epics" => { kind: :object },
+      "projects.*.issue_links" => { kind: :object },
       "loose_starters" => { kind: :map },
       "loose_starters.*" => { kind: :object },
       "prices" => { kind: :map },
@@ -73,14 +74,21 @@ module Quartermaster
           "pull_requests"),
       key("projects.*.epics.issue_types", "string_list",
           "GitHub issue types (e.g. Project, Epic) whose issues start as an epic. Unset: no issue is an epic.", "epics"),
-      key("projects.*.epics.tracker_url", "string",
-          "An epic started from an issue gets a Tracker link: this URL with {repo} (owner/name), {owner}, {name} " \
-          "and {number} filled in.", "epics"),
-      key("projects.*.epics.notion_author", "string",
-          "The GitHub login whose issue comment carries the epic's Notion link (its first notion.so/notion.com URL).",
-          "epics"),
-      key("projects.*.epics.notion_label", "string", "The label that Notion link gets.", "epics",
+      key("projects.*.issue_links.tracker_url", "string",
+          "An item started from an issue gets a Tracker link: this URL with {repo} (owner/name), {owner}, {name} " \
+          "and {number} filled in.", "issue_links"),
+      key("projects.*.issue_links.heading_links", "string_list",
+          "Links from the issue body: the first URL under the first heading containing this word (any case), " \
+          "labelled with it, or `Heading=Label` for another label (e.g. Design).", "issue_links"),
+      key("projects.*.issue_links.notion_author", "string",
+          "The GitHub login whose issue comment carries the item's Notion link (its first notion.so/notion.com URL).",
+          "issue_links"),
+      key("projects.*.issue_links.notion_label", "string", "The label that Notion link gets.", "issue_links",
           default: ProjectSettings::DEFAULT_NOTION_LABEL),
+      *%w[tracker_url notion_author notion_label].map do |name|
+        key("projects.*.epics.#{name}", "string", "Old place of issue_links.#{name}, read while that is unset.",
+            "issue_links", collapsed: true)
+      end,
       key("projects.*.benchmark.database", "string",
           "The Postgres database benchmark runs read (or clone as a template); letters, digits and _ only.",
           "benchmarks", collapsed: true),

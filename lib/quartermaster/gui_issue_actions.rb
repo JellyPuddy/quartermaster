@@ -3,7 +3,7 @@
 module Quartermaster
   # The GUI's issue start (IssueStart, docs/areas/issues.md): issue-preview
   # only reads GitHub, so Gui runs it off the action mutex; issue-start makes
-  # the item; epic-links-refresh reads an epic's issue again for its missing
+  # the item; epic-links-refresh reads any item's issue again for its missing
   # links; epic-sub-issues reads its sub-issues. GuiActions hands them here, with its pane opener for the chat of
   # an item that already holds the issue.
   class GuiIssueActions
@@ -29,12 +29,10 @@ module Quartermaster
 
     def ok = { "ok" => true }
 
-    # ↻ links: the epic's issue read again on a job keyed by the epic, adding
+    # ↻ links: the item's issue read again on a job keyed by the item, adding
     # the links it lacks (IssueStart#refresh_links).
     def refresh_links(slug)
       item = WorkItem.find(slug)
-      raise ArgumentError, "'#{slug}' is not an epic" unless item.epic?
-
       @jobs.background(item.slug, "refreshing links…") do
         added = issue_start.refresh_links(item)
         { "ok" => true,

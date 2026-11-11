@@ -177,6 +177,7 @@ class ConfigFileTest < Minitest::Test
           test_db: app-test-db
           benchmark: { database: app_bench, skill: /skills/bench }
           ide_label: Code
+          epics: { issue_types: [Project], tracker_url: "https://t.example/{number}" }
       ide_label: MyIDE
     YAML
 
@@ -186,6 +187,7 @@ class ConfigFileTest < Minitest::Test
                   ["warning", "projects.App.test_db", "app-test-db is not on PATH"],
                   ["warning", "projects.App.benchmark.skill", "folder /skills/bench doesn't exist"],
                   ["warning", "projects.App.ide_label", "ide_label does nothing without ide_command"],
+                  ["warning", "projects.App.epics.tracker_url", "moved: set issue_links.tracker_url instead"],
                   ["warning", "ide_label", "ide_label does nothing without ide_command"]],
                  config.issues.map { |i| [i[:level], i[:path], i[:message]] }
     config.write!

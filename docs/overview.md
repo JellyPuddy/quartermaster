@@ -85,7 +85,7 @@ keys only, via `ConfigReader`); a broken file reads as no projects, a bad key le
 - `projects.<name>.test_db` — a command: `<test_db> prepare` in each new worktree; cleanup lists
   `<test_db> drop PATH --dry-run` (one DB per line) and runs `<test_db> drop PATH`.
 - `projects.<name>.{review_skill, pr_prerequisites}` — Review skill (default `/code-review`); `true`: ship by release.
-- `projects.<name>.epics.{issue_types, tracker_url, notion_author, notion_label}` — epic issues ([issues](areas/issues.md)).
+- `projects.<name>.issue_links.{tracker_url, heading_links, notion_author, notion_label}` — every issue item's links; `projects.<name>.epics.{issue_types, tracker_url, notion_author, notion_label}` — epic issues, then the link keys' old place ([issues](areas/issues.md)).
 - `projects.<name>.benchmark.{database, skill, notes}` — the Postgres database runs measure on (or
   clone), the benchmark skill's folder, optional prompt lines; enables 🏁 ([benchmarks](areas/benchmarks.md)).
 - `projects.<name>.{ide_command, ide_label}` — this project's own IDE, overriding the top-level one.

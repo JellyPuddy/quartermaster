@@ -30,7 +30,7 @@ else (see [capture](capture.md)), then requires `lib/quartermaster` through its 
 **Work items**
 - `qm new TITLE` — create an item, print its slug (`--project`, `--branch`, `--session`, `--description`, `--pf-mode`; `--kind epic` for an epic, `--epic SLUG` for a child of one).
 - `qm epic SLUG EPIC_SLUG` / `qm epic SLUG --clear` — put an item in an epic or take it out; `--make` / `--unmake` turn the item itself into an epic or back ([work-items](work-items.md)).
-- `qm link SLUG LABEL URL` / `qm link SLUG LABEL --remove` — add or replace (by label) an item's link, or remove it; `qm link SLUG --refresh` adds the Tracker / Notion links an epic's GitHub issue gives and it lacks ([work-items](work-items.md)).
+- `qm link SLUG LABEL URL` / `qm link SLUG LABEL --remove` — add or replace (by label) an item's link, or remove it; `qm link SLUG --refresh` adds the Tracker, Notion and heading links any item's GitHub issue (URL in its description) gives and it lacks ([work-items](work-items.md)).
 - `qm attach SLUG --session ID` / `qm detach SLUG --session ID` — link or unlink a session; attach moves it off any other item.
 - `qm note SLUG [--kind open|decision|history] TEXT` / `qm retag SLUG POSITION KIND` — add a note, change a note's kind.
 - `qm state SLUG STATE` — in_progress | active | fridge | resolved.
@@ -56,7 +56,7 @@ else (see [capture](capture.md)), then requires `lib/quartermaster` through its 
 **Sessions and workspace**
 - `qm resume SLUG [--session ID] [--here]` / `qm start SLUG [--here]` — resume or start in a new Warp tab (or this terminal).
 - `qm pane-start SLUG` / `qm pane-resume SLUG [--session ID]` — the same in the running GUI's pane ([chats](chats.md)).
-- `qm start-issue N [--project P] [--as-item] [--epic SLUG]` — item + issue worktree + kickoff chat (inside epic SLUG), or an epic for an epic issue ([issues](issues.md)).
+- `qm start-issue N [--project P] [--as-item] [--epic SLUG]` — item + issue worktree + kickoff chat (inside epic SLUG), or an epic for an epic issue; either carries the issue's links ([issues](issues.md)).
 - `qm automation new TITLE --project P` / `qm automation edit SLUG` — an automation item and files, then its chat with qm's brief ([automations](automations.md)).
 - `qm loose [--project P] [--model M] [--starter NAME] ["prompt"]` — a chat with no work item in the GUI; `--starter` opens it with a config.yml `loose_starters:` kickoff ([loose-chats](loose-chats.md)).
 - `qm rotate SLUG [--close]` / `qm rotate --self [--close]` — context rotation ([rotation](rotation.md)).
