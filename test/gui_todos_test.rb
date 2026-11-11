@@ -259,6 +259,16 @@ class GuiTodosTest < Minitest::Test
     assert_operator html.index("/assets/js/todos-outline.js"), :<, html.index("/assets/js/events.js")
   end
 
+  # Plan decision 13: resolving an epic from the Todos outline opens the cleanup plan like the board.
+  def test_the_todos_outline_resolves_an_epic_through_changestate
+    html = page
+    node = html[/^function todoEpicNode\(.*?^}$/m] or flunk("no todoEpicNode on the page")
+    assert_includes node, "const suggest = resolveSuggestion(e);"
+    assert_includes node, "head.appendChild(linkChips(e));"
+    refute_includes node, 'act("state"', "no resolve that skips changeState's cleanup modal"
+    assert_includes html[/^function resolveSuggestion\(.*?^}$/m].to_s, 'changeState(e, "resolved")'
+  end
+
   def test_the_todos_badge_is_not_in_the_tab_title
     refute_match(/document\.title[^\n]*todo/i, page)
   end

@@ -1,13 +1,6 @@
 /* Epics in the chat view: the list's epic blocks, the chat head's crumb and
-   the side panel's Epic block (chat-epic.js). */
-.epic-kind { font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: .08em; color: var(--accent);
-  border: 1px solid var(--accent-line); background: var(--accent-soft); border-radius: 4px; padding: 0 5px; flex: none; }
-.epic-link { font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--muted); border: 1px solid var(--border-strong);
-  border-radius: 4px; padding: 0 5px; text-decoration: none; flex: none; }
-.epic-link:hover { color: var(--accent); border-color: var(--accent-line); }
-.epic-suggest { font-size: 11px; color: var(--good); background: none; border: 1px dashed var(--good); border-radius: 20px;
-  padding: 1px 9px; cursor: pointer; }
-.epic-suggest:hover { background: var(--surface-2); }
+   the side panel's Epic block (chat-epic.js). The EPIC chip, link chips and
+   resolve suggestion are styled in epics.css. */
 
 /* The list's blocks */
 .chat-epic { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2);

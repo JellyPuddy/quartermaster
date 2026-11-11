@@ -1,5 +1,6 @@
-/* Epics on the board (epics.js): the epic card nesting its items, its link
-   chips and resolve suggestion, the detail sheet's Links editor. */
+/* Epics on the board (epics.js): the epic card nesting its items, the detail
+   sheet's Links editor, and the EPIC chip, link chips and resolve suggestion
+   every surface (board, chats, Todos) shares. */
 .card.epic-card { border: 1.5px solid var(--accent-line); padding: 0 0 6px; }
 .card.epic-card:hover { transform: none; }
 .epic-head { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 9px 10px 7px; cursor: pointer; }
@@ -11,7 +12,7 @@
 }
 .epic-title { font-weight: 650; font-size: 13.5px; color: var(--ink); min-width: 0; }
 .epic-roll { font-family: var(--mono); font-size: 10.5px; color: var(--faint); white-space: nowrap; }
-.epic-links { display: inline-flex; gap: 4px; }
+.epic-links { display: inline-flex; gap: 4px; flex: none; }
 .epic-links:empty { display: none; }
 .epic-link {
   font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--muted);

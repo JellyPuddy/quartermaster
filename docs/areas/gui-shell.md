@@ -121,13 +121,13 @@ own cwd, no `QM_ITEM`). Esc closes the top sheet first.
 
 **Epics** (`epics.js`, derived client-side from `items` and `todos`; [work-items](work-items.md)): a card
 atop its own state's column with EPIC chip, rollup (items · open · open todos on it and its children),
-link chips (label's first letter, url in a tab), State ▾ / ⋯, the description's first line, its open
-children as rows (click: their chat), "n resolved" and its own open todos (tick: `todo-done`). The header
-folds it, remembered per browser. Its children leave their columns while its state is shown, else are
-cards tagged ◆. An epic matches a search when it or a child does. "✓ all done — resolve epic?" shows
-for children all resolved and no open todo on it or them; it runs the normal state change. Actions
-(`GuiEpicActions`): `new` with `kind`/`epic` (New item's toggle and picker), `epic-set` (⋯ → Epic…,
-empty clears), `link-set` / `link-remove` (an epic's detail sheet Links section).
+link chips (label's first letter, http(s) url in a tab), State ▾ / ⋯, the description's first line, its
+open children as rows (click: their chat), "n resolved" and its own open todos (tick: `todo-done`). The
+header folds it, remembered per browser. Its children leave their columns while its state is shown, else
+cards tagged ◆. An epic matches a search when it or a child does. "✓ all done — resolve epic?" shows for
+children all resolved and no open todo on it or them; it runs `changeState` (cleanup plan and all). Chats
+and Todos reuse these helpers (`epicOf`, `linkChips`, `resolveSuggestion`, …) and `epics.css`'s chips.
+`GuiEpicActions`: `new` with `kind`/`epic` (New item), `epic-set` (⋯ → Epic…, empty clears), `link-set`/`link-remove` (sheet).
 
 **Keyboard map** (board): `j`/`k` move, `h`/`l` column, `/` search, `c` new item, Enter
 chat, `r` resume, `n` new session, `o` PR, `s` state, `a` note, `.` more, Esc close;

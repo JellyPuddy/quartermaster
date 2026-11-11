@@ -71,7 +71,8 @@ open items, and "nothing (just its project)"; it posts `todo-edit {id, item}`.
 project filter, the epics of that project or holding an open todo of it): a head (EPIC chip,
 state dot, title, "n items · n open · n todos", a chip per http(s) link with its label's first
 letter, and "✓ all done — resolve
-epic?" when every child is resolved and no todo is open on it or them, which posts `state`),
+epic?" when every child is resolved and no todo is open on it or them; chips and suggestion are
+`epics.js`'s, so resolving opens the cleanup plan as on the board),
 the epic's own open todos, a "+ todo on <epic>" line (an inline input; Enter posts `todo-add`
 with `item` = the epic), its open child items as compact rows (state dot, title, live,
 sessions, open-todo count; a click opens the chat) each followed by its todos, a resolved child

@@ -11,7 +11,7 @@ sheet), the Epic block for an item in an epic or "This epic" for the epic itself
 the "✓ all done — resolve epic?" suggestion, the epic's description for a child, its open children
 with their attention state to switch to, open todos on the item and on the epic ticked through
 `todo-done`, and "+ todo" adding one on the epic through `todo-add`; built by `chatEpicSection` in
-`chat-epic.js`, owned by [chats](chats.md)), Workspace, Description, Board (only with a board link), Carried notes (the injected
+`chat-epic.js` from `epics.js`'s shared helpers, owned by [chats](chats.md)), Workspace, Description, Board (only with a board link), Carried notes (the injected
 ones, "n of m", plus **+ Add note**), and Usage pinned at the bottom. The header carries the pf badge, the usage-limits
 chip, the ☕ toggle and a ⋯ menu (see [gui-shell](gui-shell.md) for pf and sweep).
 

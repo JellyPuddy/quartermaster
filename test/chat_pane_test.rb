@@ -490,8 +490,8 @@ class GuiChatPaneTest < Minitest::Test
     assert_includes groups, "if (!epic) { plain.push(a); return; }"
     assert_includes groups, %(if (a.slug !== epic.slug || a.state !== "none") blocks.get(epic.slug).rows.push(a);),
                     "the epic's own entry joins its block only with a turn; the header stands for it otherwise"
-    assert_includes page_function(page, "chatEpicOf"), %(items.find(i => i.slug === it.epic && i.kind === "epic")),
-                    "a dangling epic slug reads as no epic"
+    assert_includes groups, "const epic = isEpic(it) ? it : epicOf(it);", "an epic's own chat sits in its block"
+    assert_includes page_function(page, "epicOf"), "return isEpic(e) ? e : null;", "a dangling epic slug reads as no epic"
     list = page_function(page, "renderChatList")
     assert_includes list, %(list.appendChild(el("div", "att-group", "no epic")); labelled = true;)
     assert_includes list, "else if (blocks.length && !labelled)", "no label at all while no epic has a chat"
@@ -514,26 +514,28 @@ class GuiChatPaneTest < Minitest::Test
     page = served_page(Quartermaster::Gui.new(port: 4567, runner: quiet_runner, tmux: FakeTmux.new), host)
     assert_includes page_function(page, "renderChatSide"), "body.append(...[chatEpicSection(it)].filter(Boolean), workspaceSection(it));"
     side = page_function(page, "chatEpicSection")
-    assert_includes side, %(sec.appendChild(el("h3", "", isEpic ? "This epic" : "Epic"));)
-    assert_includes side, "if (!isEpic && desc)", "the epic's description only for a child; the epic's own shows below"
+    assert_includes side, %(sec.appendChild(el("h3", "", self ? "This epic" : "Epic"));)
+    assert_includes side, "if (!self && desc)", "the epic's description only for a child; the epic's own shows below"
     assert_includes side, %(const open = children.filter(c => c.state !== "resolved");)
     assert_includes side, "r.onclick = () => selectChat(c.slug);"
-    assert_includes side, %(if (!isEpic) chatEpicTodoList(sec, "Todos on this item", chatOpenTodosOn(it.slug), true);)
-    assert_includes side, %(chatEpicTodoList(sec, "Todos on the epic", chatOpenTodosOn(epic.slug), false);)
+    assert_includes side, %(if (!self) chatEpicTodoList(sec, "Todos on this item", openTodosOn(it.slug), true);)
+    assert_includes side, %(chatEpicTodoList(sec, "Todos on the epic", openTodosOn(epic.slug), false);)
+    assert_includes side, "linkChips(epic)"
+    assert_includes side, "const suggest = resolveSuggestion(epic);"
     assert_includes page_function(page, "chatEpicTodoList"), '{ box.blur(); act("todo-done", { args: { id: t.id, done: true } }); }',
                     "a ticked box lets go of focus, or renderChatSide would hold the panel still"
     assert_includes page_function(page, "chatEpicTodoAdd"), 'act("todo-add", { args: { text: input.value.trim(), item: epic.slug } })'
-    resolvable = page_function(page, "chatEpicResolvable")
-    assert_includes resolvable, %(epic.state !== "resolved" && children.length > 0 &&)
-    assert_includes resolvable, %(children.every(c => c.state === "resolved") && chatEpicOpenTodos(epic).length === 0)
-    assert_includes page_function(page, "resolveEpic"), 'act("state", { slug: epic.slug, args: { state: "resolved" } })',
-                    "suggest-only: the click runs the normal state change"
-    chips = page_function(page, "epicLinkChips")
-    assert_includes chips, %(a.href = l.url; a.target = "_blank"; a.rel = "noopener"; a.title = l.label;)
+    resolvable = page_function(page, "epicResolvable")
+    assert_includes resolvable, %(e.state !== "resolved" && kids.length > 0 && kids.every(c => c.state === "resolved") && !epicOpenTodos(e).length)
+    assert_includes page_function(page, "resolveSuggestion"), 'b.onclick = ev => { ev.stopPropagation(); changeState(e, "resolved"); };',
+                    "suggest-only: the click runs the normal state change, cleanup plan and all"
+    chips = page_function(page, "linkChips")
+    assert_includes chips, %(filter(l => /^https?:\\/\\//i.test(l.url || "")))
+    assert_includes chips, "a.onclick = ev => ev.stopPropagation();", "a chip doesn't also open the epic under it"
 
     assert_includes page_function(page, "renderChatMain"), "const crumb = chatEpicCrumb(it);\n    if (crumb) title.prepend(crumb);"
     crumb = page_function(page, "chatEpicCrumb")
-    assert_includes crumb, %(const epic = it.kind === "epic" ? null : chatEpicOf(it);)
+    assert_includes crumb, %(const epic = isEpic(it) ? null : epicOf(it);)
     assert_includes crumb, "c.onclick = () => selectChat(epic.slug);"
   end
 
