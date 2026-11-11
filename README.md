@@ -204,14 +204,23 @@ Control.
 
 ### Desktop app
 
-`qm gui` installs as a Chrome app window: with it open, click the install icon in the address
-bar (or ⋮ → Cast, save and share → Install page as app) and install **Quartermaster**. The
-app's Dock icon shows the same count as the tab title, the chats whose move is yours (blocked,
-or your turn and not snoozed). While `qm gui` isn't running the window shows a "qm gui isn't
-running" page that comes back by itself once you start it. Links to other sites (PRs, issues,
-claude.ai) open in your default browser, not in Chrome. `qm gui` still opens its URL with
-`open`, so Chrome may launch it in a tab unless you turn on "Open supported links" in the app's
-settings in Chrome.
+`qm gui` installs as a desktop app window, from Chrome or Safari. In Chrome, with it open,
+click the install icon in the address bar (or ⋮ → Cast, save and share → Install page as app)
+and install **Quartermaster**. In Safari, use File → Add to Dock. The app's Dock icon shows
+the same count as the tab title, the chats whose move is yours (blocked, or your turn and not
+snoozed). While `qm gui` isn't running the window shows a "qm gui isn't running" page that
+comes back by itself once you start it. Links to other sites (PRs, issues, claude.ai) open in
+your default browser.
+
+Which to pick:
+
+- **Chrome**: the badge works as installed. But while a Claude session uses Claude in Chrome,
+  Chrome shows "'Claude' started debugging this browser" in every window, the app's too, and
+  no page can hide it. `qm gui` opens its URL with `open`, so Chrome may launch it in a tab
+  unless you turn on "Open supported links" in the app's settings in Chrome.
+- **Safari**: a separate browser, so that banner never shows. The Dock badge needs the app's
+  notification permission (allow it when asked after your first click) and **Badge application
+  icon** on in System Settings → Notifications → the app.
 
 ### Automations
 
@@ -369,10 +378,10 @@ Know this before you install it:
   `issue_links.notion_author`; nothing on GitHub is changed.
 - **The `qm gui` page registers a service worker in your browser** for `127.0.0.1:<port>`. It
   stores one offline page in the browser's cache and answers only page loads that fail because
-  `qm gui` isn't running; it caches nothing else and sends nothing anywhere. Chrome's site data
+  `qm gui` isn't running; it caches nothing else and sends nothing anywhere. The browser's site data
   settings for that address remove it.
 - **In the installed `qm gui` app, a link to another site runs macOS `open <url>`** (http and
-  https links only), so it opens in your default browser instead of a Chrome window.
+  https links only), so it opens in your default browser instead of the app's own browser.
 - **Some features start `claude -p` in the background** (summaries, asides, benchmarks), which
   counts against your Claude usage or API bill. Benchmark runs keep their folders (script,
   results, logs) in `~/.local/share/quartermaster/benchmarks/`, outside `~/.claude`, where

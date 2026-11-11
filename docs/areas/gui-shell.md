@@ -82,7 +82,7 @@ own (`issues`, `todos`), for views that refetch on just those. The pulse also te
 from `/assets/` and read at serve time like the page (so edits need no restart); after a JS
 edit, `node --check lib/quartermaster/gui/js/<file>.js` checks its syntax (nodejs is pinned
 in `.tool-versions` for that alone; no test needs node). The page is also an installable
-desktop app (Chrome's Install page as app; desktop only, the bind stays loopback): it links
+desktop app (Chrome's Install page as app or Safari's Add to Dock; desktop only, loopback bind): it links
 `gui/manifest.webmanifest` (standalone, `start_url` `/`, the 192/512 `gui/icons/` PNGs, which
 are also the favicon) and `js/app.js` registers `gui/sw.js`, a service worker whose one job
 is a self-contained "qm gui isn't running" page for a navigation the server doesn't answer;
