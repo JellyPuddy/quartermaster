@@ -31,8 +31,11 @@ same. `qm link SLUG "Label" https://…` hangs a link on an item (`--remove` dro
 lists its children and links. A GitHub issue whose type a project lists under `epics.issue_types`
 starts (`qm start-issue N`, or the GUI) as an epic with its Tracker and Notion links, without a
 branch, worktree or chat (`--as-item`, or switching off the GUI preview's **Start as epic**, starts
-it as a normal item); later, `qm link SLUG --refresh` or the epic's ↻ links adds the ones it is
-missing, leaving yours alone. A session is never linked to an epic by guesswork, only by
+it as a normal item); items already holding its GitHub sub-issues join it (not epics, automations
+or items in another epic), and its Epic block in the chats side panel lists the sub-issues without
+an item, each with a Start that begins it inside the epic (`qm start-issue N --epic SLUG` from the
+CLI); later, `qm link SLUG --refresh` or the epic's ↻ links adds the links it is missing, leaving
+yours alone. A session is never linked to an epic by guesswork, only by
 `qm attach` or a chat started from it; a child's session is told its epic, an epic's session
 its children. On the GUI board an epic is a card holding its items (which leave their columns),
 its todos, link chips and, once everything in it is done, an offer to resolve it; the New item
@@ -355,7 +358,8 @@ Know this before you install it:
   assigns the PR to its author and unassigns you), and whatever dev-server, test-database and
   IDE commands you configure.
 - **Starting work on an issue reads it with one `gh api graphql` call**: its title, state,
-  issue type, sub-issues and comments. A comment's text is only searched for the Notion link of
+  issue type, sub-issues and comments; opening an epic in the chats side panel (or its ↻) reads
+  its issue the same way to list the sub-issues. A comment's text is only searched for the Notion link of
   the configured `epics.notion_author`; nothing on GitHub is changed.
 - **The `qm gui` page registers a service worker in your browser** for `127.0.0.1:<port>`. It
   stores one offline page in the browser's cache and answers only page loads that fail because

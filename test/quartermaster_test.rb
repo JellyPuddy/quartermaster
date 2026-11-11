@@ -77,6 +77,7 @@ SUITE_FILES = %w[
   clipboard_annotations_test
   issue_drafts_test
   issue_start_test
+  epic_sub_issues_test
   issue_comments_test
   issue_cleanup_test
   prompt_snapshots_test

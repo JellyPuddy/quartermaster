@@ -56,7 +56,7 @@ else (see [capture](capture.md)), then requires `lib/quartermaster` through its 
 **Sessions and workspace**
 - `qm resume SLUG [--session ID] [--here]` / `qm start SLUG [--here]` — resume or start in a new Warp tab (or this terminal).
 - `qm pane-start SLUG` / `qm pane-resume SLUG [--session ID]` — the same in the running GUI's pane ([chats](chats.md)).
-- `qm start-issue N [--project P] [--as-item]` — item + issue worktree + kickoff chat, or an epic for an epic issue ([issues](issues.md)).
+- `qm start-issue N [--project P] [--as-item] [--epic SLUG]` — item + issue worktree + kickoff chat (inside epic SLUG), or an epic for an epic issue ([issues](issues.md)).
 - `qm automation new TITLE --project P` / `qm automation edit SLUG` — an automation item and files, then its chat with qm's brief ([automations](automations.md)).
 - `qm loose [--project P] [--model M] [--starter NAME] ["prompt"]` — a chat with no work item in the GUI; `--starter` opens it with a config.yml `loose_starters:` kickoff ([loose-chats](loose-chats.md)).
 - `qm rotate SLUG [--close]` / `qm rotate --self [--close]` — context rotation ([rotation](rotation.md)).

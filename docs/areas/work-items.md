@@ -22,7 +22,9 @@ project is editing one frontmatter line. Sessions attach to items ([linking](lin
 - **Epics are work items of `kind: epic`** (`WorkItemEpic`, mixed into `WorkItem`): an
   ordinary item (description, notes, states, a chat if wanted) that groups others one level
   deep. A child carries `epic: <epic slug>`; the epic stores no list, `children` scans every
-  item for it. `join_epic` (`qm epic SLUG EPIC`, `qm new --epic EPIC`) refuses an epic or an
+  item for it. `join_epic` (`qm epic SLUG EPIC`; also an epic started from a GitHub issue, for
+  the items holding its sub-issues, [issues](issues.md)) and `epic:` at creation (`qm new --epic
+  EPIC`, `qm start-issue N --epic EPIC`) refuse an epic or an
   automation as the child and a target that is missing or not `kind: epic` (so no item is its
   own epic); `leave_epic` (`qm epic SLUG --clear`) drops the key. Deleting or resolving an
   epic leaves its children's `epic:` alone: `epic_item` is nil for a dangling slug and

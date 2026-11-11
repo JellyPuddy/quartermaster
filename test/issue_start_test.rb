@@ -394,8 +394,8 @@ class GuiIssueStartTest < Minitest::Test
 
   def test_every_entry_point_ends_in_the_preview_confirmation
     html = page
-    ['cmd: "issue-preview"', "function issueStartModal(number, project, { from = null } = {})",
-     "renderIssueStartPreview(box, res.issue, from)", "if (openModal !== shown) return;"].each { |seam| assert_includes html, seam }
+    ['cmd: "issue-preview"', "function issueStartModal(number, project, { from = null, epic = null } = {})",
+     "renderIssueStartPreview(box, { ...res.issue, into: epic }, from)", "if (openModal !== shown) return;"].each { |seam| assert_includes html, seam }
     assert_includes html, "m.append(kindRow, tf, pf, epicField, df, issueFromNewItemRow());", "＋ New item: the From issue row"
     assert_includes html, "issueStartModal(ref.number, ref.project || row.querySelector(\"select\").value || null);"
     assert_includes html, 'else if (issueRef(query)) startFromSearch(); else runAsk();', "⏎ on #1234 starts work, not an ask"
@@ -414,7 +414,7 @@ class GuiIssueStartTest < Minitest::Test
 
   def test_start_follows_the_job_into_the_new_items_chat_or_opens_the_held_one
     html = page
-    assert_includes html, 'act("issue-start", { args: { number: iss.number, project: iss.project, from, as_epic: asEpic } })'
+    assert_includes html, 'act("issue-start", { args: { number: iss.number, project: iss.project, from, as_epic: asEpic, epic: iss.into } })'
     assert_includes html, 'toast(`#${iss.number} is already ${r.slug}: opened its chat`);', "A4 says so"
     assert_includes html, "if (!iss.existing && !asEpic) issueStarting.add(iss.slug);", "marked before act's refresh can carry the finish"
     assert_includes html, "issueStartFinished(r);\n}", "jobFinished hands every finish over"

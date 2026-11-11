@@ -4,10 +4,10 @@ module Quartermaster
   # The GUI's issue start (IssueStart, docs/areas/issues.md): issue-preview
   # only reads GitHub, so Gui runs it off the action mutex; issue-start makes
   # the item; epic-links-refresh reads an epic's issue again for its missing
-  # links. GuiActions hands them here, with its pane opener for the chat of
+  # links; epic-sub-issues reads its sub-issues. GuiActions hands them here, with its pane opener for the chat of
   # an item that already holds the issue.
   class GuiIssueActions
-    COMMANDS = %w[issue-preview issue-start epic-links-refresh].freeze
+    COMMANDS = %w[issue-preview issue-start epic-links-refresh epic-sub-issues].freeze
 
     def initialize(runner:, jobs:, tmux:, pane:)
       @runner = runner
@@ -21,6 +21,7 @@ module Quartermaster
       when "issue-preview" then ok.merge("issue" => issue_start.preview(args["number"], project(args)))
       when "issue-start" then start(args)
       when "epic-links-refresh" then refresh_links(slug)
+      when "epic-sub-issues" then ok.merge("sub_issues" => issue_start.sub_issues(args["epic"].to_s))
       end
     end
 
@@ -47,20 +48,23 @@ module Quartermaster
     # no worktree, no chat. Otherwise the worktree (a fetch, git worktree add,
     # maybe a test DB) is made on a background job keyed by the new item's
     # slug, which then opens the chat with the kickoff prompt. from: the
-    # drafting item's slug, noted with what the issue became.
+    # drafting item's slug, noted with what the issue became. epic: the epic
+    # the new item sits in (a sub-issue started from the epic's view).
     def start(args)
       preview = issue_start.preview(args["number"], project(args))
       return existing(preview) if preview["existing"]
 
       from = presence(args["from"])
       WorkItem.find(from) if from
-      as_epic = args["as_epic"].nil? ? preview["epic"] : [true, "true", "1"].include?(args["as_epic"])
+      epic = presence(args["epic"])
+      as_epic = args["as_epic"].nil? ? preview["epic"] && !epic : [true, "true", "1"].include?(args["as_epic"])
+      WorkItem.check_epic_target!(epic, kind: as_epic ? WorkItemEpic::EPIC_KIND : nil, slug: preview["slug"]) if epic
       return start_epic(preview, from) if as_epic
 
       slug = preview["slug"]
       @jobs.background(slug, "starting ##{preview["number"]}…") do
         started = issue_start.start(preview, from: from, progress: ->(label) { @jobs.relabel(slug, label) },
-                                             as_epic: false)
+                                             as_epic: false, epic: epic)
         item = started[:item]
         plan = Launcher.new.chat_plan(item, fresh: true, prompt: IssueStart.kickoff(preview["number"]))
         @tmux.open(item.slug, cwd: plan[:cwd], argv: plan[:argv], env: plan[:env]) unless plan[:mode] == :live
@@ -79,9 +83,17 @@ module Quartermaster
     end
 
     def start_epic(preview, from)
-      item = issue_start.start(preview, from: from, as_epic: true)[:item]
-      ok.merge("slug" => item.slug, "epic" => true, "issue" => preview,
-               "message" => "##{preview["number"]} started as epic #{item.slug}")
+      started = issue_start.start(preview, from: from, as_epic: true)
+      slug = started[:item].slug
+      ok.merge("slug" => slug, "epic" => true, "issue" => preview, "attached" => started[:attached],
+               "skipped" => started[:skipped], "message" => epic_message(preview["number"], slug, started))
+    end
+
+    def epic_message(number, slug, started)
+      parts = ["##{number} started as epic #{slug}"]
+      parts << "joined: #{started[:attached].join(", ")}" unless started[:attached].empty?
+      parts << "left out: #{IssueStart.skipped_text(started[:skipped])}" unless started[:skipped].empty?
+      parts.join(" · ")
     end
 
     def issue_start = IssueStart.new(runner: @runner)

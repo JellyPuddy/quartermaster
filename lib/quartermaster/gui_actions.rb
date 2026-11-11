@@ -8,7 +8,7 @@ module Quartermaster
   class GuiActions
     # Network-bound and touching no qm state (a thread's resolve changes only GitHub, a review preview
     # only reads), or with their own locks (BenchmarkRun, TodoList), so Gui runs them off the action mutex.
-    UNLOCKED = (%w[issue-preview pr-thread-resolve review-preview] + GuiBenchmarkActions::COMMANDS +
+    UNLOCKED = (%w[issue-preview epic-sub-issues pr-thread-resolve review-preview] + GuiBenchmarkActions::COMMANDS +
                 GuiTodoActions::COMMANDS).freeze
 
     def initialize(runner:, tmux:, caffeinate:, jobs:, state:, pr_items:, pr_fetcher: nil)

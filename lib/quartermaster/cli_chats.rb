@@ -103,39 +103,45 @@ module Quartermaster
     # the running GUI (worktree on its background job, then the chat with the
     # kickoff in the item's pane). Without a GUI it makes the item and
     # worktree here and prints how to start the chat. An epic issue starts as
-    # an epic item (no branch, worktree or chat) unless --as-item. No y/N:
-    # chats run this too, and the preview is there to read afterwards.
+    # an epic item (no branch, worktree or chat) unless --as-item, joined by
+    # the items holding its sub-issues; --epic SLUG starts it inside that
+    # epic. No y/N: chats run this too, and the preview is there to read
+    # afterwards.
     def cmd_start_issue(argv)
-      project = nil
+      project = epic = nil
       as_item = false
       rest = OptionParser.new do |o|
         o.on("--project PROJECT") { |v| project = v }
         o.on("--as-item") { as_item = true }
+        o.on("--epic SLUG") { |v| epic = v }
       end.parse(argv)
-      abort("usage: qm start-issue NUMBER [--project P] [--as-item]") unless rest.size == 1
+      abort("usage: qm start-issue NUMBER [--project P] [--as-item] [--epic SLUG]") unless rest.size == 1
 
       project ||= default_issue_project
       starter = IssueStart.new(runner: @runner || CommandRunner.new)
       preview = starter.preview(rest.first, project)
-      print_issue_preview(preview)
+      print_issue_preview(epic ? preview.merge("epic" => false) : preview)
+      puts "  inside epic #{epic}" if epic && !preview["existing"]
 
-      args = { "number" => preview["number"], "project" => project }
+      args = { "number" => preview["number"], "project" => project, "epic" => epic }.compact
       args["as_epic"] = false if as_item
       reply = gui_action("start-issue", "issue-start", args: args, optional: true)
       if reply
         puts(if reply["existing"] && reply["epic"] then "#{reply["slug"]}: the epic already holding it"
              elsif reply["existing"] then "#{reply["slug"]}: its chat is open in the qm gui"
-             elsif reply["epic"] then "#{reply["slug"]}: created as an epic in the qm gui"
+             elsif reply["epic"] then "#{reply["slug"]}: created as an epic in the qm gui#{joined_text(reply)}"
              else "#{reply["slug"]}: starting in the qm gui — its chat opens in the item's pane once the worktree is ready"
              end)
       elsif (existing = preview["existing"]) && existing["epic"]
         puts "#{existing["slug"]}: the epic already holding ##{preview["number"]}"
       elsif existing
         puts "#{existing["slug"]} already holds ##{preview["number"]} — continue there: qm resume #{existing["slug"]}"
-      elsif preview["epic"] && !as_item
-        puts "#{starter.start(preview, as_epic: true)[:item].slug}: created as an epic (no branch, worktree or chat)"
+      elsif preview["epic"] && !as_item && !epic
+        started = starter.start(preview, as_epic: true)
+        puts "#{started[:item].slug}: created as an epic (no branch, worktree or chat)" \
+             "#{joined_text("attached" => started[:attached], "skipped" => started[:skipped])}"
       else
-        started = starter.start(preview, as_epic: false)
+        started = starter.start(preview, as_epic: false, epic: epic)
         path = started[:target].path
         puts "#{started[:item].slug}: created, worktree #{short_path(path)} on #{preview["branch"]}"
         puts "no qm gui running — start its chat with:"
@@ -184,6 +190,14 @@ module Quartermaster
       return project unless project == ProjectMap::NO_PROJECT
 
       ProjectConfig.current.default_project || project
+    end
+
+    # The items an epic start attached and left out, as lines after its own.
+    def joined_text(reply)
+      lines = []
+      lines << "\n  joined: #{reply["attached"].join(", ")}" unless Array(reply["attached"]).empty?
+      lines << "\n  left out: #{IssueStart.skipped_text(reply["skipped"])}" unless Array(reply["skipped"]).empty?
+      lines.join
     end
 
     def print_issue_preview(preview)

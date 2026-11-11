@@ -37,6 +37,9 @@ module Quartermaster
         "run a grilling session (the grilling skill) with me on how to solve it. Don't change code yet."
     end
 
+    # A start's skipped sub-issue holders as one line: "slug (reason), …".
+    def self.skipped_text(skipped) = skipped.map { |entry| "#{entry["slug"]} (#{entry["reason"]})" }.join(", ")
+
     # "#1234", "1234" → 1234; anything else is refused before gh runs.
     def self.number(value)
       text = value.to_s.strip.delete_prefix("#")
@@ -69,7 +72,7 @@ module Quartermaster
                                     "epic" => existing.epic? },
         "epic" => settings.epic_type?(issue.dig("issueType", "name")),
         "links" => IssueLinks.new(settings).for(issue, repo),
-        "sub_issues" => sub_issues(issue)
+        "sub_issues" => sub_issue_nodes(issue)
       }
     end
 
@@ -92,15 +95,20 @@ module Quartermaster
     # was drafted in, which gets a note saying what it became. progress:
     # called with a short label before each slow step. as_epic (default: the
     # preview's epic) makes an epic item carrying the preview's links instead,
-    # with no worktree (target nil).
-    def start(preview, from: nil, progress: nil, as_epic: nil)
+    # with no worktree (target nil), joined by the items already holding its
+    # sub-issues (attached; skipped: [{slug, reason}]). epic: the epic the new
+    # item sits in, checked before any worktree is made; an epic issue started
+    # inside one starts as a normal item.
+    def start(preview, from: nil, progress: nil, as_epic: nil, epic: nil)
       raise ArgumentError, "##{preview["number"]} is already #{preview["existing"]["slug"]}" if preview["existing"]
 
       project = preview["project"]
       title = item_title(preview["number"], preview["title"])
       slug = WorkItem.slugify(title)
       raise ArgumentError, "work item '#{slug}' already exists" if File.exist?(WorkItem.path_for(slug))
-      return start_epic(preview, title, from) if as_epic.nil? ? preview["epic"] : as_epic
+      as_epic = preview["epic"] && !epic if as_epic.nil?
+      WorkItem.check_epic_target!(epic, kind: as_epic ? WorkItemEpic::EPIC_KIND : nil, slug: slug) if epic
+      return start_epic(preview, title, from) if as_epic
 
       root, repo = repo_for(project)
       target = TargetWorktree.new(project_map: @project_map, runner: @runner)
@@ -115,19 +123,41 @@ module Quartermaster
                    target.materialize_branch(project, preview["branch"], base: "origin/#{default}")
                  end
 
-      item = WorkItem.create(title, project: project, description: description(preview))
+      item = WorkItem.create(title, project: project, description: description(preview), front: epic ? { "epic" => epic } : {})
       item.link_branch(preview["branch"])
       note_started(from, preview, item)
       { item: WorkItem.find(item.slug), target: worktree }
     end
 
+    # An epic's GitHub sub-issues, read now from the issue its description
+    # links: {number, title, state, closed, url, item (the slug holding it, or
+    # nil), startable (in the project's own repo, where IssueStart starts)}.
+    # An epic linking no GitHub issue has none.
+    def sub_issues(epic_slug)
+      epic = WorkItem.find(epic_slug)
+      raise ArgumentError, "'#{epic.slug}' is not an epic (kind: epic)" unless epic.epic?
+
+      link = epic.description.match(GITHUB_ISSUE_URL) or return []
+      root = @project_map.root_for(epic.project)
+      repo = root && Quartermaster.github_repo(root)
+      items = WorkItem.all
+      sub_issue_nodes(fetch_issue(root, link[1], link[2].to_i)).map do |sub|
+        own = repo_of(sub) == repo
+        holder = existing_item(epic.project, own ? sub["number"] : nil, url: sub["url"], items: items)
+        { "number" => sub["number"], "title" => sub["title"].to_s, "state" => sub["state"].to_s.downcase,
+          "closed" => sub["state"].to_s.casecmp?("closed"), "url" => sub["url"].to_s,
+          "item" => holder&.slug, "startable" => own }
+      end
+    end
+
     # The item that already holds the issue: one of the project's items with
     # an issue/<n> branch linked, or any item whose description carries the
-    # issue's URL. An unresolved one wins, then one holding the branch.
+    # issue's URL. An unresolved one wins, then one holding the branch. A nil
+    # number (an issue of another repo) is found by its URL only.
     def existing_item(project, number, url: nil, items: WorkItem.all)
       url_pattern = url && !url.empty? && /#{Regexp.escape(url)}(?!\d)/
       items.filter_map do |item|
-        by_branch = item.project == project && item.branches.any? { |b| issue_branch?(b, number) }
+        by_branch = number && item.project == project && item.branches.any? { |b| issue_branch?(b, number) }
         next unless by_branch || (url_pattern && item.description.match?(url_pattern))
 
         [item.state == "resolved" ? 1 : 0, by_branch ? 0 : 1, item]
@@ -145,14 +175,35 @@ module Quartermaster
       front["links"] = preview["links"] unless Array(preview["links"]).empty?
       item = WorkItem.create(title, project: preview["project"], description: description(preview), front: front)
       note_started(from, preview, item)
-      { item: item, target: nil }
+      { item: item, target: nil }.merge(attach_sub_issue_holders(item, preview))
     end
+
+    # The items already holding the epic issue's sub-issues join the epic; an
+    # epic, an automation or an item in another epic stays where it is.
+    def attach_sub_issue_holders(epic, preview)
+      holders = Array(preview["sub_issues"]).filter_map do |sub|
+        own = repo_of(sub) == preview["repo"]
+        existing_item(preview["project"], own ? sub["number"] : nil, url: sub["url"])
+      end
+      holders.uniq(&:slug).each_with_object({ attached: [], skipped: [] }) do |holder, result|
+        reason = if holder.epic? then "an epic"
+                 elsif holder.automation? then "an automation"
+                 elsif holder.epic then "already in epic #{holder.epic}"
+                 end
+        next result[:skipped] << { "slug" => holder.slug, "reason" => reason } if reason
+
+        holder.join_epic(epic.slug)
+        result[:attached] << holder.slug
+      end
+    end
+
+    def repo_of(issue) = issue["url"].to_s[GITHUB_ISSUE_URL, 1]
 
     def note_started(from, preview, item)
       WorkItem.find(from).add_note("##{preview["number"]} started as #{item.slug}", kind: "history") if from
     end
 
-    def sub_issues(issue)
+    def sub_issue_nodes(issue)
       Array(issue.dig("subIssues", "nodes")).filter_map do |sub|
         sub.slice("number", "title", "state", "url") if sub.is_a?(Hash) && sub["number"]
       end
