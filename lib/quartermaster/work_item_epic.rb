@@ -92,6 +92,17 @@ module Quartermaster
       end
     end
 
+    # Adds each candidate link whose label and url the item doesn't carry yet,
+    # replacing and removing nothing; returns the ones added.
+    def add_missing_links(candidates)
+      locked do
+        list = links.map(&:dup)
+        added = candidates.reject { |link| list.any? { |own| own["label"] == link["label"] || own["url"] == link["url"] } }
+        store_links(list + added) unless added.empty?
+        added
+      end
+    end
+
     def remove_link(label)
       locked do
         raise ArgumentError, "'#{slug}' has no link '#{label}'" unless links.any? { |link| link["label"] == label }

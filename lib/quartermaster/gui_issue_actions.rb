@@ -3,10 +3,11 @@
 module Quartermaster
   # The GUI's issue start (IssueStart, docs/areas/issues.md): issue-preview
   # only reads GitHub, so Gui runs it off the action mutex; issue-start makes
-  # the item. GuiActions hands both here, with its pane opener for the chat
-  # of an item that already holds the issue.
+  # the item; epic-links-refresh reads an epic's issue again for its missing
+  # links. GuiActions hands them here, with its pane opener for the chat of
+  # an item that already holds the issue.
   class GuiIssueActions
-    COMMANDS = %w[issue-preview issue-start].freeze
+    COMMANDS = %w[issue-preview issue-start epic-links-refresh].freeze
 
     def initialize(runner:, jobs:, tmux:, pane:)
       @runner = runner
@@ -15,16 +16,30 @@ module Quartermaster
       @pane = pane
     end
 
-    def dispatch(cmd, args)
+    def dispatch(cmd, slug, args)
       case cmd
       when "issue-preview" then ok.merge("issue" => issue_start.preview(args["number"], project(args)))
       when "issue-start" then start(args)
+      when "epic-links-refresh" then refresh_links(slug)
       end
     end
 
     private
 
     def ok = { "ok" => true }
+
+    # ↻ links: the epic's issue read again on a job keyed by the epic, adding
+    # the links it lacks (IssueStart#refresh_links).
+    def refresh_links(slug)
+      item = WorkItem.find(slug)
+      raise ArgumentError, "'#{slug}' is not an epic" unless item.epic?
+
+      @jobs.background(item.slug, "refreshing links…") do
+        added = issue_start.refresh_links(item)
+        { "ok" => true,
+          "message" => "#{item.slug}: #{added.empty? ? "no links to add" : "added #{added.map { |l| l["label"] }.join(", ")}"}" }
+      end
+    end
 
     # Start work on a GitHub issue. An item already holding it gets its chat
     # opened instead ("existing"; an epic only answers, it has no chat).

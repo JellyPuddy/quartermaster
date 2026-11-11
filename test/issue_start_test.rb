@@ -559,3 +559,88 @@ class CliStartIssueTest < Minitest::Test
     end
   end
 end
+
+# ↻ links on an epic started from (or describing) a GitHub issue: the
+# links IssueLinks derives are added when missing, never replacing or
+# removing one the user set; from IssueStart, the GUI job and qm link --refresh.
+class EpicLinksRefreshTest < Minitest::Test
+  include QmTestHelpers
+  include IssueStartHelpers
+
+  MINE = { "label" => "Tracker", "url" => "https://mine.example/board/7" }.freeze
+
+  def epic!(links: [MINE], description: "#{ISSUE_URL}\n\nExport", kind: "epic")
+    front = { "kind" => kind, "links" => links }.reject { |_, v| v.nil? || v == [] }
+    Quartermaster::WorkItem.create("Export", project: "Widget", description: description, front: front)
+  end
+
+  def test_refresh_adds_only_the_missing_links_and_keeps_the_users
+    with_widget_repo(epics: EPIC_SETTINGS) do
+      epic!(links: [MINE, { "label" => "Docs", "url" => "https://docs.example/x" }])
+      runner = epic_runner
+      added = starter(runner).refresh_links(Quartermaster::WorkItem.find("export"))
+
+      assert_equal [{ "label" => "Notion page", "url" => NOTION_URL }], added
+      assert_equal [MINE, { "label" => "Docs", "url" => "https://docs.example/x" },
+                    { "label" => "Notion page", "url" => NOTION_URL }], Quartermaster::WorkItem.find("export").links
+      argv = runner.argvs.first
+      assert_equal %w[gh api graphql], argv.first(3)
+      assert_includes argv, "owner=acme"
+      assert_includes argv, "number=123"
+      assert_empty starter(epic_runner).refresh_links(Quartermaster::WorkItem.find("export")), "nothing left to add"
+    end
+  end
+
+  def test_a_link_already_carried_under_another_label_is_not_added_again
+    with_widget_repo(epics: EPIC_SETTINGS) do
+      epic!(links: [{ "label" => "Board", "url" => "https://tracker.example/ws/acme/widget/123" }])
+      added = starter(epic_runner).refresh_links(Quartermaster::WorkItem.find("export"))
+      assert_equal ["Notion page"], added.map { |link| link["label"] }
+    end
+  end
+
+  def test_refresh_is_refused_for_a_plain_item_or_an_epic_without_an_issue_url
+    with_widget_repo(epics: EPIC_SETTINGS) do
+      epic!(kind: nil)
+      error = assert_raises(ArgumentError) { starter(epic_runner).refresh_links(Quartermaster::WorkItem.find("export")) }
+      assert_equal "'export' is not an epic", error.message
+      Quartermaster::WorkItem.create("Loose", project: "Widget", description: "see https://github.com/acme/widget/pull/9",
+                                              front: { "kind" => "epic" })
+      error = assert_raises(ArgumentError) { starter(epic_runner).refresh_links(Quartermaster::WorkItem.find("loose")) }
+      assert_equal "'loose' has no GitHub issue URL in its description", error.message
+    end
+  end
+
+  def host = { "host" => "127.0.0.1:4567", "origin" => "http://127.0.0.1:4567" }
+
+  def test_the_gui_refreshes_on_a_job_keyed_by_the_epic
+    with_widget_repo(epics: EPIC_SETTINGS) do
+      epic!
+      server = Quartermaster::Gui.new(port: 4567, runner: epic_runner, tmux: FakeTmux.new)
+      reply = JSON.parse(server.respond("POST", "/api/action", host,
+                                        JSON.generate("cmd" => "epic-links-refresh", "slug" => "export"))[2])
+      assert_equal [true, true], reply.values_at("ok", "background")
+      Timeout.timeout(10) { sleep 0.05 until server.jobs.running.empty? }
+      job = server.jobs.take_finished.last
+
+      assert_equal [true, "export", "export: added Notion page"], job.values_at("ok", "key", "message")
+      assert_equal [MINE, { "label" => "Notion page", "url" => NOTION_URL }], Quartermaster::WorkItem.find("export").links
+    end
+  end
+
+  def test_qm_link_refresh_says_what_it_added
+    with_widget_repo(epics: EPIC_SETTINGS) do
+      epic!
+      out, = capture_io { Quartermaster::CLI.new(runner: epic_runner, cwd: Dir.home).run(%w[link export --refresh]) }
+      assert_equal "export: added Notion page → Tracker, Notion page\n", out
+      again, = capture_io { Quartermaster::CLI.new(runner: epic_runner, cwd: Dir.home).run(%w[link export --refresh]) }
+      assert_equal "export: no links to add → Tracker, Notion page\n", again
+    end
+  end
+
+  def test_the_link_chips_carry_the_refresh_button_for_an_epic_with_an_issue
+    html = served_page(Quartermaster::Gui.new(port: 4567, runner: quiet_runner, tmux: FakeTmux.new), host)
+    assert_includes html, 'if (isEpic(it) && GITHUB_ISSUE_URL.test(it.description || "")) box.appendChild(linksRefreshButton(it));'
+    assert_includes html, 'act("epic-links-refresh", { slug: it.slug })'
+  end
+end

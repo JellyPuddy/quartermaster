@@ -84,7 +84,7 @@ module Quartermaster
       when "build-progress" then gui_build_progress(slug)
       when "branch-stats-commentary" then gui_branch_stats_commentary(slug, args["branch"])
       when "board-answer" then gui_board_answer(slug, args["doc_id"], args["text"])
-      when *GuiIssueActions::COMMANDS then GuiIssueActions.new(runner: @runner, jobs: @jobs, tmux: @tmux, pane: method(:gui_pane)).dispatch(cmd, args)
+      when *GuiIssueActions::COMMANDS then GuiIssueActions.new(runner: @runner, jobs: @jobs, tmux: @tmux, pane: method(:gui_pane)).dispatch(cmd, slug, args)
       when "pr-chat" then gui_pr_chat(args["url"])
       when "pr-review" then gui_pr_review(args["url"])
       when "pr-pf" then pr_workspace_job(args["url"], pf: true)

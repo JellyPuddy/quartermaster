@@ -31,12 +31,24 @@ module Quartermaster
 
     def cmd_link(argv)
       slug, label, url = argv
-      abort('usage: qm link SLUG "LABEL" URL | qm link SLUG "LABEL" --remove') unless slug && label && url
+      return refresh_links(slug) if label == "--refresh" && !url
+
+      abort('usage: qm link SLUG "LABEL" URL | qm link SLUG "LABEL" --remove | qm link SLUG --refresh') unless slug && label && url
 
       item = WorkItem.find(slug)
       url == "--remove" ? item.remove_link(label) : item.set_link(label, url)
+      puts "#{slug} → #{link_labels(slug)}"
+    end
+
+    # An epic's links from its GitHub issue, only the missing ones added.
+    def refresh_links(slug)
+      added = IssueStart.new(runner: @runner || CommandRunner.new).refresh_links(WorkItem.find(slug))
+      puts "#{slug}: #{added.empty? ? "no links to add" : "added #{added.map { |l| l["label"] }.join(", ")}"} → #{link_labels(slug)}"
+    end
+
+    def link_labels(slug)
       labels = WorkItem.find(slug).links.map { |link| link["label"] }
-      puts "#{slug} → #{labels.empty? ? "(no links)" : labels.join(", ")}"
+      labels.empty? ? "(no links)" : labels.join(", ")
     end
 
     def epic_line(item)

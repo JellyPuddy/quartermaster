@@ -46,6 +46,7 @@ module Quartermaster
         ["qm new TITLE [flags]", "create a work item, prints its slug (--project P, --branch B, --session ID, --description TEXT, --pf-mode MODE; --kind epic makes an epic, --epic SLUG puts the item in one)"],
         ["qm epic SLUG EPIC_SLUG|--clear|--make|--unmake", "put the item in an epic (one level: not an epic or automation itself) or take it out; --make turns it into an epic (not while in one), --unmake back into a work item (once no item is in it)"],
         ['qm link SLUG "LABEL" URL|--remove', "add a link (an http(s) url) to the item, replacing one with the same label, or remove it"],
+        ["qm link SLUG --refresh", "add the Tracker/Notion links an epic's GitHub issue (URL in its description) gives and it lacks; never replaces one"],
         ["qm attach SLUG --session ID", "attach a session to a work item (detaches it from any other item)"],
         ["qm detach SLUG --session ID", "detach a session, leaving it unlinked"],
         ["qm note SLUG TEXT", "append a dated progress note (--kind #{NOTE_KINDS.join("|")}, default #{DEFAULT_NOTE_KIND}); text may start with \"- \", or follow --"],

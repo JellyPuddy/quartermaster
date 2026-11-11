@@ -19,6 +19,12 @@
   border: 1px solid var(--border-strong); border-radius: 4px; padding: 0 5px; text-decoration: none;
 }
 .epic-link:hover { color: var(--accent); border-color: var(--accent-line); }
+.epic-links-refresh {
+  font-family: var(--mono); font-size: 10px; color: var(--faint); background: none; cursor: pointer;
+  border: 1px dashed var(--border-strong); border-radius: 4px; padding: 0 5px; white-space: nowrap;
+}
+.epic-links-refresh:hover:not(:disabled) { color: var(--accent); border-color: var(--accent-line); }
+.epic-links-refresh:disabled { cursor: default; font-style: italic; }
 .epic-suggest {
   font-family: var(--sans); font-size: 11px; color: var(--good); background: none; cursor: pointer;
   border: 1px dashed var(--good); border-radius: 20px; padding: 1px 9px;

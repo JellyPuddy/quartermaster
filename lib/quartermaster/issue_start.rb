@@ -12,6 +12,7 @@ module Quartermaster
   class IssueStart
     BRANCH_SLUG_MAX = 40
     LIST_MAX = 100
+    GITHUB_ISSUE_URL = %r{https://github\.com/([\w.-]+/[\w.-]+)/issues/(\d+)(?!\d)}
 
     QUERY = <<~GRAPHQL
       query($owner: String!, $name: String!, $number: Int!) {
@@ -72,11 +73,18 @@ module Quartermaster
       }
     end
 
-    # The links an epic started from the project's issue #number would carry
-    # (IssueLinks), read from GitHub now.
-    def links_for(project, number)
-      root, repo = repo_for(project)
-      IssueLinks.new(@project_map.settings_for(project).epics).for(fetch_issue(root, repo, self.class.number(number)), repo)
+    # Adds to an epic the links its GitHub issue (the first issue URL in its
+    # description) derives now and it lacks; never replaces or removes one.
+    # Returns the links added.
+    def refresh_links(item)
+      raise ArgumentError, "'#{item.slug}' is not an epic" unless item.epic?
+
+      found = item.description.match(GITHUB_ISSUE_URL)
+      raise ArgumentError, "'#{item.slug}' has no GitHub issue URL in its description" unless found
+
+      repo = found[1]
+      issue = fetch_issue(@project_map.root_for(item.project), repo, found[2].to_i)
+      item.add_missing_links(IssueLinks.new(@project_map.settings_for(item.project).epics).for(issue, repo))
     end
 
     # Creates the worktree first, then the item: a retry after a failed item
