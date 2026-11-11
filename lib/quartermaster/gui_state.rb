@@ -103,7 +103,7 @@ module Quartermaster
         "rateLimits" => RateLimits.new.payload,
         # The header's error badge: qm.log errors since the user last marked them seen.
         "errors" => ErrorLog.new.summary,
-        # The Todos tab: open todos in order, then the 20 newest done (GuiTodoActions.payload).
+        # The Todos tab: open todos in order, then the 20 newest done and every done one on an item (GuiTodoActions.payload).
         "todos" => GuiTodoActions.payload(items: work_items.to_h { |item| [item.slug, item] }),
         "finished" => @jobs.take_finished
       }
