@@ -472,6 +472,90 @@ class GuiChatPaneTest < Minitest::Test
     assert_includes page, 'case "i": if (it) openDetail(it); break;', "full detail moved to i"
   end
 
+  def page_function(page, name)
+    page[/^(?:async )?function #{name}\(.*?^}$/m] or flunk("no function #{name} on the page")
+  end
+
+  # Plan decision 11: the chats list grouped by epic, the Epic block in the side
+  # panel and the crumb in the chat head (chat-epic.js).
+  def test_the_chats_list_groups_rows_by_epic_with_foldable_blocks
+    page = served_page(Quartermaster::Gui.new(port: 4567, runner: quiet_runner, tmux: FakeTmux.new), host)
+    order = %w[chat.js chat-epic.js events.js].map { |f| page.index(%(<script src="/assets/js/#{f}">)) }
+    assert_equal order.sort, order
+    assert_includes page, %(href="/assets/css/chat-epic.css")
+
+    assert_includes page_function(page, "renderChat"), "renderChatList(list, rows);\n    renderLooseGroup(list);",
+                    "epic blocks and no-epic rows first, loose chats and runs after as before"
+    groups = page_function(page, "chatListGroups")
+    assert_includes groups, "if (!epic) { plain.push(a); return; }"
+    assert_includes groups, %(if (a.slug !== epic.slug || a.state !== "none") blocks.get(epic.slug).rows.push(a);),
+                    "the epic's own entry joins its block only with a turn; the header stands for it otherwise"
+    assert_includes page_function(page, "chatEpicOf"), %(items.find(i => i.slug === it.epic && i.kind === "epic")),
+                    "a dangling epic slug reads as no epic"
+    list = page_function(page, "renderChatList")
+    assert_includes list, %(list.appendChild(el("div", "att-group", "no epic")); labelled = true;)
+    assert_includes list, "else if (blocks.length && !labelled)", "no label at all while no epic has a chat"
+
+    block = page_function(page, "chatEpicBlock")
+    assert_includes block, "head.onclick = () => selectChat(epic.slug);", "the header opens the epic itself"
+    assert_includes block, "chev.onclick = e => { e.stopPropagation(); toggleChatEpicFold(epic.slug); };"
+    assert_includes block, "`${live} live · ${open} todo${open === 1 ? \"\" : \"s\"}`"
+    assert_includes block, "if (!folded) { rows.forEach(a => box.appendChild(chatRow(a))); return box; }"
+    assert_includes page, 'localStorage.setItem("qm-chat-epic-folds", JSON.stringify([...chatEpicFolds]))', "folds remembered per browser"
+    assert_includes page_function(page, "moveChat"), "const rows = [...chatListSlugs(), ...looseChats.map(l => l.name)];",
+                    "j/k walk the list as it shows, skipping folded rows"
+    assert_includes page, "body.chats-min .chat-epic-head > :not(.chat-epic-chev):not(.chat-epic-glyph) { display: none; }",
+                    "the shrunk strip keeps a glyph and the fold per block"
+  end
+
+  def test_an_item_in_an_epic_opens_its_side_panel_with_the_epic_and_crumbs_to_it
+    page = served_page(Quartermaster::Gui.new(port: 4567, runner: quiet_runner, tmux: FakeTmux.new), host)
+    assert_includes page_function(page, "renderChatSide"), "body.append(...[chatEpicSection(it)].filter(Boolean), workspaceSection(it));"
+    side = page_function(page, "chatEpicSection")
+    assert_includes side, %(sec.appendChild(el("h3", "", isEpic ? "This epic" : "Epic"));)
+    assert_includes side, "if (!isEpic && desc)", "the epic's description only for a child; the epic's own shows below"
+    assert_includes side, %(const open = children.filter(c => c.state !== "resolved");)
+    assert_includes side, "r.onclick = () => selectChat(c.slug);"
+    assert_includes side, %(if (!isEpic) chatEpicTodoList(sec, "Todos on this item", chatOpenTodosOn(it.slug), true);)
+    assert_includes side, %(chatEpicTodoList(sec, "Todos on the epic", chatOpenTodosOn(epic.slug), false);)
+    assert_includes page_function(page, "chatEpicTodoList"), 'act("todo-done", { args: { id: t.id, done: true } })'
+    assert_includes page_function(page, "chatEpicTodoAdd"), 'act("todo-add", { args: { text: input.value.trim(), item: epic.slug } })'
+    resolvable = page_function(page, "chatEpicResolvable")
+    assert_includes resolvable, %(epic.state !== "resolved" && children.length > 0 &&)
+    assert_includes resolvable, %(children.every(c => c.state === "resolved") && chatEpicOpenTodos(epic).length === 0)
+    assert_includes page_function(page, "resolveEpic"), 'act("state", { slug: epic.slug, args: { state: "resolved" } })',
+                    "suggest-only: the click runs the normal state change"
+    chips = page_function(page, "epicLinkChips")
+    assert_includes chips, %(a.href = l.url; a.target = "_blank"; a.rel = "noopener"; a.title = l.label;)
+
+    assert_includes page_function(page, "renderChatMain"), "const crumb = chatEpicCrumb(it);\n    if (crumb) title.prepend(crumb);"
+    crumb = page_function(page, "chatEpicCrumb")
+    assert_includes crumb, %(const epic = it.kind === "epic" ? null : chatEpicOf(it);)
+    assert_includes crumb, "c.onclick = () => selectChat(epic.slug);"
+  end
+
+  def test_the_epic_side_blocks_todo_actions_land_on_the_epic
+    epic = Quartermaster::WorkItem.create("Epic Alpha", project: "WebApp", front: { "kind" => "epic" })
+    epic.set_link("Tracker", "https://tracker.example/1")
+    Quartermaster::WorkItem.create("First slice", project: "WebApp", front: { "epic" => epic.slug })
+    server = Quartermaster::Gui.new(port: 4567, runner: quiet_runner, tmux: FakeTmux.new)
+    post = ->(payload) { JSON.parse(server.respond("POST", "/api/action", host, JSON.generate(payload))[2]) }
+
+    added = post.call("cmd" => "todo-add", "args" => { "text" => "Write the rollout note", "item" => epic.slug })
+    assert added["ok"], added["error"]
+    state = JSON.parse(server.respond("GET", "/api/state", host, "")[2])
+    todo = state["todos"].find { |t| t["text"] == "Write the rollout note" }
+    assert_equal epic.slug, todo["item"]
+    by_slug = state["items"].to_h { |i| [i["slug"], i] }
+    assert_equal "epic", by_slug[epic.slug]["kind"]
+    assert_equal epic.slug, by_slug["first-slice"]["epic"]
+    assert_equal [{ "label" => "Tracker", "url" => "https://tracker.example/1" }], by_slug[epic.slug]["links"]
+
+    assert post.call("cmd" => "todo-done", "args" => { "id" => todo["id"], "done" => true })["ok"]
+    state = JSON.parse(server.respond("GET", "/api/state", host, "")[2])
+    assert state["todos"].find { |t| t["id"] == todo["id"] }["done_at"], "the side block's checkbox ticks it"
+  end
+
   def test_terminal_upgrades_need_our_origin_our_token_and_a_live_chat
     server = Quartermaster::Gui.new(port: 4567, runner: quiet_runner, tmux: FakeTmux.new(["live-one"]))
     path = ->(token, session = "live-one") { "/ws/terminal?session=#{session}&token=#{token}" }

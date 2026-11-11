@@ -582,7 +582,7 @@ class GuiPanelTest < Minitest::Test
     assert_includes page_function(page, "restackStack"), 'act("restack", { slug: it.slug, args: { branch } })'
     assert_includes page_function(page, "workspaceRails"), "const fold = chains.length >= 3;"
 
-    list = page_function(page, "renderChat")
+    list = page_function(page, "chatRow")
     assert_includes list, "const segs = chainSegmentBar(it);"
     assert_includes list, "const behind = restackCount(it);"
     assert_includes page, "body.chats-min .att-row > :not(.att-dot):not(.att-short) { display: none; }", "the shrunk strip hides the bar"

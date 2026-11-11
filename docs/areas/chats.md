@@ -1,6 +1,6 @@
 # Chats
 
-**Code:** `lib/quartermaster/tmux.rb`, `lib/quartermaster/terminal_bridge.rb`, `lib/quartermaster/web_socket.rb`, `lib/quartermaster/drops.rb`, `lib/quartermaster/chat_history.rb`, `lib/quartermaster/transcript_history.rb`, `lib/quartermaster/pane_follows_session.rb`, `lib/quartermaster/gui/js/chat.js`, `lib/quartermaster/gui/js/chat-main.js`, `lib/quartermaster/gui/js/terminal.js`, `lib/quartermaster/gui/js/history.js`, `lib/quartermaster/gui/css/chat.css`
+**Code:** `lib/quartermaster/tmux.rb`, `lib/quartermaster/terminal_bridge.rb`, `lib/quartermaster/web_socket.rb`, `lib/quartermaster/drops.rb`, `lib/quartermaster/chat_history.rb`, `lib/quartermaster/transcript_history.rb`, `lib/quartermaster/pane_follows_session.rb`, `lib/quartermaster/gui/js/chat.js`, `lib/quartermaster/gui/js/chat-main.js`, `lib/quartermaster/gui/js/chat-epic.js`, `lib/quartermaster/gui/js/terminal.js`, `lib/quartermaster/gui/js/history.js`, `lib/quartermaster/gui/css/chat.css`, `lib/quartermaster/gui/css/chat-epic.css`
 **Tests:** `test/chat_pane_test.rb`, `test/history_rotation_test.rb`
 **Depends on:** [gui-shell](gui-shell.md), [attention](attention.md), [linking](linking.md)
 
@@ -16,6 +16,14 @@ blocked + unsnoozed your_turn chats.
   board that isn't listed shows under "opened from the board"; live loose chats follow under "Loose"
   ([loose-chats](loose-chats.md)). `‹` shrinks the list to a strip of dots
   with initials (`qm-chats-min`, localStorage).
+- **Epics in the list** (`chat-epic.js`, [work-items](work-items.md)): rows of an epic or its children
+  form one block per epic, blocks in the order of their most urgent row, rows inside in attention
+  order; the epic's own entry is a row only while it has a turn, else the header stands for it. The
+  header (EPIC, title, "n live · n todos") opens the epic in the chat view; ▸ folds the block to its
+  status dots (`qm-chat-epic-folds`, localStorage). Rows in no epic (a dangling `epic:` included)
+  follow under "no epic" — no label while no epic has a block — then loose chats and runs. `j`/`k`
+  walk the list as shown: an epic's header, its unfolded rows, the rest. The shrunk strip keeps a ◆
+  and the fold per block. A child's chat head starts its title with a "◆ epic ›" crumb to the epic.
 - **Centre**: the item's chat pane — a live terminal on its tmux chat — with the read-only history of
   earlier sessions above it and its sessions collapsed underneath (open when there is no live pane).
 - **Right**: the digest (description, branches, the notes a new session is told about — `injected`
