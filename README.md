@@ -30,7 +30,8 @@ their own) and `--unmake` turns it back once no item is in it; the GUI's ⋯ men
 same. `qm link SLUG "Label" https://…` hangs a link on an item (`--remove` drops it), `qm list` marks epics and children with ◆, and `qm show` on an epic
 lists its children and links. A GitHub issue whose type a project lists under `epics.issue_types`
 starts (`qm start-issue N`, or the GUI) as an epic with its Tracker and Notion links, without a
-branch, worktree or chat (`--as-item` starts it as a normal item). A session is never linked to an epic by guesswork, only by
+branch, worktree or chat (`--as-item`, or switching off the GUI preview's **Start as epic**, starts
+it as a normal item). A session is never linked to an epic by guesswork, only by
 `qm attach` or a chat started from it; a child's session is told its epic, an epic's session
 its children. On the GUI board an epic is a card holding its items (which leave their columns),
 its todos, link chips and, once everything in it is done, an offer to resolve it; the New item
