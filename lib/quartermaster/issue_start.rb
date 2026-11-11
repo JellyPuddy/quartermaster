@@ -181,9 +181,10 @@ module Quartermaster
     # The items already holding the epic issue's sub-issues join the epic; an
     # epic, an automation or an item in another epic stays where it is.
     def attach_sub_issue_holders(epic, preview)
+      items = WorkItem.all
       holders = Array(preview["sub_issues"]).filter_map do |sub|
         own = repo_of(sub) == preview["repo"]
-        existing_item(preview["project"], own ? sub["number"] : nil, url: sub["url"])
+        existing_item(preview["project"], own ? sub["number"] : nil, url: sub["url"], items: items)
       end
       holders.uniq(&:slug).each_with_object({ attached: [], skipped: [] }) do |holder, result|
         reason = if holder.epic? then "an epic"
