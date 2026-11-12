@@ -24,7 +24,7 @@ body[data-mode="chat"].diff-max .diff-pane { display: flex; flex: 1 1 auto; bord
 .diff-bar-row { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; min-width: 0; }
 .diff-bar-row select { min-width: 0; flex: 0 1 auto; }
 .diff-bar-pane { display: inline-flex; gap: 6px; margin-left: auto; flex: none; }
-#diff-bar .grow { white-space: normal; overflow: visible; flex-basis: 220px; }
+#diff-bar .grow { white-space: normal; overflow: visible; flex-basis: auto; }
 .diff-bar .tag { color: var(--accent); font-weight: 700; letter-spacing: .06em; }
 .diff-bar .grow { flex: 1 1 160px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .diff-bar button, .diff-bar select {

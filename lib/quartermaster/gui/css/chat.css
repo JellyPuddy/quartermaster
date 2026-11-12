@@ -79,7 +79,8 @@ body.chats-min .att-group { font-size: 0; padding: 6px 4px 2px; border-top: 1px 
 .chat-head .row1 { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .chat-head h2 { margin: 6px 0 0; font-size: 16px; font-weight: 700; text-wrap: balance; }
 .chat-head .row1 > * { flex: none; }
-.chat-head .row1 > .att-now { flex: 0 1 auto; min-width: 0; margin-left: auto; display: flex; gap: .6ch;
+.chat-head .row1 > .slug.clip { flex: 0 1 auto; }
+.chat-head .row1 > .att-now { flex: none; max-width: 55%; min-width: 0; margin-left: auto; display: flex; gap: .6ch;
   font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
 .chat-head .sheet-actions { padding: 11px 0 0; border: none; }
 .chat-body { flex: 1 1 auto; overflow-y: auto; padding: 18px 20px 40px; display: flex; flex-direction: column; gap: 18px; }
