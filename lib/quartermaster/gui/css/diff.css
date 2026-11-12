@@ -119,6 +119,7 @@ body[data-mode="chat"].diff-max .diff-pane { display: flex; flex: 1 1 auto; bord
 
 .diff-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; }
 .diff-table td { padding: 0 8px; vertical-align: top; }
+.diff-table td > div { contain: inline-size; }
 .diff-table .d-num {
   width: 1%; min-width: 34px; text-align: right; color: var(--faint); user-select: none; white-space: nowrap;
   border-right: 1px solid var(--border); font-size: 10.5px;

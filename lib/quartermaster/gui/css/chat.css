@@ -47,7 +47,7 @@ body.chats-min .att-group { font-size: 0; padding: 6px 4px 2px; border-top: 1px 
 .att-wait { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
 .att-meta { grid-column: 2 / 4; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
-.att-state { font-weight: 600; }
+.att-state { font-weight: 600; max-width: 100%; }
 .att-row.blocked .att-state { color: var(--crit); }
 .att-row.your_turn .att-state { color: var(--turn); }
 .att-row.working .att-state { color: var(--accent); }
@@ -78,7 +78,9 @@ body.chats-min .att-group { font-size: 0; padding: 6px 4px 2px; border-top: 1px 
 .chat-head { padding: 14px 20px 12px; border-bottom: 1px solid var(--border); background: var(--surface); flex: none; }
 .chat-head .row1 { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .chat-head h2 { margin: 6px 0 0; font-size: 16px; font-weight: 700; text-wrap: balance; }
-.chat-head .att-now { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.chat-head .row1 > * { flex: none; }
+.chat-head .row1 > .att-now { flex: 0 1 auto; min-width: 0; margin-left: auto; display: flex; gap: .6ch;
+  font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
 .chat-head .sheet-actions { padding: 11px 0 0; border: none; }
 .chat-body { flex: 1 1 auto; overflow-y: auto; padding: 18px 20px 40px; display: flex; flex-direction: column; gap: 18px; }
 .chat-pane {
